@@ -1,0 +1,55 @@
+# ADR-016: Defer Payment and Subscription to MVP V3
+
+## Status
+
+Accepted
+
+## Context
+
+Payment/subscription đã được ghi nhận là ý tưởng MVP V3. V1 cần chứng minh core value:
+
+- capture nhanh
+- background AI processing
+- classification đúng/gần đúng
+- review/edit flow
+- user quay lại dùng app
+
+Thêm payment quá sớm sẽ kéo theo billing, subscription lifecycle, quota enforcement,
+invoice, failed payment, refund, webhook security và support burden.
+
+## Decision
+
+Defer payment and subscription to MVP V3.
+
+V1 không tích hợp payment provider. Architecture chỉ cần chuẩn bị vừa đủ:
+
+- Track AI usage per user/global.
+- Track storage usage.
+- Thiết kế data model không chặn quota/plan sau này.
+
+## Consequences
+
+Ưu điểm:
+
+- V1 scope gọn hơn.
+- Team tập trung vào product-market signal.
+- Tránh build billing trước khi biết user trả tiền cho value nào.
+- Giảm security/compliance/operation burden.
+
+Trade-off:
+
+- Chưa monetize ngay.
+- Có thể cần giới hạn usage bằng rule tạm nếu cost AI/storage tăng.
+- Sau này thêm quota/payment sẽ cần migration.
+
+Mitigation:
+
+- Track usage ngay từ V1.
+- Có file size limit/rate limit cơ bản.
+- Không hardcode assumption rằng mọi user unlimited forever.
+
+## Alternatives Considered
+
+### Add payment in V1
+
+Không chọn vì làm phình scope và chưa cần để validate core product.

@@ -1,0 +1,155 @@
+﻿C4 LEVEL 2 - CONTAINER DIAGRAM
+
+Purpose
+-------
+This diagram describes the main runtime containers of Blaie MVP V1.
+
+In C4, a container does not necessarily mean a Docker container. It means a runnable or
+deployable part of the system, such as a web app, mobile app, backend API, database,
+queue or worker.
+
+
+Diagram
+-------
+
++-------------------+                       +-------------------+
+| User              |                       | Admin             |
++-------------------+                       +-------------------+
+        |                                             |
+        | Use web/mobile app                          | Operate system
+        v                                             v
++---------------------------+             +---------------------------+
+| Web App                   |             | Admin Console             |
+| Browser client            |             | Job/user/system monitor   |
+| Capture, Inbox, review    |             +---------------------------+
+| Tasks, notes, calendar    |                         |
++---------------------------+                         |
+        |                                             |
+        | HTTPS API                                   | HTTPS Admin API
+        v                                             v
++----------------------------------------------------------------------------+
+| Backend API                                                                 |
+|                                                                            |
+| Auth, capture, item management, views, search, admin APIs                   |
+|                                                                            |
+| Important: capture API saves item immediately and does not wait for AI.     |
++----------------------------------------------------------------------------+
+        ^                    |                      |                    |
+        |                    |                      |                    |
+        | HTTPS API          | Read/write data      | Store file refs    | Create job
+        |                    v                      v                    v
++---------------------------+    +-----------------------+    +----------------------+
+| Mobile App                |    | PostgreSQL            |    | Object Storage       |
+| iOS / Android client      |    | Primary database      |    | Image/audio files    |
+| Quick capture, camera,    |    | Users, items, tags,   |    +----------------------+
+| voice, reminders          |    | metadata, jobs        |
++---------------------------+    +-----------------------+
+                                                                  |
+                                                                  |
+                                                                  v
+                                                        +----------------------+
+                                                        | Job Queue            |
+                                                        | AI processing jobs   |
+                                                        +----------------------+
+                                                                  |
+                                                                  | Consume jobs
+                                                                  v
+                                                        +----------------------+
+                                                        | AI Processing Worker |
+                                                        | Background AI work   |
+                                                        +----------------------+
+                                                           |        |        |
+                                                           |        |        |
+             Classify, summarize, transcribe, extract data |        | Send reminder
+                                                           v        | notification
+                                                +----------------+  v
+                                                | AI Provider    | +----------------------+
+                                                | LLM / OCR /    | | Push Notification    |
+                                                | speech-to-text | | Provider             |
+                                                +----------------+ | APNs / FCM           |
+                                                                   +----------------------+
+
+Backend API may also call:
+
++----------------------+
+| Email Provider       |
+| Account/system email |
++----------------------+
+
+
+Containers
+----------
+
+Web App
+- Browser-based client for desktop/laptop usage.
+- Optimized for review, editing, search and item management.
+- Supports login/signup/logout, text capture, image/audio upload, Inbox, item detail,
+  Tasks, Notes, Calendar, Reminders, Information, search and filters.
+
+Mobile App
+- iOS/Android client optimized for quick capture in daily life.
+- Supports quick text capture, camera/image capture, voice recording, Inbox, basic item
+  views, item edit and reminder notification.
+
+Admin Console
+- Internal UI for system operation.
+- Supports job monitoring, failed job inspection, retry, basic metrics and audit review.
+
+Backend API
+- Main backend used by web app, mobile app and admin console.
+- Handles auth, authorization, capture item creation, item CRUD, processing status,
+  search/filter APIs, file upload coordination, job creation and admin APIs.
+- Must not wait for AI processing before responding to capture requests.
+
+AI Processing Worker
+- Background worker for asynchronous AI processing.
+- Consumes jobs from queue.
+- Transcribes audio.
+- Extracts text/meaning from image.
+- Classifies item category.
+- Generates title/summary.
+- Extracts due date, reminder time, event time, priority and tags.
+- Saves AI result back to database.
+- Marks processing status as completed or failed.
+
+PostgreSQL
+- Primary database and source of truth.
+- Stores users, capture items, AI results, metadata, tags, processing jobs and audit logs.
+
+Object Storage
+- Stores uploaded image/audio files.
+- Database stores file references, not large binary data directly.
+
+Job Queue
+- Decouples capture flow from AI processing.
+- Stores pending jobs.
+- Allows workers to consume jobs.
+- Supports retry and failed job handling.
+
+
+Key flows
+---------
+
+Capture flow
+1. User submits text/image/voice from web or mobile.
+2. Backend API saves a CaptureItem immediately.
+3. Backend API stores file reference if needed.
+4. Backend API creates a processing job in the queue.
+5. Backend API returns response to client without waiting for AI.
+6. Client shows item as pending/processing.
+
+AI processing flow
+1. Worker consumes processing job from queue.
+2. Worker loads item and file references.
+3. Worker calls AI Provider for transcription/OCR/classification/metadata extraction.
+4. Worker saves AI result to PostgreSQL.
+5. Worker marks processing status as completed or failed.
+6. Client sees updated item by polling, refresh or realtime update.
+
+
+Notes
+-----
+
+- Payment provider is not included because payment/subscription is MVP V3.
+- Redis/cache is not required for V1 unless performance testing shows a real need.
+- Dedicated search engine is not required for V1; database search is acceptable first.

@@ -1,0 +1,90 @@
+API Contract — 09. Information
+
+Base path: /api/v1/information
+
+Hiển thị các item có category = "information".
+Đây là nơi lưu trữ thông tin không thuộc task, note, event hay reminder rõ ràng.
+Ví dụ: mã giảm giá, địa chỉ, link tham khảo, thông tin tài khoản không nhạy cảm.
+Chỉ trả về item chưa bị archive.
+
+----------------------------------------------------------------------
+
+GET /api/v1/information
+
+Mô tả: Lấy danh sách information item, hỗ trợ tìm kiếm và lọc theo tag.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Query params:
+  q      — string (optional). Tìm kiếm theo title hoặc content.
+  tagId  — uuid (optional). Filter theo tag cụ thể.
+  cursor — string (optional).
+  limit  — number (optional, default 20, max 50).
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "Mã giảm giá Shopee tháng 6",
+      "summary": "Giảm 50k cho đơn hàng từ 200k",
+      "content": "SUMMER50 — hết hạn 30/06/2026",
+      "sourceType": "text",
+      "reviewStatus": "reviewed",
+      "tags": [
+        { "id": "uuid", "name": "promo" }
+      ],
+      "createdAt": "2026-06-14T08:00:00Z",
+      "updatedAt": "2026-06-14T08:00:00Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": null,
+    "hasMore": false,
+    "limit": 20
+  }
+}
+
+----------------------------------------------------------------------
+
+GET /api/v1/information/:id
+
+Mô tả: Lấy chi tiết một information item cụ thể, bao gồm nội dung đầy đủ và original input.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Path params:
+  id — uuid của item (phải là information).
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "userId": "uuid",
+    "sourceType": "text",
+    "originalText": "Mã giảm giá shopee tháng này là SUMMER50 giảm 50k cho đơn từ 200k, hết hạn 30/6",
+    "originalFileUrl": null,
+    "transcriptionText": null,
+    "category": "information",
+    "aiConfidence": 0.88,
+    "title": "Mã giảm giá Shopee tháng 6",
+    "summary": "Giảm 50k cho đơn hàng từ 200k",
+    "content": "SUMMER50 — hết hạn 30/06/2026",
+    "processingStatus": "completed",
+    "reviewStatus": "reviewed",
+    "processingError": null,
+    "tags": [
+      { "id": "uuid", "name": "promo" }
+    ],
+    "taskMetadata": null,
+    "reminderMetadata": null,
+    "calendarMetadata": null,
+    "createdAt": "2026-06-14T08:00:00Z",
+    "updatedAt": "2026-06-14T08:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  ITEM_NOT_FOUND  — Information item không tồn tại hoặc thuộc user khác.

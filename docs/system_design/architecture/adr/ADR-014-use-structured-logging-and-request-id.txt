@@ -1,0 +1,57 @@
+﻿# ADR-014: Use Structured Logging and Request ID
+
+## Status
+
+Accepted
+
+## Context
+
+Blaie có sync request flow và async worker flow. Khi production lỗi, cần tìm được request
+hoặc job liên quan. AI processing có thể fail vì provider, timeout, bad input hoặc worker
+error. Without structured logs and request/job id, debugging sẽ rất khó.
+
+## Decision
+
+Use structured logging and requestId/jobId correlation.
+
+Backend API:
+
+- Create or forward X-Request-ID.
+- Include requestId in response header.
+- Log method, path, userId if available, status, latencyMs, errorCode.
+
+Worker:
+
+- Log jobId, itemId, userId, sourceType, processing status, retry count, errorCode.
+
+Error response:
+
+- Return safe error body with code, message and traceId/requestId.
+
+## Consequences
+
+Ưu điểm:
+
+- Dễ debug production issue.
+- User/frontend có thể báo traceId.
+- Admin/job monitoring dễ hơn.
+- Chuẩn bị tốt cho metrics/tracing sau này.
+
+Trade-off:
+
+- Cần logging convention.
+- Log storage có cost.
+- Có nguy cơ log nhầm sensitive data.
+
+Mitigation:
+
+- Không log password, token, secret, raw Authorization header.
+- Không log full private content mặc định.
+- Dùng log level theo environment.
+- Có retention policy khi production.
+
+## Alternatives Considered
+
+### Plain console logs
+
+Không đủ cho debugging production-like system.

@@ -1,0 +1,63 @@
+﻿# ADR-006: Use PostgreSQL as Primary Database
+
+## Status
+
+Accepted
+
+## Context
+
+Blaie cần lưu dữ liệu có quan hệ rõ ràng:
+
+- users
+- capture items
+- task/reminder/calendar metadata
+- tags
+- files metadata
+- processing jobs
+- admin audit logs
+
+Hệ thống cần source of truth ổn định, query tốt, transaction, constraint, index và
+migration rõ ràng. Capture flow và background processing cần tránh mất dữ liệu và tránh
+duplicate side effect.
+
+## Decision
+
+Use PostgreSQL as the primary database.
+
+PostgreSQL là source of truth cho dữ liệu chính của hệ thống. Object storage lưu file
+bytes; PostgreSQL chỉ lưu metadata/file key.
+
+## Consequences
+
+Ưu điểm:
+
+- Phù hợp dữ liệu quan hệ.
+- Hỗ trợ transaction tốt.
+- Có foreign key, unique constraint, check constraint.
+- Query/filter/pagination tốt nếu thiết kế index đúng.
+- Phù hợp Spring Boot + Spring Data JPA.
+- Dễ quản lý migration bằng Flyway.
+
+Trade-off:
+
+- Schema cần được thiết kế cẩn thận.
+- Thay đổi schema cần migration.
+- Full-text/fuzzy search phức tạp có thể cần search engine sau này.
+- Scale write cực lớn sẽ khó hơn kiến trúc phân tán.
+
+Mitigation:
+
+- Dùng migration versioned.
+- Thiết kế index theo query pattern thật.
+- Không lưu image/audio bytes trong DB.
+- Chưa thêm search engine nếu PostgreSQL search đủ cho V1.
+
+## Alternatives Considered
+
+### MongoDB
+
+Linh hoạt cho document data, nhưng không cần thiết cho V1 vì dữ liệu chính có quan hệ rõ.
+
+### MySQL
+
+Có thể dùng, nhưng PostgreSQL được chọn vì mạnh về constraint, SQL và ecosystem hiện đại.

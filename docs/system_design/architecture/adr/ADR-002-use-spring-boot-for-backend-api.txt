@@ -1,0 +1,60 @@
+# ADR-002: Use Spring Boot for Backend API
+
+## Status
+
+Accepted
+
+## Context
+
+Backend cần cung cấp HTTP API cho web app, mobile app và admin console. Backend cũng là
+security boundary, data integrity boundary và nơi điều phối capture flow, item management,
+background job creation, auth, admin operation và integration với database/storage/queue.
+
+User đã chốt sử dụng Spring Boot làm backend chính cho dự án.
+
+## Decision
+
+Use Spring Boot as the main backend API framework.
+
+Backend API sẽ dùng Spring Boot để xây dựng:
+
+- REST API.
+- Authentication and authorization.
+- Validation.
+- Item/capture management.
+- Admin APIs.
+- Integration với PostgreSQL, queue, object storage và AI provider.
+
+## Consequences
+
+Ưu điểm:
+
+- Ecosystem mạnh cho backend production.
+- Phù hợp với modular monolith.
+- Tích hợp tốt với Spring Security, Spring Data JPA, Flyway và validation.
+- Dễ tổ chức code theo module/domain.
+- Dễ viết integration test với Spring Boot Test.
+
+Trade-off:
+
+- Boilerplate nhiều hơn một số framework Node.js nhẹ.
+- Build/startup có thể nặng hơn app nhỏ.
+- Cần kỷ luật để tránh service gọi nhau lung tung.
+
+Mitigation:
+
+- Giữ module boundary rõ.
+- Dùng DTO cho request/response, không trả thẳng entity.
+- Dùng service/use-case layer cho business flow quan trọng.
+- External provider đi qua adapter/interface.
+
+## Alternatives Considered
+
+### Node.js / NestJS
+
+Phù hợp TypeScript fullstack, nhưng không chọn vì dự án này muốn dùng Spring Boot làm
+backend chính.
+
+### Express/Fastify
+
+Nhanh và nhẹ, nhưng cần tự ráp nhiều production concern hơn.

@@ -1,0 +1,88 @@
+﻿# ADR-011: Use External AI Provider Behind Adapter
+
+## Status
+
+Accepted
+
+## Context
+
+Blaie cần AI classification, summarization, metadata extraction, speech-to-text và image
+understanding/OCR. Tự host model trong V1 sẽ làm tăng độ phức tạp về infrastructure,
+GPU/cost/model serving/quality.
+
+Provider cụ thể có thể thay đổi theo cost, quality, latency và API availability.
+
+## Decision
+
+Text classification:
+  OpenAI nano/mini first
+  -> fallback Gemini Flash-Lite
+
+Image understanding:
+  Gemini Flash/Flash-Lite first
+  -> fallback OpenAI vision
+  -> Mistral OCR nếu thiên về document/receipt/screenshot text-heavy
+
+Voice:
+  Groq Whisper Turbo first
+  -> fallback OpenAI gpt-4o-mini-transcribe
+  -> classify transcript bằng OpenAI/Gemini text model
+
+Ambiguous/low confidence:
+  upgrade to OpenAI mini hoặc Claude Sonnet
+Mình chưa muốn dùng DeepSeek làm default dù rất rẻ, vì app này có dữ liệu cá nhân: note, lịch, reminder, ảnh, voice. Có thể để DeepSeek ở nhóm “experimental provider” cho dữ liệu test hoặc non-sensitive sau.
+
+Timeout ban đầu mình sẽ đặt kiểu này:
+
+Text: 3-5s
+Image: 6-10s
+Voice transcription: tuy độ dài audio, nhưng có job timeout riêng
+Hedged request: chỉ bật nếu user đang chờ realtime hoặc gói premium sau này
+
+
+
+Backend/worker không gọi trực tiếp SDK provider trong business flow. Thay vào đó:
+
+- application layer gọi AIProviderPort
+- infrastructure layer implement adapter cho provider thật
+
+Provider ban đầu sẽ được chốt sau khi so sánh cost/quality/dev experience. Candidate:
+
+- OpenAI
+- Google Gemini
+- Anthropic Claude
+- other provider if needed
+
+## Consequences
+
+Ưu điểm:
+
+- V1 build nhanh hơn tự host model.
+- Dễ thử provider khác.
+- Business logic không bị khóa chặt vào SDK cụ thể.
+- Có thể mock AI provider trong test.
+
+Trade-off:
+
+- Phụ thuộc external provider về latency, uptime, cost và policy.
+- User data có thể được gửi tới third-party provider.
+- Cần timeout, retry và failure handling.
+- Cost có thể tăng theo usage.
+
+Mitigation:
+
+- Adapter boundary.
+- Timeout rõ ràng cho AI call.
+- Track AI usage per user/global.
+- Không block capture flow.
+- Disclosure/privacy note nếu dùng third-party AI provider.
+
+## Alternatives Considered
+
+### Self-hosted model
+
+Không chọn cho V1 vì vận hành phức tạp và chưa cần.
+
+### Hardcode one provider SDK everywhere
+
+Nhanh lúc đầu nhưng khó đổi provider và khó test.

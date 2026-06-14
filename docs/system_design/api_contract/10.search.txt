@@ -1,0 +1,83 @@
+API Contract — 10. Search
+
+Base path: /api/v1/search
+
+Tìm kiếm global trên toàn bộ item của user.
+Tìm kiếm theo title, content, summary và transcriptionText (cho audio item).
+Chỉ tìm trong item chưa bị archive.
+
+----------------------------------------------------------------------
+
+GET /api/v1/search
+
+Mô tả: Tìm kiếm global theo từ khóa. Hỗ trợ filter thêm theo category.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Query params:
+  q        — string (required, min 1 ký tự). Từ khóa tìm kiếm.
+  category — string (optional). Filter kết quả theo: task | note | calendar_event | reminder | information.
+  cursor   — string (optional).
+  limit    — number (optional, default 20, max 50).
+
+Ví dụ:
+  GET /api/v1/search?q=báo+cáo&category=task&limit=20
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "category": "task",
+      "sourceType": "text",
+      "title": "Chuẩn bị báo cáo Q2",
+      "summary": "Tổng hợp số liệu quý 2 và làm slide trình bày",
+      "matchedIn": "title",
+      "processingStatus": "completed",
+      "reviewStatus": "reviewed",
+      "tags": [{ "id": "uuid", "name": "work" }],
+      "taskMetadata": {
+        "dueDate": "2026-06-15T09:00:00Z",
+        "priority": "high",
+        "completedAt": null
+      },
+      "calendarMetadata": null,
+      "reminderMetadata": null,
+      "createdAt": "2026-06-14T10:00:00Z",
+      "updatedAt": "2026-06-14T10:00:00Z"
+    },
+    {
+      "id": "uuid",
+      "category": "note",
+      "sourceType": "text",
+      "title": "Cấu trúc báo cáo tháng",
+      "summary": "Ghi chú cách trình bày báo cáo hàng tháng",
+      "matchedIn": "content",
+      "processingStatus": "completed",
+      "reviewStatus": "reviewed",
+      "tags": [],
+      "taskMetadata": null,
+      "calendarMetadata": null,
+      "reminderMetadata": null,
+      "createdAt": "2026-06-13T08:00:00Z",
+      "updatedAt": "2026-06-13T08:00:00Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": null,
+    "hasMore": false,
+    "limit": 20
+  }
+}
+
+Ghi chú về field "matchedIn":
+  title         — Từ khóa tìm thấy ở title.
+  content       — Từ khóa tìm thấy ở content/summary.
+  transcription — Từ khóa tìm thấy ở transcriptionText (audio item).
+
+Errors:
+  422  VALIDATION_ERROR  — Query param "q" bỏ trống.
+                          errors: {
+                            "q": ["Từ khóa tìm kiếm không được để trống"]
+                          }

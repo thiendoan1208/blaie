@@ -1,0 +1,546 @@
+MVP V1
+
+Product direction:
+
+Xây dựng một app web và mobile giúp người dùng capture mọi thông tin thật nhanh bằng
+text, hình ảnh hoặc giọng nói. Sau đó AI tự phân tích và phân loại thành task, note,
+calendar event, reminder hoặc information item.
+
+Positioning:
+
+"Ghi lại mọi thứ thật nhanh. AI tự biến nó thành việc cần làm, ghi chú, lịch hẹn hoặc
+nhắc nhở."
+
+1. MVP goal
+
+MVP V1 cần chứng minh được 4 giả định chính:
+
+- Người dùng muốn có một nơi duy nhất để ném mọi input rời rạc vào.
+- AI có thể phân loại input đủ tốt để giảm công tự tổ chức thủ công.
+- Capture phải đủ nhanh để user không bị buộc chờ AI xử lý sau mỗi lần nhập.
+- Trải nghiệm async processing + review/edit kết quả giúp người dùng quay lại dùng hằng ngày.
+
+MVP không cố gắng trở thành Notion, Todoist, Google Keep hay Motion ngay từ đầu. V1 chỉ
+tập trung vào một vòng lặp cốt lõi:
+
+Capture instantly -> Background AI processing -> Review -> Use later.
+
+2. Target users for V1
+
+V1 ưu tiên 3 nhóm user:
+
+- Sinh viên: ghi nhanh bài tập, deadline, ý tưởng, lịch học, ảnh slide/bảng.
+- Người đi làm: ghi nhanh việc cần làm, meeting note, reminder, thông tin phát sinh.
+- Freelancer: quản lý việc rời rạc từ nhiều khách hàng, deadline, ý tưởng và lịch hẹn.
+
+Không ưu tiên ở V1:
+
+- Team collaboration phức tạp.
+- Enterprise workspace.
+- Project management nhiều tầng.
+- Second brain/personal knowledge management nâng cao.
+
+3. Core user flow
+
+Flow chính:
+
+1. User mở app web hoặc mobile.
+2. User nhập nhanh một nội dung bằng text, upload/chụp ảnh hoặc ghi âm.
+3. App lưu input vào Inbox ngay lập tức với trạng thái processing.
+4. App thông báo cho user biết item đang được xử lý.
+5. User có thể tiếp tục dùng app, tắt app hoặc thoát khỏi session.
+6. Backend vẫn tiếp tục xử lý AI trong background.
+7. Khi xử lý xong, sẽ có thông báo cho user. item được cập nhật category và metadata để user dùng/review sau.
+
+8. AI phân tích nội dung và đề xuất category:
+   - Task
+   - Note
+   - Calendar event
+   - Reminder
+   - Information
+9. AI trích xuất metadata nếu có:
+   - Title
+   - Summary
+   - Due date
+   - Reminder time
+   - Event time
+   - Priority
+   - Tags
+   - Source type: text, image, voice
+
+10. User review kết quả, chỉnh sửa nếu cần.
+
+11. Item xuất hiện ở đúng view: Inbox, Tasks, Notes, Calendar, Reminders hoặc Information.
+
+4. Main screens
+
+4.1. Capture screen
+
+Đây là màn hình quan trọng nhất của V1.
+
+Must have:
+
+- Text input để ghi nhanh.
+- Button upload image.
+- Button record voice trên mobile; web có thể hỗ trợ record nếu đơn giản, nếu không thì
+  cho upload audio trước.
+- Button submit/capture.
+- Item được tạo ngay sau khi submit, không chờ AI xong.
+- Trạng thái processing để user biết AI đang phân tích.
+- Kết quả AI được cập nhật sau khi xử lý xong.
+- Nếu user rời app, item vẫn tiếp tục được xử lý ở backend.
+
+UX principle:
+
+User không cần chọn trước "đây là task hay note". App phải cho phép nhập trước, lưu ngay,
+phân loại sau. Tốc độ capture quan trọng hơn việc hiển thị kết quả AI tức thì.
+
+4.2. Inbox
+
+Inbox là nơi chứa tất cả input vừa capture, đặc biệt là những item chưa review.
+
+Must have:
+
+- Danh sách item mới nhất.
+- Hiển thị category AI đề xuất.
+- Processing status: pending, processing, completed, failed.
+- Review status: unreviewed, reviewed.
+- Quick actions:
+  - Confirm
+  - Edit
+  - Change category
+  - Delete/archive
+
+Processing behavior:
+
+- Item mới luôn xuất hiện ngay trong Inbox.
+- Nếu AI chưa xử lý xong, item hiển thị trạng thái processing.
+- Nếu AI xử lý thất bại, item vẫn tồn tại với trạng thái failed và user có thể retry
+  hoặc chỉnh thủ công.
+
+4.3. Item detail
+
+Màn hình chỉnh sửa một item sau khi AI xử lý.
+
+Must have:
+
+- Original input.
+- AI summary.
+- Category.
+- Title.
+- Description/content.
+- Due date hoặc reminder time nếu có.
+- Event start/end time nếu là calendar event.
+- Tags.
+- Save changes.
+
+4.4. Tasks view
+
+Hiển thị các item được phân loại là task.
+
+Must have:
+
+- Task list.
+- Today / Upcoming / No date.
+- Mark as done.
+- Edit due date.
+- Priority cơ bản: low, medium, high.
+
+Không cần ở V1:
+
+- Subtasks phức tạp.
+- Kanban.
+- Project management.
+- Dependency giữa task.
+
+4.5. Notes view
+
+Hiển thị các item được phân loại là note.
+
+Must have:
+
+- Note list.
+- Search theo title/content.
+- Tag filter cơ bản.
+- Note detail.
+
+Không cần ở V1:
+
+- Backlinks.
+- Graph view.
+- Rich block editor kiểu Notion.
+- Markdown power-user features.
+
+4.6. Calendar view
+
+Hiển thị các item được phân loại là calendar event.
+
+Must have:
+
+- Calendar/list view đơn giản.
+- Upcoming events.
+- Event detail.
+- Start time/end time.
+
+Không cần ở V1:
+
+- Google Calendar/Apple Calendar sync.
+- Auto-scheduling.
+- Time blocking.
+- Multi-calendar management.
+
+4.7. Reminders view
+
+Hiển thị các reminder đã được AI trích xuất hoặc user tạo/chỉnh lại.
+
+Must have:
+
+- Reminder list.
+- Reminder time.
+- Mark as done.
+- Basic notification nếu khả thi.
+
+V1 note:
+
+- Mobile nên ưu tiên local/push notification cho reminder.
+- Web có thể hiển thị reminder trong app trước; browser notification là nice-to-have.
+
+4.8. Information view
+
+Chứa các thông tin không phải task, note dài, event hay reminder rõ ràng.
+
+Examples:
+
+- Mã giảm giá.
+- Thông tin tài khoản không nhạy cảm.
+- Địa chỉ.
+- Link tham khảo.
+- Một đoạn thông tin cần nhớ nhưng chưa có hành động cụ thể.
+
+Must have:
+
+- List information items.
+- Search.
+- Tags.
+
+5. AI behavior in V1
+
+AI cần làm 5 việc chính:
+
+- Classify input vào một category chính.
+- Tạo title ngắn, dễ đọc.
+- Tóm tắt nội dung nếu input dài.
+- Trích xuất thời gian/deadline/reminder nếu có.
+- Gợi ý tags đơn giản.
+
+Category definitions:
+
+- Task: có hành động cần làm.
+- Note: ghi chú/ý tưởng/nội dung cần lưu.
+- Calendar event: có sự kiện xảy ra tại một thời điểm cụ thể.
+- Reminder: cần nhắc vào một thời điểm, nhưng không nhất thiết là event dài.
+- Information: thông tin cần lưu lại để tra cứu sau.
+
+AI output should include:
+
+- category
+- confidence
+- title
+- summary
+- extracted_datetime
+- suggested_due_date
+- suggested_reminder_time
+- suggested_event_start
+- suggested_event_end
+- suggested_tags
+- reason
+
+Important:
+
+AI chỉ đề xuất. User luôn có quyền sửa category và metadata.
+
+Processing model:
+
+- AI processing phải chạy bất đồng bộ ở backend.
+- Capture API chỉ cần lưu item và trả kết quả nhanh cho client.
+- Một background job/queue xử lý transcription, OCR/image understanding và classification.
+- Client có thể cập nhật trạng thái bằng polling, realtime subscription hoặc refresh lại
+  danh sách.
+- Nếu user đóng app, job vẫn tiếp tục chạy và cập nhật item khi hoàn tất.
+
+6. Platform scope
+
+6.1. Web app
+
+Web app dùng cho:
+
+- Review và chỉnh sửa item dễ hơn.
+- Xem danh sách task/note/calendar trên màn hình lớn.
+- Search và quản lý thông tin đã lưu.
+
+Web V1 must have:
+
+- Login/signup.
+- Capture bằng text.
+- Upload image.
+- Upload audio nếu record trực tiếp chưa làm kịp.
+- Inbox.
+- Tasks, Notes, Calendar, Reminders, Information views.
+- Item detail/edit.
+- Search/filter cơ bản.
+
+6.2. Mobile app
+
+Mobile app dùng cho:
+
+- Capture nhanh trong đời sống hằng ngày.
+- Chụp ảnh.
+- Ghi âm.
+- Xem reminder/task khi đang di chuyển.
+
+Mobile V1 must have:
+
+- Login/signup.
+- Quick capture text.
+- Camera/image upload.
+- Voice recording.
+- Inbox.
+- Basic list views.
+- Item detail/edit.
+- Reminder notification nếu khả thi.
+
+Mobile UX priority:
+
+- Mở app là capture được ngay.
+- Ít bước nhất có thể.
+- Không bắt user chọn category trước khi nhập.
+
+7. Data model draft
+
+User:
+
+- id
+- name
+- email
+- password_hash hoặc auth_provider
+- created_at
+
+CaptureItem:
+
+- id
+- user_id
+- source_type: text, image, voice, audio_upload
+- original_text
+- original_file_url
+- transcription_text
+- category: task, note, calendar_event, reminder, information
+- ai_confidence
+- title
+- summary
+- content
+- processing_status: pending, processing, completed, failed
+- review_status: unreviewed, reviewed
+- archived_at
+- processing_error
+- created_at
+- updated_at
+
+TaskMetadata:
+
+- item_id
+- due_date
+- priority
+- completed_at
+
+ReminderMetadata:
+
+- item_id
+- reminder_time
+- completed_at
+
+CalendarMetadata:
+
+- item_id
+- start_time
+- end_time
+- location
+
+Tag:
+
+- id
+- user_id
+- name
+
+ItemTag:
+
+- item_id
+- tag_id
+
+8. In scope for V1
+
+- Auth cơ bản.
+- Capture text.
+- Capture image/upload image.
+- Capture voice/audio.
+- Speech-to-text cho voice.
+- OCR hoặc image understanding cho ảnh.
+- AI classification.
+- AI metadata extraction.
+- Background processing queue/job.
+- Processing status in Inbox.
+- Retry failed processing.
+- Inbox review workflow.
+- Manual edit category/metadata.
+- Task list.
+- Note list.
+- Calendar event list/calendar đơn giản.
+- Reminder list.
+- Information list.
+- Search cơ bản.
+- Tags cơ bản.
+- Web app.
+- Mobile app.
+
+9. Out of scope for V1
+
+- Collaboration/team workspace.
+- Public sharing.
+- Advanced project management.
+- Kanban board.
+- Notion-style database.
+- Obsidian-style backlinks/graph.
+- Auto-scheduling như Motion.
+- Time blocking như Akiflow/Sunsama.
+- Full Google Calendar/Apple Calendar two-way sync.
+- Email/Slack/Notion integrations.
+- Complex recurring tasks.
+- Advanced habit tracking.
+- Offline-first sync phức tạp.
+- End-to-end encryption.
+- Plugin system.
+- Simple/manual capture mode switch.
+
+10. Success metrics
+
+Activation:
+
+- User capture được item đầu tiên trong dưới 60 giây sau khi login.
+- Capture action phản hồi trong dưới 2 giây cho text input trong điều kiện bình thường.
+- Ít nhất 70% item được AI phân loại đúng hoặc gần đúng trong test nội bộ.
+
+Engagement:
+
+- User tạo ít nhất 5 capture items trong tuần đầu.
+- User quay lại app ít nhất 3 ngày trong tuần đầu.
+
+Utility:
+
+- Ít nhất 50% captured items được user confirm hoặc chỉnh sửa thay vì bỏ qua.
+- Ít nhất 30% captured items trở thành task, reminder hoặc calendar event.
+
+Retention signal:
+
+- User bắt đầu dùng app như "inbox mặc định" cho ý tưởng/việc phát sinh.
+
+11. MVP principle
+
+V1 không cần nhiều feature. V1 cần làm thật tốt một chuyện:
+
+User có thể ném thông tin lộn xộn vào app, và app giúp biến nó thành thứ có cấu trúc
+mà user dùng lại được.
+
+Nếu phải chọn giữa "nhiều view" và "capture + AI classify tốt", ưu tiên capture + AI
+classify tốt.
+
+Capture speed principle:
+
+User không nên bị bắt chờ AI sau mỗi lần nhập. V1 phải lưu input ngay, báo rằng item
+đang được xử lý, rồi để hệ thống hoàn thành phân loại ở background.
+
+12. Recommended build order
+
+1. Auth + basic user account.
+2. Capture text -> save item immediately.
+3. Background job for AI classify text -> category + title + summary + metadata.
+4. Inbox + review/edit flow.
+5. Tasks/Notes/Reminders/Calendar/Information views.
+6. Image upload + OCR/image understanding.
+7. Voice recording/upload + transcription.
+8. Mobile app quick capture.
+9. Reminder notification.
+10. Search/tags polish.
+
+
+
+
+13. V2 / future ideas
+
+13.1. Simple/manual capture switch  
+
+Ý tưởng:
+
+- Thêm một switch hoặc mode chọn nhanh để user bỏ qua AI trong một số trường hợp.
+- Ví dụ:
+  - Add note now
+  - Add reminder now
+- Khi dùng simple mode, app tạo note/reminder ngay lập tức theo input của user mà không
+  cần chờ AI phân tích.
+
+- Offline mode - chỉ add thường 
+
+Lý do chưa đưa vào V1:
+
+- V1 cần tập trung chứng minh universal inbox + background AI classification trước.
+- Simple mode là một shortcut tốt, nhưng nếu làm quá sớm có thể khiến sản phẩm bị chia
+  thành nhiều flow trước khi core flow đủ chắc.
+
+
+13.2 No signin required 
+
+Cho phép người dùng k cần đăng nhập vẫn dùng được, tuy nhiên sẽ bị giới hạn tính năng. 
+
+13.3. MVP V3 - Payment and subscription
+
+Ý tưởng:
+
+- Thêm hệ thống thanh toán để hỗ trợ các gói trả phí sau khi core product đã đủ rõ
+  retention và usage.
+- V3 có thể dùng payment để giới hạn/mở khóa các tài nguyên tốn chi phí như AI processing,
+  storage, voice transcription, image understanding và reminder nâng cao.
+
+Possible pricing model:
+
+- Free plan:
+  - Giới hạn số lượng capture items mỗi tháng.
+  - Giới hạn số lần AI processing mỗi tháng.
+  - Giới hạn dung lượng lưu trữ image/audio.
+- Pro plan:
+  - Nhiều AI processing hơn.
+  - Nhiều storage hơn.
+  - Voice transcription/image understanding tốt hơn hoặc quota cao hơn.
+  - Reminder/notification nâng cao.
+- Student plan:
+  - Giá rẻ hơn cho sinh viên nếu sản phẩm đi mạnh vào nhóm này.
+
+Functional scope for V3:
+
+- User có thể xem plan hiện tại.
+- User có thể nâng cấp plan.
+- User có thể quản lý subscription.
+- User có thể xem usage/quota.
+- Hệ thống có thể enforce quota theo plan.
+- Admin có thể xem payment/subscription status cơ bản.
+
+Lý do chưa đưa vào V1:
+
+- V1 cần chứng minh user có thật sự dùng app như universal inbox hay không trước.
+- Payment chỉ nên làm sau khi biết feature nào tạo value đủ mạnh để user trả tiền.
+- Nếu thêm payment quá sớm, scope sẽ phình ra vì phải xử lý billing, quota, invoice,
+  refund, failed payment và subscription lifecycle.
+
+
+14. V1 one-line summary
+
+MVP V1 là một AI-powered universal inbox cho web và mobile: người dùng nhập/chụp/ghi âm
+nhanh, app lưu input ngay, AI xử lý ở background và biến thông tin thành task, note,
+reminder, calendar event hoặc information item để user review/dùng sau.

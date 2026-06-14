@@ -1,0 +1,124 @@
+﻿# ADR-010: Use Object Storage for Image and Audio Files
+
+## Status
+
+Accepted
+
+## Context
+
+Blaie cần hỗ trợ image capture/upload và voice/audio capture. File bytes có thể lớn hơn
+record dữ liệu thông thường. Lưu file trực tiếp trong PostgreSQL sẽ làm database nặng,
+backup phình to và không phù hợp để serve/download file.
+
+Tuy nhiên, không phải mọi image/audio input đều cần được lưu lâu dài. Trong nhiều trường
+hợp, file chỉ là input tạm thời để AI xử lý. Ví dụ user ghi âm "nhắc tôi gọi mẹ lúc 8h
+tối", sau khi AI đã chuyển thành reminder rõ ràng thì app không nhất thiết phải giữ lại
+file audio gốc. Ngược lại, nếu ảnh/voice chứa thông tin cần tra cứu lại như hóa đơn, bảng
+ghi chú, slide bài học, địa chỉ hoặc thông tin tham khảo, việc giữ file gốc có thể có giá
+trị cho user.
+
+V1 chưa cần chốt vendor object storage nếu deployment provider chưa chốt.
+
+## Decision
+
+Production: Cloudflare R2
+Local/dev: MinIO
+API style: S3-compatible
+Backend abstraction: ObjectStoragePort
+Default file visibility: private
+Access: signed/presigned URLs
+Retention: conditional, không lưu raw media mãi mãi nếu không cần
+
+PostgreSQL chỉ lưu file metadata:
+
+- file id
+- owner user id
+- source type/purpose
+- content type
+- size
+- storage key
+- status
+- retention type
+- retention expires at
+- created/uploaded/processed timestamps
+
+File media trong V1 được chia thành 2 nhóm:
+
+1. Processing file
+   - File chỉ dùng để AI xử lý OCR/image understanding/transcription.
+   - Sau khi xử lý xong, hệ thống có thể xóa file gốc hoặc đặt lịch cleanup.
+   - PostgreSQL vẫn giữ extracted text/transcription/summary/metadata nếu cần.
+
+2. Retained attachment
+   - File được giữ lại vì còn giá trị với user.
+   - Ví dụ: image/audio liên quan đến note hoặc information item.
+   - File có thể hiển thị trong item detail như attachment.
+
+Default retention policy:
+
+- Task: không giữ image/audio gốc nếu AI đã trích xuất đủ nội dung cần thiết, trừ khi user
+  chọn giữ attachment.
+- Reminder: không giữ image/audio gốc nếu reminder time/content đã rõ, trừ khi user chọn
+  giữ attachment.
+- Calendar event: không giữ image/audio gốc nếu event time/title/content đã rõ, trừ khi
+  user chọn giữ attachment.
+- Note: có thể giữ file gốc nếu file là một phần nội dung ghi chú.
+- Information: có thể giữ file gốc nếu file chứa thông tin cần tra cứu lại.
+
+Important:
+
+- Object storage là nơi lưu file bytes khi cần, không phải cam kết lưu mọi raw media mãi
+  mãi.
+- Original text, transcription, extracted text và AI output vẫn nên được lưu trong database
+  theo item để user review lại.
+- User có thể có tùy chọn "keep original attachment" sau này nếu cần.
+
+Object storage provider sẽ được bọc sau adapter để có thể chọn sau:
+
+- AWS S3
+- Cloudflare R2
+- Google Cloud Storage
+- Azure Blob Storage
+- MinIO for local/dev
+
+## Consequences
+
+Ưu điểm:
+
+- Database không chứa binary lớn.
+- File storage scale tốt hơn.
+- Dễ dùng signed URL/presigned URL.
+- Dễ chuyển sang CDN hoặc lifecycle policy sau này.
+- Giảm chi phí và rủi ro privacy bằng cách không giữ raw media không cần thiết.
+- Giữ lại file gốc khi nó thật sự có giá trị cho note/information.
+
+Trade-off:
+
+- Thêm external dependency.
+- Cần xử lý file permission, signed URL, cleanup orphan files.
+- Upload flow phức tạp hơn lưu text bình thường.
+- Cần retention policy rõ để tránh xóa nhầm file user cần.
+- Nếu xóa file gốc quá sớm, user không thể nghe/xem lại input ban đầu.
+
+Mitigation:
+
+- File private by default.
+- Backend kiểm soát ownership trước khi cấp URL.
+- Enforce file size/type limit.
+- Lưu metadata trong DB.
+- Lưu transcription/extracted text trước khi cleanup raw file.
+- Chỉ cleanup file khi processing completed và item đã có extracted content đủ dùng.
+- Với note/information, giữ file gốc mặc định nếu file có giá trị như attachment.
+- Với task/reminder/calendar event, không giữ file gốc mặc định nếu kết quả AI đã đủ rõ.
+- V1 có thể bắt đầu bằng backend-mediated upload nếu presigned flow làm chậm MVP, nhưng
+  architecture vẫn hướng tới object storage.
+
+## Alternatives Considered
+
+### Store files in PostgreSQL
+
+Không chọn vì không phù hợp file lớn và làm DB/backup nặng.
+
+### Store files on local disk
+
+Không chọn vì khó scale, dễ mất file khi deploy/restart và không phù hợp nhiều instance.

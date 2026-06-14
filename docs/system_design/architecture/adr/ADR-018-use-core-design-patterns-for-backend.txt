@@ -1,0 +1,57 @@
+﻿# ADR-018: Use Core Design Patterns for Backend
+
+## Status
+
+Accepted
+
+## Context
+
+Với kiến trúc Layered Modular kết hợp Light Hexagonal (như đã quy định ở ADR-003), Backend Spring Boot của dự án Blaie cần giải quyết các bài toán kỹ thuật phức tạp như:
+- Tương tác với nhiều AI Providers khác nhau (OpenAI, Gemini, Groq) và có cơ chế fallback (ADR-011).
+- Tách biệt luồng xử lý nhanh (Lưu Capture Item) và luồng xử lý chậm (AI Processing) thông qua Message Queue.
+- Xử lý các loại input khác nhau (Text, Image, Audio) thông qua các pipeline phân tích khác nhau.
+- Đảm bảo tính đóng gói (encapsulation) giữa dữ liệu nội bộ (Entity) và dữ liệu giao tiếp với bên ngoài (API Response).
+
+Để code dễ bảo trì, dễ test và đồng nhất giữa các module, team cần thống nhất các Design Patterns chủ đạo sẽ được áp dụng trong Backend.
+
+## Decision
+
+Chúng tôi thống nhất áp dụng các Design Patterns sau đây cho Backend:
+
+### 1. Strategy Pattern & Factory Method
+- **Sử dụng cho:** Xử lý AI Providers và Phân loại Input.
+- **Chi tiết:** 
+  - Tạo ra các `AiProviderStrategy` (ví dụ: `OpenAiStrategy`, `GeminiStrategy`, `GroqStrategy`). 
+  - Tạo ra các `ProcessingPipelineStrategy` tùy theo `SourceType` (TextPipeline, ImagePipeline, AudioPipeline).
+  - Dùng **Factory Method** để quyết định sẽ khởi tạo Strategy nào tại thời điểm runtime (dựa trên cấu hình hoặc fallback logic được định nghĩa trong ADR-011).
+
+### 2. Ports and Adapters (Hexagonal Pattern)
+- **Sử dụng cho:** Mọi tương tác với hệ thống bên ngoài (External Systems).
+- **Chi tiết:** Đã được chốt ở ADR-003. Application Layer chỉ định nghĩa Interfaces (Ports) như `AiProviderPort`, `FileStoragePort`, `JobPublisherPort`. Infrastructure Layer sẽ chứa các classes implements các Ports đó (Adapters). 
+
+### 3. Publish-Subscribe / Observer Pattern
+- **Sử dụng cho:** Giao tiếp bất đồng bộ (Asynchronous Communication) giữa Capture flow và AI Processing worker.
+- **Chi tiết:** Khi user tạo một Capture Item mới, `CaptureService` không trực tiếp gọi `AiProcessingService`. Thay vào đó, nó đóng vai trò là *Publisher*, gửi một sự kiện (Event/Job) vào Message Queue (Redis). `AiProcessingWorker` đóng vai trò là *Subscriber*, lắng nghe queue và xử lý job. Điều này đảm bảo API response < 2s.
+
+### 4. DTO (Data Transfer Object) Pattern
+- **Sử dụng cho:** Giao tiếp giữa Controller và Client (Web/Mobile).
+- **Chi tiết:** Tuyệt đối không trả JPA Entities trực tiếp ra ngoài API. Luôn sử dụng Request DTOs (để hứng dữ liệu và validate) và Response DTOs (để ẩn đi các trường nhạy cảm hoặc không cần thiết). Việc mapping giữa Entity và DTO có thể thực hiện thủ công hoặc dùng thư viện như MapStruct.
+
+### 5. Repository Pattern
+- **Sử dụng cho:** Data Access Layer.
+- **Chi tiết:** Tách biệt logic truy xuất cơ sở dữ liệu (PostgreSQL) khỏi Business Logic. Spring Data JPA cung cấp sẵn pattern này, tuy nhiên chúng ta có thể bọc thêm một lớp Adapter (như quy định trong ADR-003) nếu logic truy vấn quá phức tạp hoặc dính đến nhiều external sources.
+
+## Consequences
+
+Ưu điểm:
+- **Linh hoạt (Flexibility):** Strategy Pattern giúp việc đổi AI provider hoặc thêm loại input mới (ví dụ: Video) cực kỳ dễ dàng mà không phá vỡ code cũ (Open/Closed Principle).
+- **Dễ bảo trì (Maintainability):** DTO Pattern và Ports/Adapters giới hạn tầm ảnh hưởng của các thay đổi (ví dụ: đổi schema DB không làm ảnh hưởng trực tiếp tới API format).
+- **Hiệu năng & Khả năng mở rộng (Scalability):** Publish-Subscribe pattern tách bạch rạch ròi luồng capture siêu tốc và luồng xử lý AI nặng nề.
+
+Trade-off:
+- Tăng số lượng class và interface phải tạo thêm (đặc biệt là các class Strategy, Port, Adapter, DTO, Mapper).
+- Đòi hỏi các lập trình viên phải nắm vững tư duy OOP và các nguyên lý thiết kế SOLID.
+
+Mitigation:
+- Sử dụng các tính năng có sẵn của Spring Boot (như `@Component`, `@Qualifier` cho Strategy) để giảm bớt boilerplate code.
+- Thiết lập quy tắc kiểm tra code (Code Review) chặt chẽ để đảm bảo không ai "đi tắt" (ví dụ: ném Entity thẳng ra Controller).

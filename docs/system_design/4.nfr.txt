@@ -1,0 +1,438 @@
+Non-Functional Requirements
+
+Scope:
+
+Tài liệu này mô tả non-functional requirements cho MVP V1 của web app và mobile app.
+Trọng tâm của V1 là capture nhanh, lưu input ngay, xử lý AI bất đồng bộ ở background và
+giữ trải nghiệm ổn định khi user quay lại dùng kết quả sau.
+
+Requirement priority:
+
+- Must have: bắt buộc cho MVP V1.
+- Should have: nên có nếu không làm chậm core flow.
+- Future: để sau V1.
+
+1. Performance
+
+NFR-PERF-001 - Fast capture response
+
+- Priority: Must have
+- Với text input thông thường, app should create an item and respond within 2 seconds
+  under normal network/server conditions.
+- Capture flow must not wait for AI classification to finish.
+
+NFR-PERF-002 - Immediate visual feedback
+
+- Priority: Must have
+- Sau khi user submit input, UI must show the created item or a processing state quickly.
+- User should never feel that input disappeared or got stuck silently.
+
+NFR-PERF-003 - Inbox loading time
+
+- Priority: Must have
+- Inbox should load the first page of items within 2 seconds under normal conditions.
+- Initial page size should be limited to avoid loading too much data at once.
+
+NFR-PERF-004 - List pagination
+
+- Priority: Must have
+- Inbox, Tasks, Notes, Calendar, Reminders and Information views must support pagination
+  or incremental loading when item count grows.
+
+NFR-PERF-005 - Mobile startup experience
+
+- Priority: Should have
+- Mobile app should open to a usable capture state as quickly as possible.
+- Target: user can start typing or recording within 3 seconds after opening the app under
+  normal device/network conditions.
+
+2. Async processing and reliability
+
+NFR-REL-001 - Async-first processing
+
+- Priority: Must have
+- AI processing must run in background jobs after item creation.
+- Client-side session state must not be required for a processing job to complete.
+
+NFR-REL-002 - Processing durability
+
+- Priority: Must have
+- Once a capture item is saved, its processing job should not be lost if user closes the
+  app or refreshes the page.
+
+NFR-REL-003 - Retryable processing
+
+- Priority: Must have
+- Failed AI processing jobs must be retryable.
+- Retry should not create duplicate items.
+
+NFR-REL-004 - Idempotent job handling
+
+- Priority: Must have
+- Re-running the same processing job should not create duplicate metadata, duplicate tags
+  or duplicate notifications.
+
+NFR-REL-005 - Processing status consistency
+
+- Priority: Must have
+- Processing status must accurately reflect item state:
+  - pending
+  - processing
+  - completed
+  - failed
+
+NFR-REL-006 - Graceful AI failure
+
+- Priority: Must have
+- If AI provider, OCR or transcription fails, the original item must remain available.
+- User must still be able to manually edit category/content/metadata.
+
+NFR-REL-007 - Background worker isolation
+
+- Priority: Should have
+- A slow or failing AI job should not block capture requests or normal item browsing.
+
+3. Availability
+
+NFR-AV-001 - App availability target
+
+- Priority: Should have
+- MVP should target 99% monthly availability for core app usage during early launch.
+- Core usage means login, capture, Inbox and item detail.
+
+NFR-AV-002 - Degraded mode for AI outage
+
+- Priority: Must have
+- If AI processing is temporarily unavailable, user must still be able to capture items.
+- Items should remain in pending/failed state and be processed/retried later.
+
+NFR-AV-003 - No single UI-blocking AI dependency
+
+- Priority: Must have
+- Web and mobile UI must not block the main capture flow because AI is slow or unavailable.
+
+4. Scalability
+
+NFR-SCAL-001 - Independent scaling for API and workers
+
+- Priority: Should have
+- API service and AI processing workers should be scalable independently.
+- This allows capture traffic and processing workload to grow at different rates.
+
+NFR-SCAL-002 - Queue-based processing
+
+- Priority: Must have
+- AI processing should use a queue or equivalent background job mechanism.
+- Queue must support pending, processing, completed and failed jobs.
+
+NFR-SCAL-003 - File storage scalability
+
+- Priority: Must have
+- Image/audio files should be stored in object storage or an equivalent scalable file
+  storage solution.
+- Database should store file references, not large binary data directly.
+
+NFR-SCAL-004 - Search scalability
+
+- Priority: Should have
+- Search should work for a growing number of user items.
+- V1 can use database search, but architecture should allow migration to dedicated search
+  later if needed.
+
+5. Security
+
+NFR-SEC-001 - Authentication required for V1
+
+- Priority: Must have
+- V1 requires authenticated access for user data.
+- Guest/no-signin mode is future scope.
+
+NFR-SEC-002 - User data isolation
+
+- Priority: Must have
+- Users must only access their own items, files, tags and metadata.
+- Authorization checks must be enforced on backend APIs, not only in UI.
+
+NFR-SEC-003 - Password security
+
+- Priority: Must have
+- If email/password auth is used, passwords must be hashed with a secure password hashing
+  method.
+- Plaintext passwords must never be stored.
+
+NFR-SEC-004 - Secure transport
+
+- Priority: Must have
+- Production traffic must use HTTPS.
+
+NFR-SEC-005 - File access control
+
+- Priority: Must have
+- Uploaded images/audio must not be publicly accessible unless explicitly designed.
+- File URLs should be protected or time-limited.
+
+NFR-SEC-006 - Admin access control
+
+- Priority: Must have
+- Admin area must require admin authentication and authorization.
+- Admin privileges must be separate from normal user privileges.
+
+NFR-SEC-007 - Audit admin actions
+
+- Priority: Must have
+- Admin actions that affect users, processing jobs or system settings must be logged.
+
+6. Privacy
+
+NFR-PRI-001 - Preserve user ownership
+
+- Priority: Must have
+- All capture items, files, AI outputs and metadata must be associated with a user_id.
+
+NFR-PRI-002 - Original input preservation
+
+- Priority: Must have
+- Original input should be preserved so user can inspect what AI processed.
+- AI output must be treated as suggestion, not replacement for original data.
+
+NFR-PRI-003 - Minimal admin visibility
+
+- Priority: Must have
+- Admin should not casually access private user content.
+- Admin tooling should prioritize job status, errors and metadata over full content access.
+
+NFR-PRI-004 - Sensitive data warning
+
+- Priority: Should have
+- Product should discourage users from storing highly sensitive secrets in V1, especially
+  because end-to-end encryption is out of scope.
+
+NFR-PRI-005 - Third-party AI processing transparency
+
+- Priority: Should have
+- If using a third-party AI provider, product should disclose that user content may be
+  processed by that provider.
+
+7. Data integrity
+
+NFR-DATA-001 - Manual edits override AI suggestions
+
+- Priority: Must have
+- Once user edits category/content/metadata, background AI updates must not overwrite
+  manual changes unless user explicitly requests reprocessing.
+
+NFR-DATA-002 - Original and processed data separation
+
+- Priority: Must have
+- Original input, transcription, AI summary and user-edited content should be stored as
+  separate fields where practical.
+
+NFR-DATA-003 - Soft archive support
+
+- Priority: Must have
+- Archived items should be hidden from active views without requiring immediate hard
+  deletion.
+
+NFR-DATA-004 - Timezone correctness
+
+- Priority: Must have
+- Due dates, reminder times and event times must be stored and displayed with correct
+  timezone handling.
+- User timezone should be considered when parsing and showing dates.
+
+NFR-DATA-005 - Duplicate prevention
+
+- Priority: Should have
+- Retrying a capture submission or processing job should avoid creating duplicate items
+  when possible.
+
+8. Usability
+
+NFR-UX-001 - Capture-first UX
+
+- Priority: Must have
+- Web and mobile app should make capture the most prominent action.
+- User should not need to choose a category before submitting input.
+
+NFR-UX-002 - Low-friction mobile capture
+
+- Priority: Must have
+- Mobile app must support quick text capture, camera/image upload and voice capture with
+  minimal steps.
+
+NFR-UX-003 - Clear processing language
+
+- Priority: Must have
+- Processing states should use simple wording such as "Processing", "Ready", "Failed",
+  "Retry".
+- User should not see technical AI/job terminology in normal UI.
+
+NFR-UX-004 - Editable AI results
+
+- Priority: Must have
+- User must be able to understand that AI results are suggestions and can be changed.
+
+NFR-UX-005 - Consistent cross-platform behavior
+
+- Priority: Must have
+- Web and mobile should use the same category set, processing states and item lifecycle.
+
+NFR-UX-006 - Accessibility basics
+
+- Priority: Should have
+- Web app should support keyboard navigation for core flows.
+- Interactive elements should have accessible labels.
+- Color should not be the only way to communicate status.
+
+9. Mobile-specific requirements
+
+NFR-MOB-001 - Permission handling
+
+- Priority: Must have
+- Mobile app must handle camera, microphone and notification permissions clearly.
+- If permission is denied, app should show a useful fallback or explanation.
+
+NFR-MOB-002 - Upload resilience
+
+- Priority: Should have
+- If image/audio upload is interrupted, app should clearly show failed upload state and
+  allow retry.
+
+NFR-MOB-003 - Reminder notification reliability
+
+- Priority: Should have
+- Mobile reminder notifications should fire at the expected time when permission is
+  granted and app/platform constraints allow it.
+
+10. Observability and monitoring
+
+NFR-OBS-001 - Error logging
+
+- Priority: Must have
+- Backend, worker and admin errors must be logged with enough context for debugging.
+- Logs should not expose unnecessary sensitive user content.
+
+NFR-OBS-002 - Processing metrics
+
+- Priority: Must have
+- System should track processing metrics:
+  - number of pending jobs
+  - number of completed jobs
+  - number of failed jobs
+  - average processing time
+  - retry count
+
+NFR-OBS-003 - Product usage metrics
+
+- Priority: Should have
+- System should track basic product usage:
+  - capture count
+  - category distribution
+  - reviewed item count
+  - failed processing count
+  - user retention signals
+
+NFR-OBS-004 - Alerting for failures
+
+- Priority: Should have
+- System should alert admin/developer if processing failure rate becomes unusually high.
+
+11. Maintainability
+
+NFR-MAINT-001 - Clear separation of concerns
+
+- Priority: Must have
+- Capture API, AI processing worker, file storage, auth and admin functions should be
+  separated clearly in code structure.
+
+NFR-MAINT-002 - Stable category enum
+
+- Priority: Must have
+- V1 category values should be represented consistently across backend, frontend and
+  mobile:
+  - task
+  - note
+  - calendar_event
+  - reminder
+  - information
+
+NFR-MAINT-003 - Stable processing status enum
+
+- Priority: Must have
+- Processing status values should be represented consistently:
+  - pending
+  - processing
+  - completed
+  - failed
+
+NFR-MAINT-004 - Testability
+
+- Priority: Should have
+- Core flows should be testable:
+  - capture creates item immediately
+  - background job updates item
+  - failed job can retry
+  - user cannot access another user's item
+  - manual edits are not overwritten by AI
+
+NFR-MAINT-005 - Configurable AI provider
+
+- Priority: Should have
+- AI provider/model configuration should not be hardcoded deeply in business logic.
+- This keeps future provider/model changes easier.
+
+12. Compatibility
+
+NFR-COMP-001 - Web browser support
+
+- Priority: Must have
+- Web app should support recent stable versions of Chrome, Edge, Safari and Firefox.
+
+NFR-COMP-002 - Mobile platform support
+
+- Priority: Must have
+- Mobile app should support recent iOS and Android versions chosen by the team.
+
+NFR-COMP-003 - Cross-device data sync
+
+- Priority: Must have
+- If user captures on mobile, item should be visible on web after server sync.
+- If user captures on web, item should be visible on mobile after server sync.
+
+13. Cost control
+
+NFR-COST-001 - AI usage tracking
+
+- Priority: Must have
+- System should track AI usage per user and globally, even before payment exists.
+
+NFR-COST-002 - File size limits
+
+- Priority: Must have
+- System must define max upload size for image and audio files to control storage and
+  processing cost.
+
+NFR-COST-003 - Rate limiting
+
+- Priority: Should have
+- System should apply reasonable rate limits to capture and AI processing to prevent
+  abuse and unexpected cost spikes.
+
+NFR-COST-004 - Future quota readiness
+
+- Priority: Should have
+- Architecture should be able to support future plan/quota enforcement for MVP V3 payment
+  and subscription.
+
+14. Out of scope for V1 NFR
+
+- End-to-end encryption.
+- Offline-first sync.
+- Enterprise compliance requirements.
+- Multi-region active-active deployment.
+- Advanced disaster recovery.
+- Full billing/subscription reliability requirements.
+- Complex team permission model.
+- Public sharing security model.
+
+

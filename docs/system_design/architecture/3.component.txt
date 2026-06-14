@@ -1,0 +1,247 @@
+C4 LEVEL 3 - COMPONENT DIAGRAMS
+
+Purpose
+-------
+This document zooms into the two most important containers in MVP V1:
+
+- Backend API
+- AI Processing Worker
+
+This is not a code diagram. It shows modules/components and responsibilities, not
+classes/interfaces.
+
+
+1. Backend API Component Diagram
+--------------------------------
+
++----------------+       +----------------+       +----------------+
+| Web App        |       | Mobile App     |       | Admin Console  |
++----------------+       +----------------+       +----------------+
+        |                       |                         |
+        | HTTPS API             | HTTPS API               | HTTPS Admin API
+        v                       v                         v
++----------------------------------------------------------------------------+
+| Backend API                                                                |
+|                                                                            |
+| +-------------------+       +-------------------+                          |
+| | Auth Module       | ----> | Authorization     |                          |
+| | Signup/login      |       | User ownership    |                          |
+| | Logout/session    |       | Admin permission  |                          |
+| +-------------------+       +-------------------+                          |
+|                                                                            |
+| +-------------------+       +-------------------+       +----------------+ |
+| | Capture Module    | ----> | File Upload       | ----> | Object Storage | |
+| | Create item now   |       | Image/audio files |       | Adapter        | |
+| +-------------------+       +-------------------+       +----------------+ |
+|          |                                                                 |
+|          | Create AI processing job                                        |
+|          v                                                                 |
+| +---------------------------+                                              |
+| | Processing Job Publisher  |                                              |
+| +---------------------------+                                              |
+|                                                                            |
+| +-------------------+       +-------------------+       +----------------+ |
+| | Item Management   |       | Inbox/View Query  |       | Search & Tag   | |
+| | Edit/archive      |       | Inbox/tasks/etc.  |       | Search/filter  | |
+| +-------------------+       +-------------------+       +----------------+ |
+|                                                                            |
+| +-------------------+       +-------------------+                          |
+| | Reminder Module   |       | Admin Module      |                          |
+| | Reminder state    |       | Jobs/users/metrics|                          |
+| +-------------------+       +-------------------+                          |
+|                                                                            |
+| +------------------------------------------------------------------------+ |
+| | Repository Layer                                                       | |
+| | Users, items, metadata, tags, jobs, audit logs                         | |
+| +------------------------------------------------------------------------+ |
++----------------------------------------------------------------------------+
+        |                         |                         |
+        | Read/write data         | Store/read file refs    | Create jobs
+        v                         v                         v
++-------------------+     +-------------------+     +-------------------+
+| PostgreSQL        |     | Object Storage    |     | Job Queue         |
++-------------------+     +-------------------+     +-------------------+
+
+Auth Module
+- Handles signup, login, logout and user identity.
+
+Authorization Layer
+- Ensures users can only access their own data.
+- Separates normal user permissions from admin permissions.
+
+Capture Module
+- Core V1 component.
+- Accepts text/image/audio capture requests.
+- Validates basic input.
+- Saves item with processing status pending.
+- Calls File Upload Module if files are included.
+- Calls Processing Job Publisher.
+- Returns response quickly without waiting for AI.
+
+File Upload Module
+- Coordinates image/audio upload.
+- Stores file references.
+
+Item Management Module
+- Handles item detail, manual edits, category changes, metadata updates, archive/delete
+  and review status.
+- Manual user edits must override AI suggestions.
+
+Inbox/View Query Module
+- Provides read models for Inbox, Tasks, Notes, Calendar events, Reminders and
+  Information items.
+
+Search & Tag Module
+- Supports basic search and tag filtering in V1.
+
+Reminder Module
+- Manages reminder state.
+- Prepares notification requests.
+
+Admin Module
+- Allows admin to inspect processing jobs, retry failed jobs, view metrics and audit
+  admin actions.
+
+Processing Job Publisher
+- Creates background processing jobs after capture or retry request.
+
+Repository Layer
+- Data access boundary for PostgreSQL.
+
+Object Storage Adapter
+- Encapsulates file storage access.
+- Keeps backend business logic independent from a specific storage provider.
+
+
+2. AI Processing Worker Component Diagram
+-----------------------------------------
+
++-------------------+
+| Job Queue         |
++-------------------+
+        |
+        | Consume job
+        v
++----------------------------------------------------------------------------+
+| AI Processing Worker                                                       |
+|                                                                            |
+| +-------------------+       +-------------------+                          |
+| | Job Consumer      | ----> | Status Manager    |                          |
+| | Fetch pending job |       | pending/processing|                          |
+| +-------------------+       | completed/failed  |                          |
+|                             +-------------------+                          |
+|                                      |                                     |
+|                                      v                                     |
+| +------------------------------------------------------------------------+ |
+| | Processing Orchestrator                                                | |
+| | Choose pipeline by source_type: text, image, voice/audio               | |
+| +------------------------------------------------------------------------+ |
+|          |                         |                         |             |
+|          | text                    | image                   | voice/audio |
+|          v                         v                         v             |
+| +-------------------+     +-------------------+     +-------------------+ |
+| | Text Processor    |     | Image Processor   |     | Audio Processor   | |
+| | Prepare text      |     | OCR/image meaning |     | Speech-to-text    | |
+| +-------------------+     +-------------------+     +-------------------+ |
+|          |                         |                         |             |
+|          +-------------------------+-------------------------+             |
+|                                    |                                       |
+|                                    v                                       |
+| +-------------------+       +-------------------+                          |
+| | AI Provider       | ----> | Classification    |                          |
+| | Adapter           |       | task/note/event   |                          |
+| +-------------------+       | reminder/info     |                          |
+|                             +-------------------+                          |
+|                                      |                                     |
+|                                      v                                     |
+| +---------------------------+       +-------------------+                  |
+| | Metadata Extraction       | ----> | Result Writer     |                  |
+| | Dates, reminder, event,   |       | Save AI result    |                  |
+| | priority, tags, reason    |       | Preserve edits    |                  |
+| +---------------------------+       +-------------------+                  |
+|                                      |                                     |
+|                                      v                                     |
+| +-------------------+       +---------------------------+                  |
+| | Retry & Error     |       | Notification Dispatcher   |                  |
+| | Handler           |       | Reminder push if needed   |                  |
+| +-------------------+       +---------------------------+                  |
++----------------------------------------------------------------------------+
+        |                         |                         |
+        | Read/write item/job     | Read image/audio files   | External AI call
+        v                         v                         v
++-------------------+     +-------------------+     +-------------------+
+| PostgreSQL        |     | Object Storage    |     | AI Provider       |
++-------------------+     +-------------------+     +-------------------+
+                                                              |
+                                                              | Send push
+                                                              v
+                                                    +----------------------+
+                                                    | Push Notification    |
+                                                    | Provider             |
+                                                    +----------------------+
+
+Job Consumer
+- Reads pending jobs from the queue.
+- Starts background processing.
+
+Processing Status Manager
+- Updates item/job status:
+  - pending
+  - processing
+  - completed
+  - failed
+
+Processing Orchestrator
+- Chooses pipeline based on source type:
+  - text
+  - image
+  - voice/audio
+
+Text Processor
+- Prepares text input for classification and metadata extraction.
+
+Image Processor
+- Extracts useful text or meaning from image input using OCR and/or image understanding.
+
+Audio Processor
+- Transcribes voice/audio input before classification.
+
+AI Provider Adapter
+- Encapsulates calls to external AI provider.
+- Makes future provider/model changes easier.
+
+Classification Component
+- Classifies item into exactly one V1 category:
+  - task
+  - note
+  - calendar_event
+  - reminder
+  - information
+
+Metadata Extraction Component
+- Extracts title, summary, due date, reminder time, event start/end time, priority, tags,
+  confidence and reason.
+
+Result Writer
+- Persists AI output to PostgreSQL.
+- Preserves original input.
+- Must not overwrite user-edited fields unless user explicitly requests reprocessing.
+
+Retry & Error Handler
+- Handles failed AI/OCR/transcription jobs.
+- Stores technical failure reason for admin debugging.
+
+Notification Dispatcher
+- Sends reminder notifications when needed and when permission/platform support exists.
+
+
+Component design principles
+---------------------------
+
+- Capture path must be short and fast.
+- AI path must be asynchronous and retryable.
+- User data ownership must be checked in backend, not only in frontend.
+- Manual edits must win over AI suggestions.
+- Original input and AI output should be stored separately.
+- Admin tooling should inspect job status and errors without exposing user content unless
+  explicitly required for debugging.

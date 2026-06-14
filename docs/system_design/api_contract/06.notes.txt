@@ -1,0 +1,88 @@
+API Contract — 06. Notes
+
+Base path: /api/v1/notes
+
+Hiển thị các item có category = "note". Chỉ trả về item chưa bị archive.
+
+----------------------------------------------------------------------
+
+GET /api/v1/notes
+
+Mô tả: Lấy danh sách note, hỗ trợ tìm kiếm theo nội dung và lọc theo tag.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Query params:
+  q      — string (optional). Tìm kiếm theo title hoặc content (full-text search cơ bản).
+  tagId  — uuid (optional). Filter note theo tag cụ thể.
+  cursor — string (optional).
+  limit  — number (optional, default 20, max 50).
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "Ý tưởng cho tính năng dark mode",
+      "summary": "Thêm dark mode vào settings, dùng CSS variable",
+      "content": "Nội dung đầy đủ của note...",
+      "sourceType": "text",
+      "reviewStatus": "reviewed",
+      "tags": [
+        { "id": "uuid", "name": "idea" },
+        { "id": "uuid", "name": "design" }
+      ],
+      "createdAt": "2026-06-14T09:00:00Z",
+      "updatedAt": "2026-06-14T09:00:00Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": "eyJpZCI6IjIwIn0",
+    "hasMore": true,
+    "limit": 20
+  }
+}
+
+----------------------------------------------------------------------
+
+GET /api/v1/notes/:id
+
+Mô tả: Lấy chi tiết một note cụ thể, bao gồm nội dung đầy đủ và original input.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Path params:
+  id — uuid của item (phải là note).
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "userId": "uuid",
+    "sourceType": "text",
+    "originalText": "Nội dung gốc user nhập vào",
+    "originalFileUrl": null,
+    "transcriptionText": null,
+    "category": "note",
+    "aiConfidence": 0.92,
+    "title": "Ý tưởng cho tính năng dark mode",
+    "summary": "Thêm dark mode vào settings",
+    "content": "Nội dung đầy đủ...",
+    "processingStatus": "completed",
+    "reviewStatus": "reviewed",
+    "processingError": null,
+    "tags": [
+      { "id": "uuid", "name": "idea" }
+    ],
+    "taskMetadata": null,
+    "reminderMetadata": null,
+    "calendarMetadata": null,
+    "createdAt": "2026-06-14T09:00:00Z",
+    "updatedAt": "2026-06-14T09:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  ITEM_NOT_FOUND  — Note không tồn tại hoặc thuộc user khác.

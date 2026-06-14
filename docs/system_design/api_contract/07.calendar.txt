@@ -1,0 +1,136 @@
+API Contract — 07. Calendar Events
+
+Base path: /api/v1/calendar
+
+Hiển thị các item có category = "calendar_event". Chỉ trả về item chưa bị archive.
+
+----------------------------------------------------------------------
+
+GET /api/v1/calendar/events
+
+Mô tả: Lấy danh sách calendar event, có thể filter theo khoảng thời gian.
+       Sắp xếp theo startTime tăng dần (sự kiện sắp tới trước).
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Query params:
+  from   — ISO8601 datetime (optional). Chỉ lấy event có startTime >= from.
+  to     — ISO8601 datetime (optional). Chỉ lấy event có startTime <= to.
+  cursor — string (optional).
+  limit  — number (optional, default 20, max 50).
+
+Ví dụ:
+  GET /api/v1/calendar/events?from=2026-06-14T00:00:00Z&to=2026-06-21T23:59:59Z
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "Họp team sprint review",
+      "summary": "Review sprint 12, demo tính năng mới",
+      "processingStatus": "completed",
+      "reviewStatus": "reviewed",
+      "tags": [{ "id": "uuid", "name": "meeting" }],
+      "calendarMetadata": {
+        "startTime": "2026-06-15T14:00:00Z",
+        "endTime": "2026-06-15T15:00:00Z",
+        "location": "Phòng họp A, tầng 3"
+      },
+      "createdAt": "2026-06-14T10:00:00Z",
+      "updatedAt": "2026-06-14T10:00:00Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": null,
+    "hasMore": false,
+    "limit": 20
+  }
+}
+
+----------------------------------------------------------------------
+
+GET /api/v1/calendar/events/:id
+
+Mô tả: Lấy chi tiết một calendar event cụ thể.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Path params:
+  id — uuid của item (phải là calendar_event).
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "userId": "uuid",
+    "sourceType": "text",
+    "originalText": "Họp team lúc 2 giờ chiều thứ 2 tuần sau tại phòng A",
+    "originalFileUrl": null,
+    "transcriptionText": null,
+    "category": "calendar_event",
+    "aiConfidence": 0.97,
+    "title": "Họp team sprint review",
+    "summary": "Review sprint 12, demo tính năng mới",
+    "content": null,
+    "processingStatus": "completed",
+    "reviewStatus": "reviewed",
+    "processingError": null,
+    "tags": [{ "id": "uuid", "name": "meeting" }],
+    "taskMetadata": null,
+    "reminderMetadata": null,
+    "calendarMetadata": {
+      "startTime": "2026-06-15T14:00:00Z",
+      "endTime": "2026-06-15T15:00:00Z",
+      "location": "Phòng họp A, tầng 3"
+    },
+    "createdAt": "2026-06-14T10:00:00Z",
+    "updatedAt": "2026-06-14T10:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  ITEM_NOT_FOUND  — Event không tồn tại hoặc thuộc user khác.
+
+----------------------------------------------------------------------
+
+PATCH /api/v1/calendar/events/:id
+
+Mô tả: Cập nhật thời gian hoặc địa điểm của calendar event.
+
+Headers (required):
+  Authorization: Bearer <token>
+  Content-Type: application/json
+
+Path params:
+  id — uuid của item (phải là calendar_event).
+
+Request body (tất cả optional, chỉ gửi field cần thay đổi):
+{
+  "startTime": "ISO8601 datetime | null",
+  "endTime": "ISO8601 datetime | null",
+  "location": "string | null (max 500 ký tự)"
+}
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "title": "Họp team sprint review",
+    "calendarMetadata": {
+      "startTime": "2026-06-15T15:00:00Z",
+      "endTime": "2026-06-15T16:00:00Z",
+      "location": "Online — Google Meet"
+    },
+    "updatedAt": "2026-06-14T11:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND        ITEM_NOT_FOUND  — Event không tồn tại.
+  422  VALIDATION_ERROR                 — startTime sau endTime, hoặc format sai.
+                        errors: {
+                          "startTime": ["startTime phải trước endTime"]
+                        }

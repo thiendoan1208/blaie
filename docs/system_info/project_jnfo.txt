@@ -1,0 +1,134 @@
+﻿1. Product identity
+
+Product name: Blaie
+Tagline: Capture everything, organize automatically.
+Target users: students, workers, freelancers, and anyone who wants to capture fast
+Brand keywords: fast, focused, reliable, calm, smart
+App personality: simple, quick to use, easy to trust
+
+
+2. Product feeling
+
+Blaie should feel like a quiet personal command center, not a heavy productivity suite.
+The experience should be:
+
+- calm but not boring
+- clean but not empty
+- fast but not rushed
+- smart but not flashy
+- minimal, yet still alive
+
+The user should feel that the app helps them clear mental clutter and get back to work fast.
+
+
+3. Frontend design direction
+
+Core design idea:
+Inbox-first, capture-first, review-second.
+
+The most important screen is the capture / inbox area.
+Secondary screens are task, note, calendar, reminder, and focus views.
+
+Visual direction:
+
+- dark or near-dark base
+- purple as the main identity color
+- use a second accent color to avoid a one-note purple palette
+- restrained contrast
+- soft highlights, not loud decoration
+- dense but readable layouts
+
+Mood keywords for reference search:
+
+- modern productivity dashboard
+- quiet workspace
+- focused inbox
+- minimal but premium
+- command center UI
+- AI assistant workspace
+- sleek dark productivity app
+
+
+4. Layout principles
+
+- Put capture and inbox in the first visual priority.
+- Keep navigation simple and predictable.
+- Use compact spacing for data-heavy screens.
+- Avoid oversized marketing-style sections.
+- Avoid making the app feel like a landing page.
+- Make important actions obvious without clutter.
+
+Good screen feeling:
+
+- quick glance
+- quick action
+- quick return to work
+
+
+5. Screen priorities
+
+Must feel strongest:
+
+1. Capture
+2. Inbox
+3. Item detail / review
+4. Tasks
+5. Notes
+6. Calendar
+7. Reminders
+8. Focus screen
+
+
+6. Visual style notes
+
+Preferred style traits:
+
+- sharp, clean, modern
+- slightly futuristic
+- calm professional
+- subtle depth
+- readable at a glance
+
+Things to avoid:
+
+- overly decorative hero sections
+- noisy gradients everywhere
+- too much purple-only palette
+- card-heavy layout for every section
+- playful or childish visual language
+- cluttered icon mixing
+
+
+7. Interaction feeling
+
+The app should feel:
+
+- instant when typing
+- reassuring when processing
+- clear when AI is working
+- easy to review and edit
+- low-friction on mobile
+
+
+8. Visual search phrases
+
+Use these phrases when collecting design inspiration:
+
+- AI productivity app dark mode
+- minimal inbox UI
+- modern note taking dashboard
+- focused task manager UI
+- premium productivity interface
+- calm mobile productivity app
+- sleek admin dashboard
+
+
+9. Product summary for design work
+
+Blaie is a cross-platform AI-powered universal inbox.
+The design should communicate:
+
+- capture anything quickly
+- let AI organize it later
+- help the user find the next action fast
+- keep the experience calm and efficient

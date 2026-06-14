@@ -1,0 +1,76 @@
+﻿# ADR-001: Start with Modular Monolith
+
+## Status
+
+Accepted
+
+## Context
+
+Blaie MVP V1 cần xây dựng web app, mobile app, backend API, background worker, AI
+processing, file upload, user auth, Inbox, Tasks, Notes, Calendar, Reminders và
+Information views.
+
+Product vẫn đang ở giai đoạn MVP. Team nhỏ, domain boundary chưa đủ ổn định để tách
+microservices ngay từ đầu. Nếu bắt đầu bằng microservices quá sớm, hệ thống sẽ phải xử lý
+nhiều vấn đề phức tạp như network failure, distributed tracing, service-to-service
+contract, distributed transaction, deployment nhiều service và data consistency giữa các
+service.
+
+## Decision
+
+Start with a modular monolith for the backend.
+
+Backend được deploy như một Spring Boot application chính, nhưng code bên trong phải chia
+module theo business/domain boundary, ví dụ:
+
+- auth
+- user
+- capture
+- item
+- inbox
+- task
+- note
+- calendar
+- reminder
+- information
+- file
+- ai-processing
+- admin
+- notification
+
+Background worker có thể chạy trong cùng codebase nhưng là một runtime/process riêng nếu
+cần scale hoặc vận hành độc lập.
+
+## Consequences
+
+Ưu điểm:
+
+- Dễ phát triển hơn microservices ở giai đoạn đầu.
+- Dễ debug hơn vì request không phải đi qua nhiều service.
+- Dễ deploy hơn vì backend chính là một app.
+- Dễ giữ transaction và consistency hơn.
+- Vẫn có đường tách service sau này nếu module boundary rõ.
+
+Trade-off:
+
+- Scale từng module riêng khó hơn microservices.
+- Một lỗi runtime có thể ảnh hưởng cả backend app.
+- Nếu không giữ boundary, code vẫn có thể thành monolith rối.
+
+Mitigation:
+
+- Chia package theo business module, không chỉ theo controller/service/repository.
+- Module khác không gọi thẳng repository/internal class của nhau.
+- External dependency quan trọng đi qua interface/adapter.
+- Viết ADR riêng nếu sau này tách một module thành service độc lập.
+
+## Alternatives Considered
+
+### Microservices
+
+Không chọn cho V1 vì overhead vận hành lớn hơn lợi ích hiện tại.
+
+### Simple layered monolith
+
+Không chọn làm định hướng chính vì dễ gom code theo technical layer và mất module
+boundary khi dự án lớn dần.

@@ -1,0 +1,139 @@
+﻿API Contract — 02. Capture
+
+Base path: /api/v1/captures
+
+Đây là nhóm API quan trọng nhất của dự án. Mục tiêu: phản hồi trong < 2 giây.
+API chỉ lưu input ngay lập tức và đẩy job vào queue, KHÔNG chờ AI xử lý xong.
+
+----------------------------------------------------------------------
+
+POST /api/v1/captures/text
+
+Mô tả: Gửi nội dung text, tạo item ngay, đưa AI job vào queue xử lý ngầm.
+
+Headers (required):
+  Authorization: Bearer <token>
+  Content-Type: application/json
+
+Request body:
+{
+  "text": "string (required, min 1, max 10000)"
+}
+
+Response 201:
+{
+  "data": {
+    "id": "uuid",
+    "userId": "uuid",
+    "sourceType": "text",
+    "originalText": "Họp team lúc 3h chiều mai, cần chuẩn bị báo cáo Q2",
+    "originalFileUrl": null,
+    "transcriptionText": null,
+    "category": null,
+    "aiConfidence": null,
+    "title": null,
+    "summary": null,
+    "content": null,
+    "processingStatus": "pending",
+    "reviewStatus": "unreviewed",
+    "processingError": null,
+    "tags": [],
+    "taskMetadata": null,
+    "reminderMetadata": null,
+    "calendarMetadata": null,
+    "createdAt": "2026-06-14T10:00:00Z",
+    "updatedAt": "2026-06-14T10:00:00Z"
+  }
+}
+
+Errors:
+  422  VALIDATION_ERROR  — text bỏ trống hoặc vượt giới hạn ký tự.
+
+----------------------------------------------------------------------
+
+POST /api/v1/captures/image
+
+Mô tả: Upload ảnh (chụp hoặc từ thư viện), tạo item ngay, AI sẽ chạy OCR/image understanding ngầm.
+
+Headers (required):
+  Authorization: Bearer <token>
+  Content-Type: multipart/form-data
+
+Request body (multipart):
+  file   — File ảnh (required). Hỗ trợ: jpg, jpeg, png, webp, heic. Max 10MB.
+  note   — string (optional). Text bổ sung kèm theo ảnh, max 1000 ký tự.
+
+Response 201:
+{
+  "data": {
+    "id": "uuid",
+    "userId": "uuid",
+    "sourceType": "image",
+    "originalText": "optional note nếu user gửi kèm",
+    "originalFileUrl": "https://storage.blaie.app/files/uuid/image.jpg",
+    "transcriptionText": null,
+    "category": null,
+    "aiConfidence": null,
+    "title": null,
+    "summary": null,
+    "content": null,
+    "processingStatus": "pending",
+    "reviewStatus": "unreviewed",
+    "processingError": null,
+    "tags": [],
+    "taskMetadata": null,
+    "reminderMetadata": null,
+    "calendarMetadata": null,
+    "createdAt": "2026-06-14T10:00:00Z",
+    "updatedAt": "2026-06-14T10:00:00Z"
+  }
+}
+
+Errors:
+  400  BAD_REQUEST          FILE_MISSING         — Không có file trong request.
+  422  VALIDATION_ERROR     FILE_TOO_LARGE        — File vượt quá 10MB.
+  422  VALIDATION_ERROR     UNSUPPORTED_FILE_TYPE — Không phải định dạng ảnh cho phép.
+
+----------------------------------------------------------------------
+
+POST /api/v1/captures/audio
+
+Mô tả: Upload file audio, tạo item ngay, AI sẽ transcribe rồi classify ngầm.
+
+Headers (required):
+  Authorization: Bearer <token>
+  Content-Type: multipart/form-data
+
+Request body (multipart):
+  file   — File audio (required). Hỗ trợ: mp3, m4a, wav, ogg, webm. Max 50MB.
+
+Response 201:
+{
+  "data": {
+    "id": "uuid",
+    "userId": "uuid",
+    "sourceType": "audio_upload",
+    "originalText": null,
+    "originalFileUrl": "https://storage.blaie.app/files/uuid/audio.m4a",
+    "transcriptionText": null,
+    "category": null,
+    "aiConfidence": null,
+    "title": null,
+    "summary": null,
+    "content": null,
+    "processingStatus": "pending",
+    "reviewStatus": "unreviewed",
+    "processingError": null,
+    "tags": [],
+    "taskMetadata": null,
+    "reminderMetadata": null,
+    "calendarMetadata": null,
+    "createdAt": "2026-06-14T10:00:00Z",
+    "updatedAt": "2026-06-14T10:00:00Z"
+  }
+}
+
+Errors:
+  400  BAD_REQUEST          FILE_MISSING         — Không có file trong request.
+  422  VALIDATION_ERROR     FILE_TOO_LARGE        — File vượt quá 50MB.
+  422  VALIDATION_ERROR     UNSUPPORTED_FILE_TYPE — Không phải định dạng audio cho phép.

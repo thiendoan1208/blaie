@@ -1,0 +1,431 @@
+﻿# ADR-003: Use Layered Modular Architecture with Light Hexagonal Boundaries
+
+## Status
+
+Accepted
+
+## Context
+
+Backend Blaie là một Spring Boot modular monolith. Hệ thống có nhiều domain/module:
+
+- auth
+- user
+- capture
+- item
+- file
+- ai-processing
+- notification
+- admin
+
+Nếu dùng layered architecture truyền thống ở cấp toàn project:
+
+```text
+src
+├── controller
+├── service
+├── repository
+├── entity
+└── dto
+```
+
+thì ban đầu dễ hiểu, nhưng khi nhiều module xuất hiện, code sẽ bị chia theo technical
+layer thay vì business domain. Muốn sửa feature `capture`, dev phải nhảy qua nhiều folder:
+controller, service, repository, entity, dto. Điều này làm module boundary mờ dần và dễ
+dẫn tới service/repository gọi chéo lung tung.
+
+Ngược lại, nếu áp dụng full Hexagonal/Clean Architecture cho mọi endpoint CRUD nhỏ, MVP sẽ
+bị nặng vì phải tạo quá nhiều interface, mapper, port, adapter và use case không cần thiết.
+
+## Decision
+
+Use a layered modular architecture with light hexagonal boundaries.
+
+Nói chính xác hơn:
+
+- System/backend level: modular monolith.
+- Module level: layered architecture by default.
+- External dependency/business-critical flow: use light hexagonal ports and adapters.
+
+Mục tiêu là giữ backend vừa dễ build cho MVP, vừa đủ sạch để phát triển lâu dài.
+
+## Proposed package structure
+
+Tổng thể project:
+
+```text
+com.blaie
+├── BlaieApplication.java
+│
+├── core
+│   ├── config
+│   ├── error
+│   ├── response
+│   ├── request
+│   ├── logging
+│   └── security
+│
+├── auth
+├── user
+├── capture
+├── item
+├── file
+├── ai
+├── notification
+├── admin
+└── shared
+```
+
+Một business module nên có cấu trúc:
+
+```text
+capture
+├── api
+│   ├── CaptureController.java
+│   ├── request
+│   └── response
+│
+├── application
+│   ├── CaptureService.java
+│   ├── command
+│   ├── result
+│   └── port
+│
+├── domain
+│   ├── CaptureItem.java
+│   ├── CaptureSourceType.java
+│   └── ProcessingStatus.java
+│
+└── infrastructure
+    ├── persistence
+    └── adapter
+```
+
+Ý nghĩa:
+
+- `api`: REST controller, request DTO, response DTO.
+- `application`: use case/service, command/result, port interface.
+- `domain`: business model/rule nếu module có logic đáng kể.
+- `infrastructure`: JPA adapter, queue adapter, storage adapter, external API adapter.
+
+Không phải module nào cũng cần đầy đủ mọi folder. CRUD đơn giản có thể nhẹ hơn, nhưng
+module có business flow quan trọng nên theo cấu trúc này.
+
+## Request flow
+
+Flow chung cho một HTTP request:
+
+```text
+request
+-> request context / requestId
+-> authentication
+-> coarse authorization
+-> validation
+-> controller
+-> service/use case
+-> load resource
+-> object-level authorization
+-> domain/business logic
+-> repository / external adapter
+-> response DTO
+-> centralized error handler if error
+```
+
+Ví dụ user capture text:
+
+```text
+Web/Mobile
+  |
+  v
+POST /api/v1/captures/text
+  |
+  v
+CaptureController
+  |
+  v
+CaptureService
+  |
+  +--> CaptureItemRepository port
+  |       |
+  |       v
+  |   JpaCaptureItemRepositoryAdapter
+  |       |
+  |       v
+  |   PostgreSQL
+  |
+  +--> ProcessingJobPublisher port
+          |
+          v
+      RedisProcessingJobPublisher
+          |
+          v
+      Job Queue
+```
+
+Capture flow:
+
+1. Controller nhận request và map sang command.
+2. Service lấy current user từ security context.
+3. Service tạo CaptureItem với processing status = pending.
+4. Service lưu item qua repository port.
+5. Service publish processing job qua job publisher port.
+6. API trả response ngay cho client, không chờ AI.
+
+## Background worker flow
+
+AI processing worker cũng dùng cùng tư duy port/adapter:
+
+```text
+Job Queue
+  |
+  v
+AiProcessingWorker
+  |
+  v
+AiProcessingService
+  |
+  +--> CaptureItemRepository port
+  +--> AiProviderPort
+  +--> FileStoragePort
+          |
+          v
+      OpenAiAdapter / GeminiAdapter / StorageAdapter
+```
+
+Worker flow:
+
+1. Worker consume job từ queue.
+2. Service load item.
+3. Service chọn pipeline theo source type: text, image, voice/audio.
+4. Service gọi AI provider qua `AiProviderPort`.
+5. Service cập nhật title, summary, category, metadata, confidence.
+6. Service không overwrite manual edits trừ khi user explicitly reprocess.
+7. Service mark processing status completed hoặc failed.
+
+## Error handling boundary
+
+Backend phải có centralized error handling bằng Spring Boot, ví dụ:
+
+- custom application exception.
+- error code chuẩn.
+- `@RestControllerAdvice`.
+- response format thống nhất.
+
+Controller không parse raw database error hoặc external API error. Repository/adapter có thể
+map raw technical error thành application-level error. Service quyết định business meaning.
+
+Response lỗi nên theo dạng:
+
+```json
+{
+  "code": "CAPTURE_ITEM_NOT_FOUND",
+  "message": "Capture item not found",
+  "requestId": "req_123"
+}
+```
+
+Validation error:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Validation failed",
+  "errors": {
+    "title": ["Title is required"]
+  },
+  "requestId": "req_123"
+}
+```
+
+Rule:
+
+- Controller không catch lỗi tùy tiện.
+- Service throw lỗi có nghĩa nghiệp vụ.
+- Repository/adapter không leak raw JPA/SQL/SDK error ra client.
+- Global exception handler serialize error body một lần.
+- Internal log có chi tiết hơn user response, nhưng không log secret/token/password.
+
+## Authorization boundary
+
+Frontend chỉ render UX theo quyền. Backend là security boundary thật.
+
+Backend authorization nên đi theo nhiều lớp:
+
+```text
+authenticate
+-> resolve principal/session
+-> coarse authorization
+-> load resource
+-> object-level authorization
+-> property-level filtering if needed
+-> execute business logic
+```
+
+Trong V1, quyền tối thiểu cần đảm bảo:
+
+- User chỉ được truy cập item/file/tag/metadata của chính mình.
+- Admin API yêu cầu admin permission.
+- Resource ownership phải check ở backend.
+- Không nhận `userId`, `role`, `ownerId` từ client để quyết định quyền.
+
+Nên có authorization module/service riêng thay vì rải `if role == admin` khắp controller.
+
+Ví dụ API tư duy:
+
+```text
+authorize(principal, action, resource, context)
+```
+
+Trong đó:
+
+- principal: current user/session/roles.
+- action: capture.create, item.read, item.update, admin.job.retry.
+- resource: object thật đã load từ DB nếu cần.
+- context: tenant/workspace/plan/feature flag nếu sau này có.
+
+## Response and DTO boundary
+
+API không trả thẳng JPA entity.
+
+Rule:
+
+- Request DTO chỉ chứa field client được phép gửi.
+- Response DTO chỉ chứa field client cần thấy.
+- Sensitive/internal fields không tự động serialize ra ngoài.
+- Property-level permission nếu có phải xử lý ở serializer/DTO/service layer.
+
+Điều này giúp tránh:
+
+- mass assignment.
+- leak internal fields.
+- frontend phụ thuộc trực tiếp vào DB schema.
+
+## SOLID principles
+
+Architecture này hỗ trợ SOLID theo cách thực dụng:
+
+### Single Responsibility Principle
+
+- Controller xử lý HTTP mapping.
+- Service/use case xử lý flow nghiệp vụ.
+- Repository xử lý data access.
+- Adapter xử lý external system.
+- Error handler xử lý serialization lỗi.
+
+### Open/Closed Principle
+
+Có thể thêm provider mới bằng adapter mới:
+
+```text
+AiProviderPort
+  ^-- OpenAiAdapter
+  ^-- GeminiAdapter
+```
+
+Core service không cần sửa nhiều khi đổi provider.
+
+### Liskov Substitution Principle
+
+Các adapter implement cùng port phải thay thế được nhau nếu giữ đúng contract.
+
+### Interface Segregation Principle
+
+Port nên nhỏ theo use case, không tạo interface khổng lồ như `ExternalServicePort` làm mọi
+thứ.
+
+### Dependency Inversion Principle
+
+Application service phụ thuộc port/interface, không phụ thuộc trực tiếp vào SDK, Redis,
+S3/R2, queue implementation hoặc AI provider cụ thể.
+
+## Why not traditional layered architecture?
+
+Layer truyền thống toàn project có ưu điểm là đơn giản, nhưng có các vấn đề:
+
+- Code chia theo kỹ thuật, không theo business.
+- Folder controller/service/repository phình to khi nhiều domain.
+- Module boundary mờ.
+- Service dễ gọi chéo repository của module khác.
+- Khó tách module sau này.
+- External SDK dễ lọt thẳng vào business service.
+
+Layered modular architecture giải quyết bằng cách gom code theo domain:
+
+```text
+capture/
+item/
+ai/
+file/
+admin/
+```
+
+Muốn sửa capture thì vào module capture. Muốn sửa AI processing thì vào module ai. Code
+liên quan nằm gần nhau hơn.
+
+## Why not full hexagonal architecture?
+
+Full hexagonal/clean architecture cho toàn bộ codebase có thể rất sạch, nhưng V1 là MVP.
+Nếu CRUD đơn giản cũng phải tạo đủ port, adapter, mapper, use case, domain model thì tốc
+độ phát triển sẽ chậm và code có nhiều ceremony.
+
+Vì vậy chọn hướng practical:
+
+- Layered by default.
+- Hexagonal where it matters.
+
+Chỗ nên dùng port/adapter:
+
+- AI provider.
+- Object storage.
+- Queue/job publisher.
+- Notification provider.
+- Payment provider sau này.
+- Business flow quan trọng cần test kỹ.
+
+Chỗ có thể dùng layered đơn giản:
+
+- CRUD ít logic.
+- Admin list đơn giản.
+- Basic lookup.
+- Simple tag management.
+
+## Consequences
+
+Ưu điểm:
+
+- Code đọc theo business domain rõ hơn.
+- Dễ hiểu, dễ onboard hơn full clean architecture.
+- Dễ test use case quan trọng.
+- External provider/storage/queue dễ đổi hơn.
+- Hợp với Spring Boot và MVP.
+- Có đường tiến hóa lên microservices nếu module boundary rõ.
+
+Trade-off:
+
+- Nhiều structure hơn layered architecture truyền thống.
+- Cần discipline để không phá module boundary.
+- Có thể inconsistent nếu team không thống nhất convention.
+- Vẫn cần quyết định khi nào dùng port/adapter, khi nào dùng layered đơn giản.
+
+Mitigation:
+
+- Viết convention rõ.
+- Review dependency giữa module.
+- Chỉ tạo port/adapter khi có external dependency hoặc business flow quan trọng.
+- Không để controller chứa business logic nặng.
+- Không để service gọi trực tiếp SDK/provider.
+- Không trả JPA entity trực tiếp ra API.
+
+## Alternatives Considered
+
+### Traditional layered architecture
+
+Dễ bắt đầu nhưng dễ rối khi số domain tăng.
+
+### Full hexagonal architecture
+
+Sạch hơn nhưng dễ over-engineer MVP.
+
+### Microservices with hexagonal services
+
+Không chọn ở V1 vì đã chốt modular monolith trong ADR-001. Microservices sẽ tăng chi phí
+vận hành, tracing, service contract và consistency trước khi product/domain boundary đủ rõ.

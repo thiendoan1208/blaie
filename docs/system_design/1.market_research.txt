@@ -1,0 +1,352 @@
+Market Research
+
+Goal:
+
+Phân tích các app tương tự để hiểu chúng đang giải quyết vấn đề gì, mạnh/yếu ở đâu,
+phù hợp với nhóm người dùng nào và đâu là khoảng trống sản phẩm của mình.
+
+Key insight:
+
+Hầu hết app hiện tại mạnh ở một mảng riêng: note-taking, task management, calendar
+planning hoặc knowledge management. Khoảng trống lớn nằm ở trải nghiệm "capture nhanh
+mọi thứ rồi AI tự biến thành đúng loại thông tin": task, note, reminder, calendar event
+hoặc knowledge item, mà không bắt người dùng tự phân loại ngay từ đầu.
+
+1. Notion
+
+- Nó giải quyết gì?
+  Tạo một workspace linh hoạt để quản lý docs, notes, wiki, database, project và task
+  trong cùng một nơi.
+
+- Feature chính:
+  Block editor, database, project board, wiki, template, collaboration, Notion AI,
+  Notion Calendar, integrations.
+
+- Điểm mạnh:
+  Rất linh hoạt, phù hợp nhiều workflow khác nhau, mạnh cho team/project/documentation.
+  Có thể biến thành nhiều dạng hệ thống: CRM, roadmap, knowledge base, habit tracker.
+
+- Điểm yếu:
+  Setup ban đầu tốn công. Người dùng mới dễ bị ngợp vì quá nhiều cách tổ chức. Capture
+  nhanh không phải điểm mạnh nhất, và thông tin vẫn cần được đưa vào đúng page/database.
+
+- Người dùng nào hợp:
+  Team, startup, creator, sinh viên hoặc người thích tự xây hệ thống quản lý cá nhân.
+
+- Khoảng trống mình có thể làm:
+  Tập trung vào input rời rạc và tự động phân loại. Thay vì bắt user chọn database/page,
+  cho họ nhập nhanh rồi AI tự quyết định đó là task, note, event, reminder hay information.
+
+2. Todoist
+
+- Nó giải quyết gì?
+  Quản lý task cá nhân và công việc hằng ngày một cách đơn giản, rõ ràng.
+
+- Feature chính:
+  Task, project, subtasks, due date bằng natural language, priority, label, filter,
+  reminders, recurring tasks, calendar sync, integrations.
+
+- Điểm mạnh:
+  Rất nhanh cho task management. Natural language input tốt cho việc tạo deadline.
+  UI gọn, dễ dùng, phù hợp người cần quản lý to-do nghiêm túc.
+
+- Điểm yếu:
+  Không phải note/knowledge app. Ít phù hợp với ảnh, voice, meeting note hoặc thông tin
+  chưa rõ là task hay chỉ là ghi chú. Người dùng vẫn phải tự biết mình đang tạo task.
+
+- Người dùng nào hợp:
+  Người đi làm, freelancer, cá nhân có nhiều việc cần theo dõi bằng deadline/project.
+
+- Khoảng trống mình có thể làm:
+  Bắt đầu từ capture đa dạng hơn Todoist: text, image, voice. AI không chỉ tạo task mà
+  còn phân biệt task với note, reminder, calendar event và thông tin tham khảo.
+
+3. TickTick
+
+- Nó giải quyết gì?
+  Kết hợp to-do list, calendar, habit tracking và focus tool trong một app năng suất cá nhân.
+
+- Feature chính:
+  Tasks, calendar view, reminders, recurring tasks, tags, priority, habit tracker,
+  Pomodoro, Eisenhower Matrix, attachment, checklist.
+
+- Điểm mạnh:
+  Feature nhiều nhưng vẫn khá dễ tiếp cận. Mạnh cho người muốn vừa quản lý task vừa theo
+  dõi habit/focus trong cùng một app.
+
+- Điểm yếu:
+  Có thể trở nên hơi "feature-heavy". Trọng tâm vẫn là task/habit, chưa giải quyết sâu
+  bài toán biến input lộn xộn thành hệ thống thông tin tự động.
+
+- Người dùng nào hợp:
+  Người thích productivity cá nhân, sinh viên, người cần task + habit + calendar cơ bản.
+
+- Khoảng trống mình có thể làm:
+  Làm trải nghiệm nhẹ hơn: không cần user hiểu trước mình đang tạo task, habit hay note.
+  AI tự nhận diện intent và đề xuất output phù hợp.
+
+4. Google Keep
+
+- Nó giải quyết gì?
+  Ghi chú nhanh, checklist nhanh, lưu ý tưởng ngắn và nhắc việc đơn giản.
+
+- Feature chính:
+  Notes, checklist, labels, color, reminders, image notes, voice notes, OCR, sharing,
+  Google Workspace integration.
+
+- Điểm mạnh:
+  Rất nhanh, nhẹ, dễ dùng. Phù hợp capture ý tưởng tức thì. Tích hợp tốt với hệ sinh thái
+  Google.
+
+- Điểm yếu:
+  Tổ chức thông tin còn đơn giản. Không mạnh cho workflow phức tạp, project, task planning
+  hoặc knowledge base dài hạn. Reminder/task có thể bị tách sang Google Tasks/Calendar.
+
+- Người dùng nào hợp:
+  Người cần ghi chú nhanh, checklist đơn giản, ý tưởng ngắn trong ngày.
+
+- Khoảng trống mình có thể làm:
+  Giữ tốc độ capture như Keep nhưng thêm lớp AI để tự phân loại, gom nhóm, tạo reminder
+  và chuyển thông tin thành action rõ ràng.
+
+5. Apple Notes
+
+- Nó giải quyết gì?
+  Ghi chú cá nhân trong hệ sinh thái Apple, từ note đơn giản đến scan tài liệu và checklist.
+
+- Feature chính:
+  Notes, folders, tags, Smart Folders, checklist, attachment, document scanner, drawing,
+  Quick Note, locked notes, iCloud sync, Apple Intelligence features trên thiết bị hỗ trợ.
+
+- Điểm mạnh:
+  Tích hợp sâu với iPhone/iPad/Mac, capture nhanh, ổn định, miễn phí cho user Apple.
+  Mạnh cho scan, attachment và ghi chú cá nhân.
+
+- Điểm yếu:
+  Khá đóng trong Apple ecosystem. Không phải task/calendar planner thật sự. AI/action
+  extraction chưa phải trọng tâm chính cho mọi user.
+
+- Người dùng nào hợp:
+  Người dùng Apple cần note cá nhân, scan tài liệu, checklist nhẹ.
+
+- Khoảng trống mình có thể làm:
+  Cross-platform hơn, tập trung vào biến ghi chú thành hành động: detect deadline, tạo
+  task/reminder/event từ nội dung note hoặc voice.
+
+6. Evernote
+
+- Nó giải quyết gì?
+  Lưu trữ và tổ chức note dài hạn, web clip, tài liệu, project note và task trong cùng
+  một hệ thống note-taking.
+
+- Feature chính:
+  Notes, notebooks, tags, Web Clipper, document scanning, attachments, search, tasks,
+  calendar integration, AI edit/transcribe.
+
+- Điểm mạnh:
+  Mạnh về lưu trữ thông tin dài hạn, web clipping và tìm kiếm. Phù hợp người có nhiều
+  tài liệu, research, meeting notes.
+
+- Điểm yếu:
+  Có cảm giác nặng hơn các app ghi chú nhanh. Task/calendar không phải trải nghiệm chính.
+  Người dùng vẫn cần tự tổ chức notebook/tag khá nhiều.
+
+- Người dùng nào hợp:
+  Knowledge worker, researcher, người cần lưu nhiều tài liệu/web clip/meeting note.
+
+- Khoảng trống mình có thể làm:
+  Tập trung vào "zero-organization capture": user chỉ cần đưa input vào, AI tự tạo cấu
+  trúc ban đầu và đề xuất action, thay vì phải chọn notebook/tag thủ công.
+
+7. Motion
+
+- Nó giải quyết gì?
+  Tự động lên lịch công việc dựa trên task, deadline, priority và thời gian trống trong
+  calendar.
+
+- Feature chính:
+  Auto-scheduling, task management, calendar, project management, AI chat, AI notetaker,
+  meeting/task automation, capacity planning.
+
+- Điểm mạnh:
+  Mạnh ở việc biến task thành lịch làm việc cụ thể. Giúp user không phải tự kéo thả
+  từng việc vào calendar.
+
+- Điểm yếu:
+  Phù hợp hơn với work planning nghiêm túc, có thể quá nặng hoặc quá đắt với user chỉ
+  cần capture nhanh. Không phải app note/knowledge tự nhiên.
+
+- Người dùng nào hợp:
+  Founder, manager, professional có nhiều task/deadline và cần schedule tự động.
+
+- Khoảng trống mình có thể làm:
+  Không bắt đầu từ schedule. Bắt đầu từ capture hỗn loạn trước, sau đó mới tạo task/event
+  khi cần. Nhẹ hơn cho sinh viên, freelancer và người ghi chú nhanh.
+
+8. Akiflow
+
+- Nó giải quyết gì?
+  Gom task và calendar từ nhiều nguồn vào một planner/time-blocking workflow.
+
+- Feature chính:
+  Universal Inbox, calendar, task manager, time blocking, integrations, AI assistant Aki,
+  planning workflow, command bar.
+
+- Điểm mạnh:
+  Rất tốt cho người đã có nhiều nguồn task và muốn gom vào một nơi để plan ngày/tuần.
+  Time blocking mạnh, tích hợp nhiều công cụ.
+
+- Điểm yếu:
+  Vẫn thiên về task/calendar của người dùng productivity nâng cao. Có learning curve và
+  ít phù hợp với người chỉ muốn chụp/ghi âm/ghi nhanh rồi để hệ thống xử lý.
+
+- Người dùng nào hợp:
+  Founder, operator, freelancer bận rộn, người nghiêm túc với time blocking.
+
+- Khoảng trống mình có thể làm:
+  Universal Inbox cho mọi loại input, không chỉ task từ tool khác. AI tự phân loại input
+  thành action hoặc knowledge item trước khi đưa vào planner.
+
+9. Sunsama
+
+- Nó giải quyết gì?
+  Daily planner giúp user lập kế hoạch ngày làm việc có chủ ý, timebox task và tránh
+  quá tải.
+
+- Feature chính:
+  Daily planning, weekly planning, task list, calendar timeboxing, focus mode, integrations,
+  workload planning, analytics/highlights.
+
+- Điểm mạnh:
+  Workflow rất có chủ đích, giúp user làm việc bình tĩnh hơn. Mạnh trong việc kết hợp
+  task và calendar thành kế hoạch trong ngày.
+
+- Điểm yếu:
+  Không phải nơi capture mọi loại thông tin. Giá và workflow có thể quá nặng với người
+  cần app đơn giản. User vẫn phải chủ động plan.
+
+- Người dùng nào hợp:
+  Professional, manager, freelancer có thói quen daily planning và muốn tránh burnout.
+
+- Khoảng trống mình có thể làm:
+  Tạo trải nghiệm ít nghi thức hơn: user capture bất cứ lúc nào, AI tự gợi ý task/reminder/
+  event; daily planning có thể là bước sau chứ không phải entry point.
+
+10. Mem
+
+- Nó giải quyết gì?
+  Làm "AI memory" cho ý tưởng, meeting, research và thông tin cá nhân/team. User đổ thông
+  tin vào, Mem giúp tổ chức và tìm lại bằng AI.
+
+- Feature chính:
+  AI notes, voice capture, meeting transcription, Chrome extension, collections, related
+  notes, AI search, chat với knowledge base.
+
+- Điểm mạnh:
+  Rất gần với hướng "dump everything". AI recall và automatic organization là điểm mạnh.
+  Phù hợp knowledge capture và tìm lại thông tin.
+
+- Điểm yếu:
+  Nghiêng về memory/knowledge hơn task execution. Việc biến input thành reminder/calendar/
+  actionable workflow chưa phải điểm khác biệt chính.
+
+- Người dùng nào hợp:
+  Knowledge worker, researcher, team cần lưu và hỏi lại thông tin từ notes/meetings.
+
+- Khoảng trống mình có thể làm:
+  Kết hợp AI memory với action layer: mỗi input không chỉ được lưu và tìm lại, mà còn có
+  thể tự sinh task, reminder, calendar event hoặc follow-up.
+
+11. Reflect
+
+- Nó giải quyết gì?
+  Note-taking cá nhân có backlinks, daily notes, AI assistant, calendar integration và
+  bảo mật end-to-end.
+
+- Feature chính:
+  Networked notes, backlinks, AI assistant, voice transcription, daily notes, web/Kindle
+  clipping, calendar integration, end-to-end encryption.
+
+- Điểm mạnh:
+  Nhanh, tối giản, phù hợp personal knowledge management. Backlinks và AI giúp kết nối
+  ý tưởng tốt. Có định vị rõ về privacy.
+
+- Điểm yếu:
+  Phù hợp hơn với người thích suy nghĩ/ghi chú dài hạn. Task/reminder/calendar automation
+  không phải trọng tâm chính.
+
+- Người dùng nào hợp:
+  Writer, thinker, researcher, founder, người xây second brain cá nhân.
+
+- Khoảng trống mình có thể làm:
+  Tập trung ít hơn vào networked thinking, nhiều hơn vào daily life capture: từ voice/note/
+  image phát hiện việc cần làm, deadline và reminder thực tế.
+
+12. Obsidian
+
+- Nó giải quyết gì?
+  Xây dựng knowledge base cá nhân/local-first bằng Markdown, backlinks, graph và plugin.
+
+- Feature chính:
+  Markdown vault, backlinks, graph view, canvas, daily notes, tags, properties, plugins,
+  sync/publish, community ecosystem.
+
+- Điểm mạnh:
+  Local-first, dữ liệu portable, rất mạnh cho người thích kiểm soát hệ thống tri thức.
+  Plugin ecosystem lớn, có thể customize sâu.
+
+- Điểm yếu:
+  Learning curve cao. Không thân thiện với người chỉ muốn ghi nhanh và tự động có task/
+  reminder. AI và calendar/action workflow phụ thuộc plugin hoặc setup thêm.
+
+- Người dùng nào hợp:
+  Power user, developer, researcher, writer, người thích Markdown và second brain.
+
+- Khoảng trống mình có thể làm:
+  Làm app đơn giản hơn rất nhiều cho non-power-user: không cần hiểu backlinks, vault,
+  plugin hay Markdown; chỉ capture nhanh và AI xử lý cấu trúc/action.
+
+Conclusion
+
+Các app hiện tại có thể chia thành 4 nhóm:
+
+1. Workspace/knowledge: Notion, Evernote, Obsidian, Reflect, Mem.
+2. Task management: Todoist, TickTick.
+3. Calendar/time-blocking: Motion, Akiflow, Sunsama.
+4. Quick capture: Google Keep, Apple Notes.
+
+Khoảng trống sản phẩm của mình:
+
+- Một inbox duy nhất cho text, image, voice, quick note, task và lịch hẹn.
+- AI tự phân loại ngay sau khi nhập, không bắt user chọn category trước.
+- AI tự phát hiện action: deadline, người liên quan, thời gian, reminder, calendar event.
+- Trải nghiệm nhẹ như Google Keep/Apple Notes nhưng thông minh hơn ở bước organize/action.
+- Không quá phức tạp như Notion/Obsidian, không quá chuyên task như Todoist/TickTick,
+  không quá nặng planning như Motion/Akiflow/Sunsama.
+- Phù hợp với sinh viên, người đi làm, freelancer và người hay ghi chú nhanh nhưng không
+  muốn tự xây hệ thống productivity phức tạp.
+
+Suggested positioning:
+
+"Capture anything. Let AI turn it into the right thing."
+
+Hoặc tiếng Việt:
+
+"Ghi lại mọi thứ thật nhanh. AI tự biến nó thành việc cần làm, ghi chú, lịch hẹn hoặc
+nhắc nhở."
+
+Sources reviewed:
+
+- Notion: https://www.notion.com/en-gb/product/notion
+- Todoist: https://www.todoist.com/features
+- TickTick: https://ticktick.com/features
+- Google Keep: https://workspace.google.com/products/keep/
+- Apple Notes: https://support.apple.com/en-us/118442
+- Evernote: https://evernote.com/en-us/features
+- Motion: https://www.usemotion.com/help
+- Akiflow: https://akiflow.com/
+- Sunsama: https://www.sunsama.com/
+- Mem: https://get.mem.ai/
+- Reflect: https://reflect.app/
+- Obsidian: https://help.obsidian.md/plugins
+

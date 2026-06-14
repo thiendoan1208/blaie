@@ -1,0 +1,173 @@
+﻿API Contract — Blaie MVP V1 — Overview
+
+Tài liệu này quy định các quy ước chung áp dụng cho toàn bộ API của dự án Blaie.
+
+----------------------------------------------------------------------
+
+1. Base URL
+
+/api/v1
+
+Ví dụ: POST /api/v1/auth/login
+
+----------------------------------------------------------------------
+
+2. Authentication
+
+- Tất cả endpoints (trừ POST /auth/register và POST /auth/login) yêu cầu đăng nhập.
+- Sử dụng JWT (stateless).
+- Token được lưu trong httpOnly cookie sau khi đăng nhập.
+- Mỗi request gửi token qua header:
+
+  Authorization: Bearer <access_token>
+
+- Backend sẽ đọc từ Authorization header. Cookie httpOnly được dùng để lưu trữ an toàn phía client.
+- Nếu token hết hạn hoặc không hợp lệ, API trả về 401 UNAUTHORIZED.
+
+----------------------------------------------------------------------
+
+3. Request Format
+
+JSON request body:
+  Content-Type: application/json
+
+File upload:
+  Content-Type: multipart/form-data
+
+----------------------------------------------------------------------
+
+4. Response Format
+
+Tất cả response đều có format thống nhất:
+
+4.1. Success (có data):
+
+{
+  "data": { ... },
+  "message": "optional human-readable message",
+  "meta": {
+    "nextCursor": "cursor_string_or_null",
+    "hasMore": true,
+    "limit": 20
+  }
+}
+
+Ghi chú:
+- "message" chỉ trả về khi cần thông báo bổ sung.
+- "meta" chỉ trả về trong response danh sách (list endpoints).
+
+4.2. Success (không có body):
+
+HTTP 204 No Content — không có response body.
+
+4.3. Error:
+
+{
+  "code": "ERROR_CODE",
+  "message": "Human-readable message cho developer/user",
+  "errors": {
+    "fieldName": ["Validation error message"]
+  },
+  "requestId": "req_abc123"
+}
+
+Ghi chú:
+- "errors" chỉ xuất hiện khi lỗi validation (422).
+- "requestId" có trong mọi response lỗi để trace log.
+
+----------------------------------------------------------------------
+
+5. Pagination (Cursor-based)
+
+Blaie dùng cursor-based pagination cho tất cả list endpoints.
+
+Request query params:
+  cursor=<cursor_value>    (optional, bỏ qua cho trang đầu)
+  limit=<number>           (optional, default 20, max 50)
+
+Response meta:
+  nextCursor: null nếu không còn trang tiếp theo
+  hasMore: true/false
+  limit: số lượng item đang dùng
+
+Ví dụ request trang đầu:
+  GET /api/v1/inbox?limit=20
+
+Ví dụ request trang tiếp:
+  GET /api/v1/inbox?cursor=eyJpZCI6Ijg1In0&limit=20
+
+----------------------------------------------------------------------
+
+6. HTTP Status Codes
+
+200  OK                    — Request thành công, có response body.
+201  Created               — Tạo resource mới thành công.
+204  No Content            — Thành công, không có body (delete, logout).
+400  Bad Request           — Request malformed, JSON sai cú pháp.
+401  Unauthorized          — Chưa đăng nhập hoặc token không hợp lệ.
+403  Forbidden             — Đã đăng nhập nhưng không có quyền.
+404  Not Found             — Resource không tồn tại.
+409  Conflict              — Xung đột với state hiện tại.
+422  Unprocessable Entity  — Validation lỗi (đã parse được nhưng vi phạm rule).
+500  Internal Server Error — Lỗi server không mong muốn.
+503  Service Unavailable   — Server hoặc dependency tạm thời không sẵn sàng.
+
+----------------------------------------------------------------------
+
+7. Common Error Codes
+
+UNAUTHORIZED              — Token thiếu hoặc không hợp lệ.
+FORBIDDEN                 — Không có quyền thực hiện action này.
+NOT_FOUND                 — Resource không tìm thấy.
+VALIDATION_ERROR          — Input không hợp lệ (kèm errors field).
+CONFLICT                  — Trạng thái hiện tại không cho phép action.
+INVALID_CREDENTIALS       — Sai email hoặc password.
+INTERNAL_SERVER_ERROR     — Lỗi server không xác định.
+
+Error code đặc thù của từng endpoint sẽ được định nghĩa trong file contract tương ứng.
+
+----------------------------------------------------------------------
+
+8. CaptureItem — Shared Response Schema
+
+CaptureItem là object cốt lõi của toàn hệ thống. Schema này dùng chung ở nhiều endpoint.
+
+{
+  "id": "uuid",
+  "userId": "uuid",
+  "sourceType": "text | image | audio_upload",
+  "originalText": "string | null",
+  "originalFileUrl": "string | null",
+  "transcriptionText": "string | null",
+  "category": "task | note | calendar_event | reminder | information | null",
+  "aiConfidence": 0.95,
+  "title": "string | null",
+  "summary": "string | null",
+  "content": "string | null",
+  "processingStatus": "pending | processing | completed | failed",
+  "reviewStatus": "unreviewed | reviewed",
+  "processingError": "string | null",
+  "tags": [
+    { "id": "uuid", "name": "string" }
+  ],
+  "taskMetadata": {
+    "dueDate": "ISO8601 | null",
+    "priority": "low | medium | high | null",
+    "completedAt": "ISO8601 | null"
+  },
+  "reminderMetadata": {
+    "reminderTime": "ISO8601 | null",
+    "completedAt": "ISO8601 | null"
+  },
+  "calendarMetadata": {
+    "startTime": "ISO8601 | null",
+    "endTime": "ISO8601 | null",
+    "location": "string | null"
+  },
+  "createdAt": "ISO8601",
+  "updatedAt": "ISO8601"
+}
+
+Ghi chú:
+- taskMetadata, reminderMetadata, calendarMetadata chỉ có giá trị nếu category tương ứng.
+- category = null khi item đang trong trạng thái pending/processing.

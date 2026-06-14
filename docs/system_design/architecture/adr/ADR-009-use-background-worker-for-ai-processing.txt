@@ -1,0 +1,73 @@
+﻿# ADR-009: Use Background Worker for AI Processing
+
+## Status
+
+Accepted
+
+## Context
+
+Core MVP của Blaie là capture nhanh. Nếu user phải chờ AI phân tích sau mỗi lần nhập,
+trải nghiệm sẽ chậm và đi ngược mục tiêu sản phẩm.
+
+AI processing có thể gồm:
+
+- transcription cho voice/audio
+- OCR hoặc image understanding cho image
+- classification
+- title/summary generation
+- metadata extraction
+- tag suggestion
+
+Các bước này có thể chậm, fail hoặc timeout vì phụ thuộc external AI provider.
+
+## Decision
+
+Run AI processing in a background worker.
+
+Capture API chỉ làm:
+
+1. validate input
+2. save CaptureItem immediately
+3. create processing job
+4. return response to client
+
+Worker xử lý AI sau:
+
+1. consume job
+2. update processing_status
+3. call AI provider through adapter
+4. save AI result
+5. mark completed or failed
+
+## Consequences
+
+Ưu điểm:
+
+- Capture flow nhanh hơn.
+- User có thể tắt app, job vẫn tiếp tục.
+- AI provider chậm không block API request chính.
+- Dễ retry failed processing.
+- Dễ scale worker riêng nếu AI workload tăng.
+
+Trade-off:
+
+- Hệ thống eventual consistent: item có thể pending một lúc.
+- Cần queue/worker/retry/monitoring.
+- Client phải hiển thị processing state.
+
+Mitigation:
+
+- Inbox hiển thị pending/processing/completed/failed rõ ràng.
+- Failed job có retry.
+- Worker không overwrite manual edits.
+- Metrics theo dõi processing time, failure rate và backlog.
+
+## Alternatives Considered
+
+### Synchronous AI processing in capture request
+
+Đơn giản hơn nhưng làm capture chậm và fragile.
+
+### Client-side AI processing
+
+Không phù hợp V1 vì model/API key/security/cost và device performance.

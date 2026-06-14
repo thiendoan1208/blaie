@@ -1,0 +1,55 @@
+API Contract — 04. Items (chung)
+
+Base path: /api/v1/items
+
+Endpoint dùng để truy vấn item theo category, phục vụ các view trong sidebar:
+Tasks, Notes, Calendar, Reminders, Information.
+Đây là "gateway" chung, view-specific endpoints có ở các file riêng (05–09).
+
+----------------------------------------------------------------------
+
+GET /api/v1/items
+
+Mô tả: Lấy danh sách item, có thể filter theo category.
+       Chỉ trả về item đã xử lý xong (processingStatus = completed) và chưa bị archive.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Query params:
+  category — string (optional). Filter theo: task | note | calendar_event | reminder | information.
+  cursor   — string (optional). Cursor từ response trước.
+  limit    — number (optional, default 20, max 50).
+
+Response 200:
+{
+  "data": [
+    { /* CaptureItem schema — xem 00.overview.txt */ },
+    { ... }
+  ],
+  "meta": {
+    "nextCursor": "eyJpZCI6IjMwIn0",
+    "hasMore": false,
+    "limit": 20
+  }
+}
+
+----------------------------------------------------------------------
+
+GET /api/v1/items/:id
+
+Mô tả: Lấy chi tiết một item bất kỳ theo ID. Dùng cho deep link hoặc share link nội bộ.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Path params:
+  id — uuid của item.
+
+Response 200:
+{
+  "data": { /* CaptureItem schema đầy đủ */ }
+}
+
+Errors:
+  404  NOT_FOUND  ITEM_NOT_FOUND  — Item không tồn tại hoặc thuộc user khác.

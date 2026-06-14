@@ -1,0 +1,53 @@
+﻿# ADR-013: Use Authenticated User Mode for MVP V1
+
+## Status
+
+Accepted
+
+## Context
+
+Blaie lưu dữ liệu cá nhân của user: notes, tasks, reminders, voice/audio, images và AI
+results. V1 cần đảm bảo mỗi user chỉ thấy dữ liệu của chính mình. Guest/no-signin mode đã
+được ghi nhận là future idea, không phải V1.
+
+## Decision
+
+Require authentication for MVP V1.
+
+User cần login/signup để sử dụng app. Backend luôn derive user identity từ authenticated
+session/token, không nhận userId từ client body cho operation cá nhân.
+
+Auth implementation chi tiết sẽ chốt khi thiết kế backend:
+
+dựa theo adr 13 thì tôi sẽ chốt dùng bearer token  gửi qua header + với access và refresh token
+
+- Spring Security.
+- Session cookie HttpOnly hoặc JWT/Bearer token.
+- Mobile token storage cần được xem riêng.
+
+## Consequences
+
+Ưu điểm:
+
+- Data ownership rõ ràng.
+- Cross-device sync dễ hơn.
+- Security boundary rõ hơn.
+- V1 scope đơn giản hơn guest + migration account flow.
+
+Trade-off:
+
+- User phải sign up/login trước khi dùng.
+- Activation có thể friction hơn.
+- Mobile/web auth strategy cần thiết kế cẩn thận.
+
+Mitigation:
+
+- Login/signup flow phải nhanh.
+- Có thể thêm social login sau nếu cần.
+- Guest/no-signin mode để Future/V2.
+
+## Alternatives Considered
+
+### Guest/no-signin mode in V1
+
+Không chọn vì tăng phức tạp sync, storage limit, merge account và abuse control.

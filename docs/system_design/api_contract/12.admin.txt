@@ -1,0 +1,236 @@
+﻿API Contract — 12. Admin
+
+Base path: /api/v1/admin
+
+Tất cả endpoints trong nhóm này yêu cầu:
+  1. Đã đăng nhập (JWT hợp lệ).
+  2. User có role = ADMIN.
+
+Nếu thiếu một trong hai điều kiện trên:
+  401  UNAUTHORIZED  — Chưa đăng nhập.
+  403  FORBIDDEN     — Đã đăng nhập nhưng không phải admin.
+
+----------------------------------------------------------------------
+
+1. User Management
+
+----------------------------------------------------------------------
+
+GET /api/v1/admin/users
+
+Mô tả: Lấy danh sách toàn bộ user trong hệ thống. Dùng cho vận hành, debug.
+
+Headers (required):
+  Authorization: Bearer <admin_token>
+
+Query params:
+  status — string (optional). Filter theo: active | disabled.
+  cursor — string (optional).
+  limit  — number (optional, default 20, max 100).
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "Nguyen Van A",
+      "email": "user@example.com",
+      "status": "active",
+      "captureItemCount": 42,
+      "createdAt": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "uuid",
+      "name": "Tran Thi B",
+      "email": "userb@example.com",
+      "status": "disabled",
+      "captureItemCount": 8,
+      "createdAt": "2026-06-05T00:00:00Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": "eyJpZCI6IjUwIn0",
+    "hasMore": true,
+    "limit": 20
+  }
+}
+
+----------------------------------------------------------------------
+
+PATCH /api/v1/admin/users/:id/disable
+
+Mô tả: Vô hiệu hóa tài khoản user. User bị disable sẽ không thể đăng nhập.
+       Hành động này được log trong audit log.
+
+Headers (required):
+  Authorization: Bearer <admin_token>
+
+Path params:
+  id — uuid của user cần disable.
+
+Request: Không có body.
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "name": "Nguyen Van A",
+    "email": "user@example.com",
+    "status": "disabled",
+    "createdAt": "2026-06-01T00:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  USER_NOT_FOUND    — User không tồn tại.
+  409  CONFLICT   ALREADY_DISABLED  — User đã bị disable trước đó.
+  409  CONFLICT   CANNOT_DISABLE_ADMIN — Không thể disable tài khoản admin khác.
+
+----------------------------------------------------------------------
+
+2. Processing Job Management
+
+----------------------------------------------------------------------
+
+GET /api/v1/admin/jobs
+
+Mô tả: Lấy danh sách processing job, filter theo status. Dùng để theo dõi hàng chờ AI.
+
+Headers (required):
+  Authorization: Bearer <admin_token>
+
+Query params:
+  status — string (optional). Filter theo: pending | processing | completed | failed.
+  cursor — string (optional).
+  limit  — number (optional, default 20, max 100).
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "itemId": "uuid",
+      "userId": "uuid",
+      "userEmail": "user@example.com",
+      "sourceType": "text",
+      "status": "failed",
+      "retryCount": 2,
+      "errorMessage": "AI provider timeout after 10s",
+      "createdAt": "2026-06-14T10:00:00Z",
+      "updatedAt": "2026-06-14T10:01:30Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": null,
+    "hasMore": false,
+    "limit": 20
+  }
+}
+
+----------------------------------------------------------------------
+
+GET /api/v1/admin/jobs/:id
+
+Mô tả: Lấy chi tiết đầy đủ một processing job cụ thể, bao gồm stack trace lỗi nếu có.
+       Dùng để debug khi job thất bại.
+
+Headers (required):
+  Authorization: Bearer <admin_token>
+
+Path params:
+  id — uuid của processing job.
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "itemId": "uuid",
+    "userId": "uuid",
+    "userEmail": "user@example.com",
+    "sourceType": "image",
+    "status": "failed",
+    "retryCount": 3,
+    "errorMessage": "AI provider returned 503 Service Unavailable",
+    "errorStack": "Error: AI provider returned 503...\n  at AiProcessingService.processImage (...)\n  at ...",
+    "payload": {
+      "itemId": "uuid",
+      "sourceType": "image",
+      "fileUrl": "https://storage.blaie.app/..."
+    },
+    "createdAt": "2026-06-14T10:00:00Z",
+    "updatedAt": "2026-06-14T10:03:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  JOB_NOT_FOUND  — Job không tồn tại.
+
+----------------------------------------------------------------------
+
+POST /api/v1/admin/jobs/:id/retry
+
+Mô tả: Admin retry một processing job đang ở trạng thái "failed".
+       Đặt job về "pending" và đẩy lại vào queue. Hành động này được log trong audit log.
+
+Headers (required):
+  Authorization: Bearer <admin_token>
+
+Path params:
+  id — uuid của processing job.
+
+Request: Không có body.
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "itemId": "uuid",
+    "status": "pending",
+    "retryCount": 4,
+    "updatedAt": "2026-06-14T11:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  JOB_NOT_FOUND      — Job không tồn tại.
+  409  CONFLICT   RETRY_NOT_ALLOWED  — Job không ở trạng thái "failed", không thể retry.
+
+----------------------------------------------------------------------
+
+3. Analytics
+
+----------------------------------------------------------------------
+
+GET /api/v1/admin/analytics
+
+Mô tả: Lấy các chỉ số vận hành cơ bản của hệ thống.
+
+Headers (required):
+  Authorization: Bearer <admin_token>
+
+Response 200:
+{
+  "data": {
+    "totalUsers": 120,
+    "activeUsers": 115,
+    "disabledUsers": 5,
+    "totalCaptureItems": 3842,
+    "totalProcessedItems": 3790,
+    "totalFailedJobs": 52,
+    "failureRatePercent": 1.35,
+    "last24hCaptures": 148,
+    "categoryDistribution": {
+      "task": 1420,
+      "note": 980,
+      "calendar_event": 430,
+      "reminder": 510,
+      "information": 450
+    },
+    "processingStatusDistribution": {
+      "pending": 10,
+      "processing": 3,
+      "completed": 3777,
+      "failed": 52
+    }
+  }
+}

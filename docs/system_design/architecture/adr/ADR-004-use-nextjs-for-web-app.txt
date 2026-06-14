@@ -1,0 +1,65 @@
+﻿# ADR-004: Use Next.js for Web App
+
+## Status
+
+Proposed
+
+## Context
+
+Web app của Blaie dùng cho review, chỉnh sửa, search và quản lý item trên màn hình lớn.
+SEO không phải core requirement của MVP vì app chủ yếu là authenticated productivity app.
+Web cần UI giàu tương tác, routing rõ, API integration tốt và khả năng phát triển nhanh.
+
+## Decision
+
+Use Next.js with React for the web app.
+
+Web app sẽ ưu tiên app/dashboard experience:
+
+- Login/signup.
+- Capture text/image/audio.
+- Inbox.
+- Item detail/edit.
+- Tasks, Notes, Calendar, Reminders, Information views.
+- Admin console có thể dùng chung Next.js app hoặc tách route riêng.
+
+### Frontend Error Handling Strategy
+Theo quy chuẩn xử lý lỗi FE-BE, Web App sẽ tuân thủ:
+- **Chuẩn hóa lỗi (Normalize Error):** Component tuyệt đối không làm việc trực tiếp với `AxiosError`. Mọi response HTTP lỗi sẽ được Axios Interceptor chặn lại và chuyển đổi thành một custom object `AppError` chuẩn (gồm `code`, `status`, `message`, `fieldErrors`).
+- **Service Layer mỏng:** Các API service chỉ trả về data sạch (return data cuối cùng). Nếu có lỗi, Promise tự động reject ra `AppError`.
+- **Xử lý UI với TanStack Query:** Component bắt lỗi thông qua state của Query/Mutation (`isError`, `error`). Lỗi form/field (422) sẽ hiển thị sát input tương ứng, lỗi hệ thống chung báo qua message. Component không tự parse HTTP status.
+- **Lưới an toàn (Error Boundaries):** Tận dụng `error.tsx` và `global-error.tsx` của Next.js App Router để bắt các lỗi crash lúc render. Fallback UI sẽ hiện ra thay vì sập toàn trang, đồng thời tự động đẩy log chi tiết lên các công cụ monitoring (như Sentry).
+
+### Frontend Permission & Auth Strategy
+- **Bảo vệ Route (Middleware Guard):** Sử dụng Next.js Middleware (`middleware.ts`) để chặn các request chưa đăng nhập truy cập vào Dashboard/Inbox ngay từ cấp độ server.
+- **Hàm kiểm tra quyền (The `can()` utility):** Viết một custom hook hoặc tiện ích nhỏ (ví dụ: `can(user, action, resource)`) dùng chung cho toàn bộ Frontend. Component chỉ gọi `can()` để quyết định hiển thị UI (VD: `<button disabled={!can('delete', 'item')}>`), giúp logic phân quyền không bị rải rác.
+- **UI phân quyền (Role-based UI):** Kết hợp hàm `can()` ở Client Component để ẩn/hiện element, và tận dụng Server Components đọc session/role để chặn hẳn việc render HTML của các khu vực nhạy cảm (như Admin Console) ra phía browser.
+
+## Consequences
+
+Ưu điểm:
+
+- React ecosystem mạnh.
+- Routing, layout, build tooling và deployment thuận tiện.
+- Có thể dùng Server Components cho phần ít interactive và Client Components cho UI tương tác.
+- Phù hợp nếu sau này cần landing/docs/marketing page.
+
+Trade-off:
+
+- Cần hiểu server/client boundary.
+- Nếu đặt "use client" quá cao có thể tăng bundle và hydration cost.
+- Với dashboard authenticated, một Vite React app cũng có thể đủ đơn giản hơn.
+
+Mitigation:
+
+- Không đưa secret vào frontend env.
+- Giữ UI state đúng owner: local/form/server/URL state.
+- Dùng pagination/incremental loading cho list.
+- Dùng API contract ổn định với backend.
+
+## Alternatives Considered
+
+### Vite React SPA
+
+Đơn giản hơn cho dashboard thuần client-side, nhưng Next.js linh hoạt hơn nếu app phát
+triển thêm web surface.

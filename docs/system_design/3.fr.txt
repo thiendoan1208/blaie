@@ -1,0 +1,541 @@
+Functional Requirements
+
+Scope:
+
+Tài liệu này mô tả functional requirements cho MVP V1 dựa trên 3 actor chính:
+
+- User
+- AI System
+- Admin
+
+Mục tiêu của V1 là xây dựng một AI-powered universal inbox cho web và mobile: user có
+thể capture nhanh bằng text, image hoặc voice; app lưu input ngay; AI xử lý ở background;
+sau đó item được phân loại thành task, note, calendar event, reminder hoặc information.
+
+Requirement priority:
+
+- Must have: bắt buộc cho MVP V1.
+- Should have: nên có nếu không làm chậm core flow.
+- Future: để sau V1.
+
+1. Actor: User
+
+User là người dùng cuối của web app hoặc mobile app. User có thể capture thông tin, xem
+Inbox, review kết quả AI, chỉnh sửa item và sử dụng các view như Tasks, Notes, Calendar,
+Reminders, Information.
+
+1.1. Authentication
+
+FR-U-001 - Sign up
+
+- Priority: Must have
+- User must be able to create an account using email and password, or another supported
+  auth provider if the product chooses social login.
+- After successful sign up, user should be redirected to the main app.
+
+FR-U-002 - Login
+
+- Priority: Must have
+- User must be able to login to an existing account.
+- User must not be able to access private items from another account.
+
+FR-U-003 - Logout
+
+- Priority: Must have
+- User must be able to logout from web and mobile app.
+
+FR-U-004 - Guest mode / no sign-in mode
+
+- Priority: Future
+- User may be able to use a limited version of the app without signing in.
+- Guest mode should have limited storage, limited sync and limited AI processing.
+- This is not part of MVP V1.
+
+1.2. Capture
+
+FR-U-005 - Capture text
+
+- Priority: Must have
+- User must be able to submit a text input quickly from web and mobile.
+- The app must save the item immediately before AI classification is completed.
+- The app must show that the item is being processed.
+
+FR-U-006 - Capture image
+
+- Priority: Must have
+- User must be able to upload an image on web.
+- User must be able to upload or take a photo on mobile.
+- The app must save the image item immediately and process it in the background.
+
+FR-U-007 - Capture voice/audio
+
+- Priority: Must have
+- User must be able to record voice on mobile.
+- Web should support audio upload in V1; direct recording on web is optional.
+- The app must save the audio item immediately and process transcription/classification
+  in the background.
+
+FR-U-008 - Fast capture response
+
+- Priority: Must have
+- After user submits an input, the app must respond quickly and create an Inbox item
+  without waiting for AI to finish.
+- For normal text input, the capture action should return in under 2 seconds under normal
+  network/server conditions.
+
+FR-U-009 - Processing indication
+
+- Priority: Must have
+- User must see a clear processing state for captured items that AI has not finished
+  analyzing.
+- Processing state must be visible in Inbox and item detail.
+
+FR-U-010 - Background processing continuity
+
+- Priority: Must have
+- User must be able to close the app, leave the page or switch devices after capture.
+- The backend must continue processing the item.
+- When user returns, the processed result should be available if processing has completed.
+
+1.3. Inbox
+
+FR-U-011 - View Inbox
+
+- Priority: Must have
+- User must be able to view a list of captured items ordered by newest first.
+- Inbox must include both processed and unprocessed items.
+
+FR-U-012 - View processing status
+
+- Priority: Must have
+- Each Inbox item must show processing status:
+  - pending
+  - processing
+  - completed
+  - failed
+
+FR-U-013 - View review status
+
+- Priority: Must have
+- Each Inbox item must show whether it is unreviewed or reviewed.
+
+FR-U-014 - Confirm AI result
+
+- Priority: Must have
+- User must be able to confirm an AI-processed item.
+- Confirming an item should mark it as reviewed.
+
+FR-U-015 - Retry failed processing
+
+- Priority: Must have
+- If AI processing fails, user must be able to retry processing.
+- User should also be able to edit the item manually instead of retrying.
+
+FR-U-016 - Archive/delete item
+
+- Priority: Must have
+- User must be able to archive or delete an item from Inbox or item detail.
+- Archived/deleted items should no longer appear in normal active views.
+
+1.4. Item detail and editing
+
+FR-U-017 - View item detail
+
+- Priority: Must have
+- User must be able to open an item detail screen.
+- Detail screen must show original input, source type, AI result, processing status and
+  editable fields.
+
+FR-U-018 - Edit category
+
+- Priority: Must have
+- User must be able to change an item's category manually:
+  - task
+  - note
+  - calendar_event
+  - reminder
+  - information
+
+FR-U-019 - Edit title and content
+
+- Priority: Must have
+- User must be able to edit item title, summary and content/description.
+
+FR-U-020 - Edit metadata
+
+- Priority: Must have
+- User must be able to edit metadata relevant to the item's category:
+  - due date for task
+  - priority for task
+  - reminder time for reminder
+  - event start/end time for calendar event
+  - location for calendar event
+  - tags for all item types
+
+FR-U-021 - Save manual changes
+
+- Priority: Must have
+- User must be able to save edited item data.
+- Manual changes must override AI suggestions.
+
+1.5. Tasks
+
+FR-U-022 - View tasks
+
+- Priority: Must have
+- User must be able to view all active task items.
+- Tasks should be grouped or filterable by Today, Upcoming and No date.
+
+FR-U-023 - Complete task
+
+- Priority: Must have
+- User must be able to mark a task as done.
+
+FR-U-024 - Edit task due date and priority
+
+- Priority: Must have
+- User must be able to update due date and priority for a task.
+
+1.6. Notes
+
+FR-U-025 - View notes
+
+- Priority: Must have
+- User must be able to view all note items.
+
+FR-U-026 - Search notes
+
+- Priority: Must have
+- User must be able to search notes by title or content.
+
+FR-U-027 - Filter notes by tag
+
+- Priority: Should have
+- User should be able to filter notes by tag.
+
+1.7. Calendar events
+
+FR-U-028 - View calendar events
+
+- Priority: Must have
+- User must be able to view all calendar event items.
+- V1 may use a simple list/calendar view.
+
+FR-U-029 - View upcoming events
+
+- Priority: Must have
+- User must be able to see upcoming calendar events ordered by time.
+
+FR-U-030 - Edit event time
+
+- Priority: Must have
+- User must be able to edit event start time and end time.
+
+1.8. Reminders
+
+FR-U-031 - View reminders
+
+- Priority: Must have
+- User must be able to view all reminder items.
+
+FR-U-032 - Complete reminder
+
+- Priority: Must have
+- User must be able to mark a reminder as done.
+
+FR-U-033 - Receive reminder notification
+
+- Priority: Should have
+- Mobile app should notify user when a reminder time arrives if notification permission
+  is granted.
+- Web notification is optional for V1.
+
+1.9. Information items
+
+FR-U-034 - View information items
+
+- Priority: Must have
+- User must be able to view information items that are not clearly task, note, event or
+  reminder.
+
+FR-U-035 - Search information items
+
+- Priority: Must have
+- User must be able to search information items by title/content.
+
+1.10. Search and tags
+
+FR-U-036 - Global search
+
+- Priority: Must have
+- User must be able to search across active items by title, content and extracted text.
+
+FR-U-037 - Tag items
+
+- Priority: Should have
+- User should be able to add, remove and filter tags.
+
+1.11. Future user shortcuts
+
+FR-U-038 - Simple/manual capture switch
+
+- Priority: Future
+- User may be able to bypass AI for specific quick actions such as:
+  - Add note now
+  - Add reminder now
+- This feature is planned after V1.
+
+2. Actor: AI System
+
+AI System là actor nội bộ chịu trách nhiệm xử lý input trong background. Nó không phải
+người dùng cuối, nhưng là một phần chức năng chính của sản phẩm.
+
+2.1. Background processing
+
+FR-AI-001 - Receive processing job
+
+- Priority: Must have
+- AI System must receive a processing job after a capture item is created.
+- Processing job must include item id, user id, source type and input references.
+
+FR-AI-002 - Update processing status
+
+- Priority: Must have
+- AI System must update processing status during the lifecycle:
+  - pending
+  - processing
+  - completed
+  - failed
+
+FR-AI-003 - Continue processing after user exits
+
+- Priority: Must have
+- AI System must continue processing even if user closes the app or loses the client
+  session.
+
+FR-AI-004 - Handle processing failure
+
+- Priority: Must have
+- If processing fails, AI System must mark the item as failed and store an error reason
+  suitable for internal debugging.
+- User-facing error should be simple and non-technical.
+
+2.2. Text, image and voice understanding
+
+FR-AI-005 - Process text input
+
+- Priority: Must have
+- AI System must analyze text input directly.
+
+FR-AI-006 - Process image input
+
+- Priority: Must have
+- AI System must extract useful text or meaning from image input using OCR and/or image
+  understanding.
+
+FR-AI-007 - Process voice/audio input
+
+- Priority: Must have
+- AI System must transcribe voice/audio input before classification.
+- Transcription text must be stored with the item.
+
+2.3. Classification and extraction
+
+FR-AI-008 - Classify item
+
+- Priority: Must have
+- AI System must classify each processed item into one primary category:
+  - task
+  - note
+  - calendar_event
+  - reminder
+  - information
+
+FR-AI-009 - Generate title
+
+- Priority: Must have
+- AI System must generate a short, readable title for the item.
+
+FR-AI-010 - Generate summary
+
+- Priority: Must have
+- AI System must generate a concise summary when the input is long or noisy.
+
+FR-AI-011 - Extract task metadata
+
+- Priority: Must have
+- If the item is a task, AI System should extract due date and priority when present.
+
+FR-AI-012 - Extract reminder metadata
+
+- Priority: Must have
+- If the item is a reminder, AI System should extract reminder time when present.
+
+FR-AI-013 - Extract calendar metadata
+
+- Priority: Must have
+- If the item is a calendar event, AI System should extract start time, end time and
+  location when present.
+
+FR-AI-014 - Suggest tags
+
+- Priority: Should have
+- AI System should suggest simple tags based on item content.
+
+FR-AI-015 - Provide confidence and reason
+
+- Priority: Must have
+- AI System must store classification confidence.
+- AI System should store a short reason explaining why the category was chosen.
+
+2.4. Result persistence
+
+FR-AI-016 - Save AI result
+
+- Priority: Must have
+- AI System must save generated title, summary, category, metadata, tags and confidence
+  to the item record.
+
+FR-AI-017 - Preserve original input
+
+- Priority: Must have
+- AI System must not overwrite original text, original file reference or transcription.
+- Original input must remain available for user review.
+
+FR-AI-018 - Respect manual user changes
+
+- Priority: Must have
+- AI System must not overwrite user-edited fields after the user has manually reviewed
+  or edited an item, unless user explicitly requests reprocessing.
+
+3. Actor: Admin
+
+Admin là người vận hành hệ thống. Admin không được xem/sửa dữ liệu riêng tư của user tùy
+tiện; các quyền admin trong V1 nên phục vụ vận hành, debugging và kiểm soát hệ thống.
+
+3.1. User and system management
+
+FR-AD-001 - Admin login
+
+- Priority: Must have
+- Admin must be able to login to a protected admin area.
+
+FR-AD-002 - View user list
+
+- Priority: Should have
+- Admin should be able to view a list of users with basic account metadata:
+  - user id
+  - email
+  - created_at
+  - account status
+
+FR-AD-003 - Disable user account
+
+- Priority: Should have
+- Admin should be able to disable an abusive or problematic user account.
+
+3.2. Processing monitoring
+
+FR-AD-004 - View processing jobs
+
+- Priority: Must have
+- Admin must be able to view processing job status at a system level:
+  - pending jobs
+  - processing jobs
+  - completed jobs
+  - failed jobs
+
+FR-AD-005 - Inspect failed jobs
+
+- Priority: Must have
+- Admin must be able to inspect failed processing jobs for debugging.
+- Admin should see technical error messages, timestamps and retry count.
+
+FR-AD-006 - Retry failed jobs
+
+- Priority: Must have
+- Admin must be able to retry failed processing jobs.
+
+FR-AD-007 - Monitor AI usage
+
+- Priority: Should have
+- Admin should be able to monitor AI processing volume and rough usage metrics.
+
+3.3. Operational controls
+
+FR-AD-008 - Configure AI provider settings
+
+- Priority: Should have
+- Admin should be able to configure AI-related settings such as model/provider choice
+  through environment/configuration, not necessarily through UI in V1.
+
+FR-AD-009 - View basic analytics
+
+- Priority: Should have
+- Admin should be able to see basic product analytics:
+  - number of users
+  - number of capture items
+  - number of processed items
+  - processing failure rate
+  - category distribution
+
+FR-AD-010 - Audit admin actions
+
+- Priority: Must have
+- Admin actions that affect users, jobs or system behavior must be logged.
+
+4. Cross-actor requirements
+
+FR-X-001 - Data ownership
+
+- Priority: Must have
+- Each user can only access their own items.
+- AI and admin workflows must preserve user_id ownership.
+
+FR-X-002 - Async-first capture
+
+- Priority: Must have
+- Capture flow must not depend on synchronous AI completion.
+- AI processing must happen after item creation.
+
+FR-X-003 - Manual override
+
+- Priority: Must have
+- User-edited data must take priority over AI-generated suggestions.
+
+FR-X-004 - Processing transparency
+
+- Priority: Must have
+- User must always be able to understand whether an item is waiting, processing,
+  completed or failed.
+
+FR-X-005 - V1 category set
+
+- Priority: Must have
+- The system must support exactly these main item categories in V1:
+  - task
+  - note
+  - calendar_event
+  - reminder
+  - information
+
+5. Out of scope for V1 functional requirements
+
+- Team collaboration.
+- Public sharing.
+- Advanced project management.
+- Kanban board.
+- Notion-style database.
+- Obsidian-style backlinks/graph.
+- Auto-scheduling and time blocking.
+- Full Google Calendar/Apple Calendar two-way sync.
+- Email/Slack/Notion integrations.
+- Complex recurring tasks.
+- Habit tracking.
+- Offline-first sync.
+- End-to-end encryption.
+- Plugin system.
+- Simple/manual capture switch.
+- Guest/no sign-in mode.
+
+

@@ -1,0 +1,113 @@
+﻿C4 LEVEL 1 - SYSTEM CONTEXT DIAGRAM
+
+Purpose
+-------
+This diagram describes Blaie at the highest level:
+
+- Who uses the system.
+- What the system does.
+- Which external systems it depends on in MVP V1.
+
+At this level, we do not show database, queue, worker, object storage or internal modules.
+
+
+Diagram
+-------
+
++-----------------------------+                 +-----------------------------+
+| User                        |                 | Admin                       |
+| Student / worker /          |                 | System operator             |
+| freelancer                  |                 +-----------------------------+
++-----------------------------+                               |
+              |                                               |
+              | Capture text/image/voice                      |
+              | Review and edit processed items               |
+              | Use tasks, notes, reminders, calendar          |
+              v                                               |
++-----------------------------------------------------------------------------+
+| Blaie                                                                      |
+| AI-powered universal inbox                                                  |
+|                                                                             |
+| Captures text, image and voice input quickly.                               |
+| Saves input immediately.                                                    |
+| Processes AI classification in the background.                              |
+| Turns input into task, note, calendar event, reminder or information item.  |
++----------------------------------------------------------------------------+
+              |                                               ^
+              |                                               |
+              | Monitor users, jobs, failures                 |
+              | Retry failed processing jobs                  |
+              |                                               |
+              +-----------------------------------------------+
+
+              |
+              | Send input for AI processing
+              | Receive classification, summary and metadata
+              v
++-----------------------------+
+| AI Provider                 |
+| LLM                         |
+| OCR / image understanding   |
+| Speech-to-text              |
++-----------------------------+
+
+              |
+              | Send reminder notification
+              v
++-----------------------------+
+| Push Notification Provider  |
+| APNs / FCM                  |
++-----------------------------+
+
+              |
+              | Send account/system email if needed
+              v
++-----------------------------+
+| Email Provider              |
+| Transactional email         |
++-----------------------------+
+
+
+External actors
+---------------
+
+User
+- End user of the web app or mobile app.
+- Captures messy inputs quickly.
+- Reviews and edits AI results.
+- Uses Inbox, Tasks, Notes, Calendar, Reminders and Information views.
+
+Admin
+- Operates the system.
+- Monitors processing jobs and failures.
+- Retries failed jobs.
+- Reviews basic usage/system metrics.
+
+
+External systems
+----------------
+
+AI Provider
+- Text classification.
+- Metadata extraction.
+- Title and summary generation.
+- Speech-to-text for voice/audio.
+- OCR or image understanding for image input.
+
+Push Notification Provider
+- Sends mobile reminder notifications.
+- V1 prioritizes mobile notifications.
+- Web notification is nice-to-have.
+
+Email Provider
+- Sends account/system email if needed.
+- Examples: verify account, reset password, system email.
+
+
+Notes
+-----
+
+- Payment/subscription is MVP V3, not part of V1 system context.
+- Guest/no-signin mode is future scope, not part of V1.
+- Database, queue, worker and object storage are internal details and appear in the
+  Container Diagram.

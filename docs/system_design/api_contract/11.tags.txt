@@ -1,0 +1,127 @@
+API Contract — 11. Tags
+
+Base paths:
+  /api/v1/tags          — Quản lý tag
+  /api/v1/items/:id/tags — Gắn/gỡ tag khỏi item
+
+----------------------------------------------------------------------
+
+GET /api/v1/tags
+
+Mô tả: Lấy toàn bộ danh sách tag của user hiện tại.
+       Không phân trang vì số lượng tag thường nhỏ.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Response 200:
+{
+  "data": [
+    { "id": "uuid", "name": "work", "createdAt": "2026-06-01T00:00:00Z" },
+    { "id": "uuid", "name": "idea", "createdAt": "2026-06-02T00:00:00Z" },
+    { "id": "uuid", "name": "personal", "createdAt": "2026-06-03T00:00:00Z" }
+  ]
+}
+
+----------------------------------------------------------------------
+
+POST /api/v1/tags
+
+Mô tả: Tạo tag mới. Tên tag phải unique trong phạm vi user.
+
+Headers (required):
+  Authorization: Bearer <token>
+  Content-Type: application/json
+
+Request body:
+{
+  "name": "string (required, min 1, max 50)"
+}
+
+Response 201:
+{
+  "data": {
+    "id": "uuid",
+    "name": "meeting",
+    "createdAt": "2026-06-14T10:00:00Z"
+  }
+}
+
+Errors:
+  409  CONFLICT          TAG_ALREADY_EXISTS  — Tên tag đã tồn tại với user này.
+  422  VALIDATION_ERROR                      — Tên tag bỏ trống hoặc quá dài.
+                         errors: {
+                           "name": ["Tên tag không được để trống"]
+                         }
+
+----------------------------------------------------------------------
+
+DELETE /api/v1/tags/:id
+
+Mô tả: Xóa tag. Tag sẽ bị gỡ khỏi tất cả item đang dùng nó.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Path params:
+  id — uuid của tag.
+
+Response 204: No Content.
+
+Errors:
+  404  NOT_FOUND  TAG_NOT_FOUND  — Tag không tồn tại hoặc thuộc user khác.
+
+----------------------------------------------------------------------
+
+POST /api/v1/items/:id/tags
+
+Mô tả: Gắn một tag vào item.
+
+Headers (required):
+  Authorization: Bearer <token>
+  Content-Type: application/json
+
+Path params:
+  id — uuid của item.
+
+Request body:
+{
+  "tagId": "uuid (required)"
+}
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "title": "Họp team sprint review",
+    "tags": [
+      { "id": "uuid", "name": "work" },
+      { "id": "uuid", "name": "meeting" }
+    ],
+    "updatedAt": "2026-06-14T11:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  ITEM_NOT_FOUND  — Item không tồn tại.
+  404  NOT_FOUND  TAG_NOT_FOUND   — Tag không tồn tại hoặc thuộc user khác.
+  409  CONFLICT   TAG_ALREADY_ATTACHED  — Tag đã được gắn vào item này rồi.
+
+----------------------------------------------------------------------
+
+DELETE /api/v1/items/:id/tags/:tagId
+
+Mô tả: Gỡ một tag khỏi item.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Path params:
+  id    — uuid của item.
+  tagId — uuid của tag.
+
+Response 204: No Content.
+
+Errors:
+  404  NOT_FOUND  ITEM_NOT_FOUND  — Item không tồn tại.
+  404  NOT_FOUND  TAG_NOT_FOUND   — Tag không tồn tại hoặc không được gắn vào item này.

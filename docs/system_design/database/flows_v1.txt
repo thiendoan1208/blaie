@@ -1,0 +1,192 @@
+Database flows - V1
+
+Muc tieu
+--------
+Tai lieu nay mo ta cac luong chinh de hieu cach cac bang trong PostgreSQL
+phoi hop voi Redis va object storage.
+
+
+1. Luong 1 - Login
+------------------
+
+Input:
+- user gui email + password
+
+DB co dong:
+1. Query `users` theo email
+2. Verify password hash
+3. Tao `refresh_tokens` moi
+
+Output:
+- access token JWT
+- refresh token
+
+Ghi chu:
+- Access token khong luu DB.
+- Refresh token chi luu hash trong `refresh_tokens`.
+- Client dung access token cho moi request API binh thuong.
+
+
+2. Luong 2 - Capture text
+-------------------------
+
+Vi du:
+User nhap: "Mai 3h chieu hop voi Nam, nho nhac toi truoc 30 phut."
+
+Thu tu xu ly:
+1. Backend nhan request capture.
+2. Backend ghi ngay mot dong vao `capture_items`:
+   - `user_id`
+   - `source_type = text`
+   - `original_text`
+   - `processing_status = pending`
+   - `review_status = unreviewed`
+3. Backend tao mot dong `processing_jobs`.
+4. Backend push job id sang Redis Stream / queue.
+5. API tra response ngay, khong cho AI xong moi tra.
+
+Worker xu ly:
+1. Worker lay job tu Redis.
+2. Worker cap nhat `processing_jobs.status = processing`.
+3. Worker cap nhat `capture_items.processing_status = processing`.
+4. Worker goi AI provider.
+5. Worker classify ra category, title, summary, metadata.
+6. Worker cap nhat lai:
+   - `capture_items.category`
+   - `capture_items.title`
+   - `capture_items.summary`
+   - `capture_items.ai_confidence`
+   - `capture_items.processing_status = completed`
+7. Neu la reminder thi ghi `reminder_metadata`.
+8. Worker set `processing_jobs.status = completed`.
+
+UI doc:
+- Inbox doc `capture_items`
+- Item detail co the join them `reminder_metadata`
+
+
+3. Luong 3 - Capture image / audio
+----------------------------------
+
+Vi du:
+User upload anh hoa don hoac ghi am mot doan noi dung.
+
+Thu tu xu ly:
+1. Backend upload file len object storage private.
+2. Backend ghi file metadata vao `file_assets`:
+   - `user_id`
+   - `capture_item_id`
+   - `storage_key`
+   - `content_type`
+   - `size`
+   - `status`
+3. Backend tao `capture_items` voi `source_type = image` hoac `voice`.
+4. Backend tao `processing_jobs`.
+5. Backend push job sang Redis.
+
+Worker xu ly:
+1. Worker doc `file_assets` de lay `storage_key`.
+2. Worker doc file tu object storage.
+3. Neu la voice thi transcribe.
+4. Neu la image thi OCR / image understanding.
+5. Worker luu `transcription_text` hoac extracted text vao `capture_items`.
+6. Worker classifiy va extract metadata.
+7. Worker cap nhat `capture_items.processing_status = completed`.
+
+Ghi chu:
+- Binary khong nam trong PostgreSQL.
+- File co the duoc giu lai hoac cleanup tuy retention rule.
+- Text trich xuat va AI output van nam trong DB de user review lai.
+
+
+4. Luong 4 - Inbox va review
+---------------------------
+
+User mo Inbox:
+1. Backend query `capture_items` cua user theo newest first.
+2. UI hien thi:
+   - processing status
+   - review status
+   - category du doan
+   - title/summary
+
+User confirm:
+1. User bam confirm.
+2. Backend cap nhat `capture_items.review_status = reviewed`.
+
+User sua tay:
+1. User doi category / title / content / metadata.
+2. Backend cap nhat `capture_items`.
+3. Backend cap nhat bang metadata tuong ung neu can:
+   - `task_metadata`
+   - `reminder_metadata`
+   - `calendar_event_metadata`
+4. Manual changes phai thang AI suggestion.
+
+
+5. Luong 5 - Refresh access token
+---------------------------------
+
+Khi access token het han:
+1. Client goi `/auth/refresh`.
+2. Client gui refresh token.
+3. Backend hash refresh token nhan duoc.
+4. Backend tim trong `refresh_tokens`.
+5. Neu hop le va chua revoke:
+   - cap access token moi
+   - co the rotate refresh token
+   - revoke refresh token cu
+
+Ghi chu:
+- Access token van khong can query DB.
+- DB chi can refresh token state.
+
+
+6. Luong 6 - Logout
+-------------------
+
+1. Client goi `/auth/logout`.
+2. Backend danh dau dong refresh token hien tai la revoked.
+3. Access token cu van song toi het han, nhung khong the refresh tiep.
+
+
+7. Luong 7 - Reminder notification
+----------------------------------
+
+1. Worker hoac notification service doc `reminder_metadata`.
+2. Khi toi gio nhac, service tao notification.
+3. Neu can retry, co the ghi them tracking vao `notification_deliveries`.
+
+Ghi chu:
+- Redis co the giu job phat notify ngan han.
+- PostgreSQL van giu reminder that va trang thai can review.
+
+
+8. Luong 8 - Admin retry failed job
+-----------------------------------
+
+1. Admin mo trang job monitor.
+2. Backend query `processing_jobs` voi `status = failed`.
+3. Admin bam retry.
+4. Backend tao lai job moi hoac day lai job cu sang Redis.
+5. Backend ghi audit vao `admin_audit_logs`.
+
+
+9. Luong 9 - Search va tag
+--------------------------
+
+1. User tao hoac chon tag.
+2. Backend ghi vao `tags` neu chua co.
+3. Backend tao dong trong `item_tags`.
+4. Search / filter doc tu `capture_items`, `tags`, `item_tags`.
+
+
+10. Nguyen tac ket luan
+-----------------------
+
+- PostgreSQL giu du lieu that.
+- Redis chi giu queue/job tam thoi.
+- Object storage giu file bytes.
+- Access token stateless.
+- Refresh token stateful trong PostgreSQL.
+- Item trung tam van la `capture_items`.

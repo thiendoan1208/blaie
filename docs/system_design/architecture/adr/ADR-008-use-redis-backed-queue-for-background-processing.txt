@@ -1,0 +1,58 @@
+﻿# ADR-008: Use Redis-backed Queue for Background Processing
+
+## Status
+
+Proposed
+
+## Context
+
+Blaie cần xử lý AI bất đồng bộ sau khi user capture item. Capture API phải lưu item ngay
+và không bắt user chờ AI. Background jobs cần retry, failure status và monitoring cơ bản.
+
+V1 chưa cần event streaming phức tạp như Kafka. Workload chính là task queue:
+
+- process text item
+- process image item
+- process audio/voice item
+- retry failed processing
+- possibly send reminder notification
+
+## Decision
+
+Use Redis Streams Consumer Group with Spring Data Redis for Background Processing
+
+## Consequences
+
+Ưu điểm:
+
+- Nhẹ hơn Kafka cho MVP.
+- Dễ chạy local bằng Docker Compose.
+- Phù hợp job queue/retry đơn giản.
+- Redis cũng có thể dùng sau này cho rate limit/cache nếu cần.
+
+Trade-off:
+
+- Redis queue không phải event streaming platform đầy đủ.
+- Cần tự thiết kế retry, failed job/DLQ behavior tùy library.
+- Nếu queue semantics không cẩn thận có thể duplicate job hoặc mất job.
+
+Mitigation:
+
+- Job handler phải idempotent.
+- Processing job có status trong PostgreSQL.
+- Retry không được tạo duplicate item.
+- Monitor queue length, failed jobs và oldest job age.
+
+## Alternatives Considered
+
+### RabbitMQ
+
+Rất hợp task queue, đáng cân nhắc nếu Redis queue implementation không đủ tốt.
+
+### Kafka
+
+Mạnh cho event streaming, nhưng quá nặng cho MVP.
+
+### Database polling only
+
+Đơn giản hơn, nhưng có thể kém hiệu quả và khó scale khi job nhiều hơn.

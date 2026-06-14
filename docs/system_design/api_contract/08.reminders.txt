@@ -1,0 +1,115 @@
+API Contract — 08. Reminders
+
+Base path: /api/v1/reminders
+
+Hiển thị các item có category = "reminder". Chỉ trả về item chưa bị archive.
+
+----------------------------------------------------------------------
+
+GET /api/v1/reminders
+
+Mô tả: Lấy danh sách reminder.
+       Sắp xếp theo reminderTime tăng dần (nhắc nhở sắp tới trước).
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Query params:
+  filter — string (optional). Nhóm theo: upcoming | past.
+             upcoming : reminderTime >= thời điểm hiện tại và chưa hoàn thành.
+             past     : reminderTime < thời điểm hiện tại hoặc đã hoàn thành.
+             (nếu bỏ qua: trả về tất cả reminder chưa hoàn thành)
+  cursor — string (optional).
+  limit  — number (optional, default 20, max 50).
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "Uống thuốc",
+      "summary": "Uống thuốc cảm lúc 8 giờ tối",
+      "processingStatus": "completed",
+      "reviewStatus": "reviewed",
+      "tags": [],
+      "reminderMetadata": {
+        "reminderTime": "2026-06-14T13:00:00Z",
+        "completedAt": null
+      },
+      "createdAt": "2026-06-14T10:00:00Z",
+      "updatedAt": "2026-06-14T10:00:00Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": null,
+    "hasMore": false,
+    "limit": 20
+  }
+}
+
+----------------------------------------------------------------------
+
+PATCH /api/v1/reminders/:id
+
+Mô tả: Cập nhật thời gian nhắc nhở.
+
+Headers (required):
+  Authorization: Bearer <token>
+  Content-Type: application/json
+
+Path params:
+  id — uuid của item (phải là reminder).
+
+Request body:
+{
+  "reminderTime": "ISO8601 datetime (required)"
+}
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "title": "Uống thuốc",
+    "reminderMetadata": {
+      "reminderTime": "2026-06-14T14:00:00Z",
+      "completedAt": null
+    },
+    "updatedAt": "2026-06-14T11:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND        ITEM_NOT_FOUND          — Reminder không tồn tại.
+  409  CONFLICT         REMINDER_ALREADY_DONE   — Reminder đã hoàn thành, không thể sửa thời gian.
+  422  VALIDATION_ERROR                         — reminderTime sai format hoặc bỏ trống.
+
+----------------------------------------------------------------------
+
+POST /api/v1/reminders/:id/complete
+
+Mô tả: Đánh dấu reminder là đã xong.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Path params:
+  id — uuid của item (phải là reminder).
+
+Request: Không có body.
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "title": "Uống thuốc",
+    "reminderMetadata": {
+      "reminderTime": "2026-06-14T13:00:00Z",
+      "completedAt": "2026-06-14T13:02:00Z"
+    },
+    "updatedAt": "2026-06-14T13:02:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  ITEM_NOT_FOUND          — Reminder không tồn tại.
+  409  CONFLICT   REMINDER_ALREADY_DONE   — Reminder đã được đánh dấu hoàn thành rồi.

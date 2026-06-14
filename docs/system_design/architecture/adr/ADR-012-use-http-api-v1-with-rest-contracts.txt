@@ -1,0 +1,53 @@
+﻿# ADR-012: Use HTTP API v1 with REST Contracts
+
+## Status
+
+Accepted
+
+## Context
+
+Blaie có nhiều client: web app, mobile app và admin console. API contract cần ổn định để
+client không bị vỡ khi backend thay đổi. MVP chưa cần GraphQL hoặc API Gateway phức tạp.
+
+## Decision
+
+Use REST-style HTTP API with URL path versioning: /api/v1.
+
+API design principles:
+
+- Resource-oriented endpoints where possible.
+- Action endpoints only for clear business actions.
+- Stable request/response DTOs.
+- Consistent error response with code, message, traceId.
+- Backend enforces auth, authorization and object ownership.
+
+## Consequences
+
+Ưu điểm:
+
+- Dễ hiểu, dễ test, dễ document.
+- Phù hợp Spring Boot.
+- Web/mobile dùng chung contract.
+- URL versioning dễ nhìn và dễ route.
+
+Trade-off:
+
+- Nếu response cần rất linh hoạt, REST có thể overfetch/underfetch.
+- Versioning cần duy trì nếu có breaking changes.
+
+Mitigation:
+
+- Không đổi/xóa field response tùy tiện.
+- Thêm field optional là preferred non-breaking change.
+- Breaking change tạo /api/v2.
+- Document API bằng OpenAPI/Swagger sau khi endpoint ổn định.
+
+## Alternatives Considered
+
+### GraphQL
+
+Không chọn cho V1 vì tăng complexity và chưa cần.
+
+### Header-based versioning
+
+Chuyên nghiệp hơn cho API platform lớn, nhưng path versioning đơn giản hơn cho MVP.

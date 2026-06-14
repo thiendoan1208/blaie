@@ -1,0 +1,119 @@
+API Contract — 05. Tasks
+
+Base path: /api/v1/tasks
+
+Hiển thị các item có category = "task". Chỉ trả về item chưa bị archive.
+
+----------------------------------------------------------------------
+
+GET /api/v1/tasks
+
+Mô tả: Lấy danh sách task, có thể filter theo nhóm thời gian.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Query params:
+  filter   — string (optional). Nhóm theo: today | upcoming | no_date.
+               today    : dueDate là hôm nay (theo timezone của server, dùng UTC làm chuẩn).
+               upcoming : dueDate từ ngày mai trở đi.
+               no_date  : không có dueDate.
+               (nếu bỏ qua: trả về tất cả task chưa hoàn thành)
+  cursor   — string (optional).
+  limit    — number (optional, default 20, max 50).
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "Chuẩn bị báo cáo Q2",
+      "summary": "Tổng hợp số liệu quý 2 và làm slide",
+      "processingStatus": "completed",
+      "reviewStatus": "reviewed",
+      "tags": [{ "id": "uuid", "name": "work" }],
+      "taskMetadata": {
+        "dueDate": "2026-06-15T09:00:00Z",
+        "priority": "high",
+        "completedAt": null
+      },
+      "createdAt": "2026-06-14T10:00:00Z",
+      "updatedAt": "2026-06-14T10:05:00Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": null,
+    "hasMore": false,
+    "limit": 20
+  }
+}
+
+----------------------------------------------------------------------
+
+PATCH /api/v1/tasks/:id
+
+Mô tả: Cập nhật due date hoặc priority của task.
+
+Headers (required):
+  Authorization: Bearer <token>
+  Content-Type: application/json
+
+Path params:
+  id — uuid của item (phải là task).
+
+Request body (tất cả optional, chỉ gửi field cần thay đổi):
+{
+  "dueDate": "ISO8601 datetime | null",
+  "priority": "low | medium | high | null"
+}
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "title": "Chuẩn bị báo cáo Q2",
+    "taskMetadata": {
+      "dueDate": "2026-06-16T09:00:00Z",
+      "priority": "medium",
+      "completedAt": null
+    },
+    "updatedAt": "2026-06-14T11:00:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND        ITEM_NOT_FOUND        — Task không tồn tại.
+  409  CONFLICT         TASK_ALREADY_DONE     — Task đã hoàn thành, không thể sửa.
+  422  VALIDATION_ERROR                       — priority không hợp lệ.
+
+----------------------------------------------------------------------
+
+POST /api/v1/tasks/:id/complete
+
+Mô tả: Đánh dấu task là đã hoàn thành.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Path params:
+  id — uuid của item (phải là task).
+
+Request: Không có body.
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "title": "Chuẩn bị báo cáo Q2",
+    "taskMetadata": {
+      "dueDate": "2026-06-15T09:00:00Z",
+      "priority": "high",
+      "completedAt": "2026-06-14T14:30:00Z"
+    },
+    "updatedAt": "2026-06-14T14:30:00Z"
+  }
+}
+
+Errors:
+  404  NOT_FOUND  ITEM_NOT_FOUND      — Task không tồn tại.
+  409  CONFLICT   TASK_ALREADY_DONE   — Task đã được đánh dấu hoàn thành rồi.

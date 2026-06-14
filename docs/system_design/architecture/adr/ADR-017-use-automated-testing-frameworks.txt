@@ -1,0 +1,56 @@
+﻿# ADR-017: Use automated testing frameworks
+
+## Status
+
+Accepted
+
+## Context
+
+Dự án Blaie có nhiều thành phần phân tán: Backend (Spring Boot), Web App (Next.js), Mobile App (React Native), Database (PostgreSQL) và Background Queue (Redis). Việc có một chiến lược kiểm thử tự động (automated testing) rõ ràng và thống nhất là bắt buộc để duy trì chất lượng và đẩy nhanh tốc độ phát triển, đặc biệt đối với các luồng AI processing bất đồng bộ.
+
+Cần phải thống nhất các công cụ kiểm thử cho toàn bộ dự án từ đầu.
+
+## Decision
+
+Sử dụng bộ công nghệ kiểm thử sau đây cho từng thành phần:
+
+1. Backend (Spring Boot):
+- Unit Testing: JUnit 5 và Mockito.
+- Integration Testing: Spring Boot Test.
+- Database/Queue Integration Testing: Testcontainers (dùng Docker để test với PostgreSQL và Redis thật thay vì dùng H2 database in-memory).
+
+2. Web App (Next.js):
+- Unit/Component Testing: Vitest và React Testing Library (RTL).
+- E2E Testing: Playwright.
+
+3. Mobile App (React Native/Expo):
+- Unit/Component Testing: Jest và React Native Testing Library.
+- E2E Testing: Detox.
+
+## Consequences
+
+Ưu điểm:
+
+- Các framework được chọn đều là tiêu chuẩn ngành (industry standards) cho từng hệ sinh thái tương ứng.
+- Testcontainers giúp đảm bảo backend hoạt động đúng với database và queue thực tế trên production, hạn chế các lỗi bất ngờ so với việc mock hoàn toàn.
+- Vitest/Playwright mang lại tốc độ chạy test cực nhanh cho Frontend.
+
+Trade-off:
+
+- Cần thiết lập môi trường Docker chạy ngầm ở cả máy local và CI pipeline để Testcontainers hoạt động được.
+- Đội ngũ cần làm quen với nhiều framework testing khác nhau (JUnit cho backend, Vitest cho web, Jest cho mobile).
+
+Mitigation:
+
+- Viết sẵn các base test class cho Backend tích hợp Testcontainers để developers có thể dùng lại dễ dàng.
+- Tách luồng CI rõ ràng: Backend test, Web test, Mobile test chạy độc lập.
+
+## Alternatives Considered
+
+### H2 Database cho Backend Integration Test
+
+Nhanh và dễ setup hơn Testcontainers, nhưng H2 không hỗ trợ các tính năng đặc thù của PostgreSQL (như JSONB) dẫn đến sai lệch hành vi giữa môi trường test và production. Testcontainers an toàn hơn.
+
+### Cypress cho Web E2E Test
+
+Cypress phổ biến, nhưng Playwright hỗ trợ test đa tab, xử lý iframe tốt hơn và tốc độ chạy song song vượt trội hơn hẳn. Phù hợp hơn với các luồng real-time AI processing của Blaie.

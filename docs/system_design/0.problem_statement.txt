@@ -1,0 +1,17 @@
+1. Problem
+
+Người dùng thường ghi nhận thông tin từ nhiều nguồn khác nhau như ghi chú, hình ảnh,
+giọng nói, công việc cần làm và lịch hẹn. Các dữ liệu này bị rời rạc, khó quản lý và
+dễ bị bỏ sót nếu người dùng phải tự phân loại, tạo task hoặc đặt reminder thủ công.
+
+2. Target users
+
+Sản phẩm hướng đến sinh viên, người đi làm, freelancer và những người thường xuyên cần
+ghi chú nhanh trong quá trình học tập, làm việc hoặc sinh hoạt hằng ngày.
+
+3. Core value
+
+Cho phép người dùng nhập nhanh bằng văn bản, hình ảnh hoặc giọng nói. Sau đó, AI tự
+động phân tích và phân loại thông tin thành các nhóm phù hợp như task, note, calendar
+event, reminder hoặc general information.
+

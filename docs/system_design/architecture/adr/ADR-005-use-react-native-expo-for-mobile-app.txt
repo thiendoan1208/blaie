@@ -1,0 +1,56 @@
+# ADR-005: Use React Native Expo for Mobile App
+
+## Status
+
+Proposed
+
+## Context
+
+Mobile app là phần quan trọng của MVP vì capture nhanh xảy ra nhiều trong đời sống hằng
+ngày: text, camera/image và voice recording. App cần chạy trên iOS và Android, ưu tiên tốc
+độ phát triển MVP hơn native performance cực cao.
+
+## Decision
+
+Use React Native with Expo for the mobile app.
+
+Mobile app sẽ tập trung vào:
+
+- Quick capture text.
+- Camera/image upload.
+- Voice recording.
+- Inbox.
+- Basic item views.
+- Item detail/edit.
+- Reminder notification nếu khả thi.
+
+## Consequences
+
+Ưu điểm:
+
+- Một codebase cho iOS và Android.
+- Expo giúp nhanh hơn cho camera, microphone, notification và build flow.
+- React mental model gần với web app.
+- Phù hợp MVP và team nhỏ.
+
+Trade-off:
+
+- Một số native capability nâng cao có thể cần custom native module.
+- Push notification/platform permission vẫn cần xử lý kỹ.
+- Hiệu năng cần chú ý nếu list lớn hoặc audio/image xử lý nặng trên client.
+
+Mitigation:
+
+- Giữ mobile app capture-first, không nhồi quá nhiều view phức tạp.
+- Xử lý AI/OCR/transcription ở backend/worker, không làm nặng trên mobile.
+- Dùng permission handling rõ ràng cho camera, microphone, notification.
+
+## Alternatives Considered
+
+### Native iOS + Native Android
+
+Hiệu năng và platform integration tốt nhất, nhưng tốn effort gấp đôi cho MVP.
+
+### Flutter
+
+Tốt cho cross-platform, nhưng React Native/Expo hợp hơn nếu web dùng React.

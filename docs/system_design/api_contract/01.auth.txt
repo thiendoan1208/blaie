@@ -1,0 +1,106 @@
+API Contract — 01. Auth
+
+Base path: /api/v1/auth
+
+----------------------------------------------------------------------
+
+POST /api/v1/auth/register
+
+Mô tả: Đăng ký tài khoản mới bằng email và password.
+
+Request body:
+{
+  "name": "string (required, min 1, max 100)",
+  "email": "string (required, valid email format)",
+  "password": "string (required, min 8 characters)"
+}
+
+Response 201:
+{
+  "data": {
+    "id": "uuid",
+    "name": "Nguyen Van A",
+    "email": "user@example.com",
+    "createdAt": "2026-06-14T10:00:00Z"
+  }
+}
+
+Ghi chú:
+- Server set httpOnly cookie chứa JWT sau khi đăng ký thành công.
+- Client đọc token từ cookie và gửi kèm header Authorization: Bearer <token> cho các request sau.
+
+Errors:
+  409  CONFLICT          EMAIL_ALREADY_EXISTS  — Email đã được dùng để đăng ký.
+  422  VALIDATION_ERROR                        — Name/email/password không hợp lệ.
+                         errors: {
+                           "email": ["Email không hợp lệ"],
+                           "password": ["Password phải có ít nhất 8 ký tự"]
+                         }
+
+----------------------------------------------------------------------
+
+POST /api/v1/auth/login
+
+Mô tả: Đăng nhập bằng email và password, nhận JWT.
+
+Request body:
+{
+  "email": "string (required)",
+  "password": "string (required)"
+}
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "name": "Nguyen Van A",
+    "email": "user@example.com",
+    "createdAt": "2026-06-14T10:00:00Z"
+  }
+}
+
+Ghi chú:
+- Server set httpOnly cookie chứa JWT.
+- Client lưu và gửi token qua Authorization: Bearer <token> header.
+
+Errors:
+  401  UNAUTHORIZED      INVALID_CREDENTIALS   — Sai email hoặc password.
+  422  VALIDATION_ERROR                        — Email/password bỏ trống.
+
+----------------------------------------------------------------------
+
+POST /api/v1/auth/logout
+
+Mô tả: Đăng xuất. Server clear httpOnly cookie.
+
+Request: Không có body.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Response 204: No Content.
+
+Errors:
+  401  UNAUTHORIZED  — Token không hợp lệ hoặc đã hết hạn.
+
+----------------------------------------------------------------------
+
+GET /api/v1/auth/me
+
+Mô tả: Lấy thông tin user đang đăng nhập.
+
+Headers (required):
+  Authorization: Bearer <token>
+
+Response 200:
+{
+  "data": {
+    "id": "uuid",
+    "name": "Nguyen Van A",
+    "email": "user@example.com",
+    "createdAt": "2026-06-14T10:00:00Z"
+  }
+}
+
+Errors:
+  401  UNAUTHORIZED  — Token không hợp lệ hoặc thiếu.

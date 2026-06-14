@@ -1,0 +1,55 @@
+# ADR-007: Use Spring Data JPA and Flyway for Persistence and Migrations
+
+## Status
+
+Proposed
+
+## Context
+
+Backend Spring Boot cần persistence layer để làm việc với PostgreSQL và cần quản lý schema
+change bằng migration file thay vì sửa DB thủ công. Hệ thống cần dễ phát triển trong MVP
+nhưng vẫn có migration history rõ ràng.
+
+## Decision
+
+Use Spring Data JPA for persistence and Flyway for database migrations.
+
+Spring Data JPA dùng cho repository/data access. Flyway dùng để version schema:
+
+- create tables
+- add constraints
+- add indexes
+- evolve schema safely
+- seed reference data nếu cần
+
+## Consequences
+
+Ưu điểm:
+
+- Tích hợp rất tốt với Spring Boot.
+- Tốc độ phát triển nhanh.
+- Flyway migration rõ ràng, dễ chạy local/test/prod.
+- JPA phù hợp CRUD và quan hệ dữ liệu phổ biến.
+
+Trade-off:
+
+- JPA có nguy cơ N+1 query nếu dùng không cẩn thận.
+- Entity model có thể bị lẫn với domain model nếu không giữ boundary.
+- Migration production cần cẩn thận, rollback DB không đơn giản.
+
+Mitigation:
+
+- Không trả JPA entity trực tiếp qua API.
+- Dùng DTO/mapper cho response.
+- Review query shape cho endpoint list/search.
+- Dùng Flyway migration theo hướng expand/contract khi thay đổi nguy hiểm.
+
+## Alternatives Considered
+
+### JDBC / jOOQ
+
+Kiểm soát SQL tốt hơn, nhưng verbose hơn cho MVP.
+
+### Hibernate auto-ddl
+
+Không chọn cho production vì thiếu kiểm soát migration.

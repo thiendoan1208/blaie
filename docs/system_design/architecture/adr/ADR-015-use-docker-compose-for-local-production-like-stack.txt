@@ -1,0 +1,67 @@
+﻿# ADR-015: Use Docker Compose for Local Production-like Stack
+
+## Status
+
+Accepted
+
+## Context
+
+Blaie có nhiều runtime/container:
+
+- web app
+- mobile app dev client/simulator
+- backend API
+- AI processing worker
+- PostgreSQL
+- Redis-backed queue
+- object storage local/dev if needed
+
+Local development cần setup lặp lại được và gần production hơn so với chạy mọi thứ thủ
+công trên máy.
+
+## Decision
+
+Use Docker Compose for local production-like stack.
+
+Docker Compose sẽ dùng để chạy ít nhất:
+
+- backend API
+- worker
+- PostgreSQL
+- Redis
+- optional local object storage such as MinIO
+- optional reverse proxy later
+
+Web/mobile có thể chạy ngoài Docker trong giai đoạn dev nếu thuận tiện hơn.
+
+## Consequences
+
+Ưu điểm:
+
+- Dev environment repeatable hơn.
+- Dễ bật PostgreSQL/Redis/MinIO bằng service name.
+- Chuẩn bị tốt cho CI/integration test.
+- Dễ document setup.
+
+Trade-off:
+
+- Docker setup cần maintain.
+- Windows/dev machine có thể gặp vấn đề performance hoặc port conflict.
+- Frontend hot reload trong container có thể kém mượt hơn chạy native.
+
+Mitigation:
+
+- Commit docker-compose.yml và .env.example.
+- Giữ command setup rõ ràng.
+- Chỉ containerize service cần thiết ban đầu.
+- Web/mobile có thể chạy native khi dev UI.
+
+## Alternatives Considered
+
+### Manual local setup
+
+Dễ lúc đầu nhưng khó repeat và dễ lệch môi trường.
+
+### Kubernetes local
+
+Quá nặng cho MVP.
