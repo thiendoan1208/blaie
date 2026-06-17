@@ -1,7 +1,7 @@
-import type { ApiErrorResponse, ApiResponse, PageMeta } from "@/shared/api/api-response";
+import type { ApiErrorResponse, ApiResponse, CursorPageMeta } from "@/shared/api/api-response";
 
-export type { ApiErrorResponse, ApiResponse, PageMeta };
+export type { ApiErrorResponse, ApiResponse, CursorPageMeta };
 
-export type ApiPageResponse<T> = ApiResponse<T> & {
-  meta: PageMeta;
+export type ApiCursorResponse<T> = ApiResponse<T> & {
+  meta: CursorPageMeta;
 };

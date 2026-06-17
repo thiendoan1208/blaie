@@ -1,4 +1,4 @@
-package com.blaie.blaie_be.authz;
+package com.blaie.blaie_be.authz.domain;
 
 public enum PermissionAction {
     CAPTURE_CREATE("capture.create"),

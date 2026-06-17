@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.core.security;
 
-import com.blaie.blaie_be.authz.PermissionAction;
+import com.blaie.blaie_be.authz.domain.PermissionAction;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Objects;

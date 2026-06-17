@@ -7,7 +7,7 @@ public enum ErrorCode {
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Unauthorized"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "Forbidden"),
     NOT_FOUND(HttpStatus.NOT_FOUND, "Not found"),
-    VALIDATION_ERROR(HttpStatus.UNPROCESSABLE_ENTITY, "Validation failed"),
+    VALIDATION_ERROR(HttpStatus.UNPROCESSABLE_CONTENT, "Validation failed"),
     CONFLICT(HttpStatus.CONFLICT, "Conflict"),
     SESSION_EXPIRED(HttpStatus.UNAUTHORIZED, "Session expired"),
     SESSION_REVOKED(HttpStatus.UNAUTHORIZED, "Session revoked"),

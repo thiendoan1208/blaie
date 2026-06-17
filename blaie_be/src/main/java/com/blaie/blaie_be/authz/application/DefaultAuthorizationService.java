@@ -1,5 +1,7 @@
-package com.blaie.blaie_be.authz;
+package com.blaie.blaie_be.authz.application;
 
+import com.blaie.blaie_be.authz.domain.OwnedResource;
+import com.blaie.blaie_be.authz.domain.PermissionAction;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.security.CurrentUser;

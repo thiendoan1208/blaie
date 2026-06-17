@@ -53,7 +53,7 @@ public class GlobalExceptionHandler {
             case NOT_FOUND -> ErrorCode.NOT_FOUND;
             case CONFLICT -> ErrorCode.CONFLICT;
             case BAD_REQUEST -> ErrorCode.BAD_REQUEST;
-            case UNPROCESSABLE_ENTITY -> ErrorCode.VALIDATION_ERROR;
+            case UNPROCESSABLE_CONTENT -> ErrorCode.VALIDATION_ERROR;
             case SERVICE_UNAVAILABLE -> ErrorCode.SERVICE_UNAVAILABLE;
             default -> ErrorCode.INTERNAL_SERVER_ERROR;
         };

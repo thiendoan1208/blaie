@@ -1,14 +1,13 @@
-export type PageMeta = {
-  page: number;
-  pageSize: number;
-  totalItems: number;
-  totalPages: number;
+export type CursorPageMeta = {
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
 };
 
 export type ApiResponse<T> = {
   data: T;
   message?: string;
-  meta?: PageMeta;
+  meta?: CursorPageMeta;
 };
 
 export type ApiErrorResponse = {
