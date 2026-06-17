@@ -6,44 +6,165 @@ Tai lieu nay mo ta cac luong chinh de hieu cach cac bang trong PostgreSQL
 phoi hop voi Redis va object storage.
 
 
-1. Luong 1 - Login
-------------------
+1. Luong 1 - Web local login
+----------------------------
 
 Input:
-- user gui email + password
+- user gui identifier + password
+- identifier co the la username hoac email
 
 DB co dong:
-1. Query `users` theo email
-2. Verify password hash
-3. Tao `refresh_tokens` moi
+1. Normalize identifier.
+2. Query `auth_identities` provider = local theo username_normalized hoac email_normalized.
+3. Join/lay `users`.
+4. Kiem tra `users.status = active`.
+5. Verify password_hash.
+6. Tao `refresh_tokens` moi voi:
+   - client_type = web
+   - token_transport = cookie
+7. Tao access token JWT ngan han.
 
 Output:
-- access token JWT
-- refresh token
+- response body tra current user
+- Set-Cookie access token HttpOnly
+- Set-Cookie refresh token HttpOnly
 
 Ghi chu:
+- Web JavaScript khong doc token.
+- Web request sau do gui cookie bang credentials.
 - Access token khong luu DB.
 - Refresh token chi luu hash trong `refresh_tokens`.
-- Client dung access token cho moi request API binh thuong.
 
 
-2. Luong 2 - Capture text
+2. Luong 2 - Mobile local login
+-------------------------------
+
+Input:
+- mobile gui identifier + password
+
+DB co dong:
+1. Query `auth_identities` provider = local.
+2. Join/lay `users`.
+3. Kiem tra account active.
+4. Verify password_hash.
+5. Tao `refresh_tokens` moi voi:
+   - client_type = mobile
+   - token_transport = bearer
+   - device_id neu client gui
+6. Tao access token JWT ngan han.
+
+Output:
+- response body tra current user
+- accessToken
+- refreshToken
+
+Ghi chu:
+- Mobile luu token bang secure storage.
+- Mobile gui `Authorization: Bearer <accessToken>` cho request sau.
+
+
+3. Luong 3 - Web Google login
+-----------------------------
+
+Input:
+- browser di qua Google OAuth redirect
+- backend nhan callback code tu Google
+
+DB co dong:
+1. Backend exchange code voi Google.
+2. Backend verify identity va lay Google subject.
+3. Query `auth_identities` provider = google theo provider_subject.
+4. Neu chua co identity:
+   - tao `users`
+   - tao `auth_identities` provider = google
+5. Tao `refresh_tokens` voi client_type = web, token_transport = cookie.
+6. Tao access token JWT ngan han.
+
+Output:
+- Set-Cookie access token HttpOnly
+- Set-Cookie refresh token HttpOnly
+- redirect ve web app
+
+Ghi chu:
+- Khong luu raw Google token neu khong can thiet.
+- Google subject la identity key on dinh.
+
+
+4. Luong 4 - Mobile Google login
+--------------------------------
+
+Input:
+- mobile dung Google SDK lay ID token
+- mobile gui ID token len backend
+
+DB co dong:
+1. Backend verify Google ID token.
+2. Query/tao `auth_identities` provider = google.
+3. Tao `refresh_tokens` voi client_type = mobile, token_transport = bearer.
+4. Tao access token JWT ngan han.
+
+Output:
+- response body tra current user
+- accessToken
+- refreshToken
+
+
+5. Luong 5 - Refresh access token
+---------------------------------
+
+Khi access token het han:
+1. Client goi `/auth/refresh`.
+2. Web gui refresh token bang HttpOnly cookie.
+3. Mobile gui refresh token trong request body hoac Authorization-style refresh header,
+   tuy theo contract mobile khi implement.
+4. Backend hash refresh token nhan duoc.
+5. Backend tim trong `refresh_tokens`.
+6. Neu hop le, chua revoke, chua het han:
+   - tao access token moi
+   - rotate refresh token
+   - revoke refresh token cu
+   - luu hash refresh token moi
+7. Web nhan Set-Cookie moi.
+8. Mobile nhan token pair moi trong JSON.
+
+Ghi chu:
+- Access token van khong can query DB.
+- DB chi can refresh token state.
+
+
+6. Luong 6 - Logout
+-------------------
+
+1. Client goi `/auth/logout`.
+2. Backend resolve refresh token theo transport:
+   - web: cookie
+   - mobile: bearer/body token
+3. Backend danh dau dong refresh token hien tai la revoked.
+4. Web response clear auth cookies.
+5. Mobile response 204 va client xoa secure storage.
+
+Ghi chu:
+- Access token cu van song toi het han, nhung khong the refresh tiep.
+
+
+7. Luong 7 - Capture text
 -------------------------
 
 Vi du:
 User nhap: "Mai 3h chieu hop voi Nam, nho nhac toi truoc 30 phut."
 
 Thu tu xu ly:
-1. Backend nhan request capture.
-2. Backend ghi ngay mot dong vao `capture_items`:
+1. Backend authenticate request bang cookie hoac bearer token.
+2. Backend derive user_id tu token, khong nhan user_id tu body.
+3. Backend ghi ngay mot dong vao `capture_items`:
    - `user_id`
    - `source_type = text`
    - `original_text`
    - `processing_status = pending`
    - `review_status = unreviewed`
-3. Backend tao mot dong `processing_jobs`.
-4. Backend push job id sang Redis Stream / queue.
-5. API tra response ngay, khong cho AI xong moi tra.
+4. Backend tao mot dong `processing_jobs`.
+5. Backend push job id sang Redis Stream / queue.
+6. API tra response ngay, khong cho AI xong moi tra.
 
 Worker xu ly:
 1. Worker lay job tu Redis.
@@ -65,24 +186,25 @@ UI doc:
 - Item detail co the join them `reminder_metadata`
 
 
-3. Luong 3 - Capture image / audio
+8. Luong 8 - Capture image / audio
 ----------------------------------
 
 Vi du:
 User upload anh hoa don hoac ghi am mot doan noi dung.
 
 Thu tu xu ly:
-1. Backend upload file len object storage private.
-2. Backend ghi file metadata vao `file_assets`:
+1. Backend authenticate request.
+2. Backend upload file len object storage private.
+3. Backend ghi file metadata vao `file_assets`:
    - `user_id`
    - `capture_item_id`
    - `storage_key`
    - `content_type`
    - `size`
    - `status`
-3. Backend tao `capture_items` voi `source_type = image` hoac `voice`.
-4. Backend tao `processing_jobs`.
-5. Backend push job sang Redis.
+4. Backend tao `capture_items` voi `source_type = image` hoac `voice`.
+5. Backend tao `processing_jobs`.
+6. Backend push job sang Redis.
 
 Worker xu ly:
 1. Worker doc `file_assets` de lay `storage_key`.
@@ -99,12 +221,13 @@ Ghi chu:
 - Text trich xuat va AI output van nam trong DB de user review lai.
 
 
-4. Luong 4 - Inbox va review
----------------------------
+9. Luong 9 - Inbox va review
+----------------------------
 
 User mo Inbox:
-1. Backend query `capture_items` cua user theo newest first.
-2. UI hien thi:
+1. Backend authenticate request.
+2. Backend query `capture_items` cua current user theo newest first.
+3. UI hien thi:
    - processing status
    - review status
    - category du doan
@@ -124,34 +247,8 @@ User sua tay:
 4. Manual changes phai thang AI suggestion.
 
 
-5. Luong 5 - Refresh access token
----------------------------------
-
-Khi access token het han:
-1. Client goi `/auth/refresh`.
-2. Client gui refresh token.
-3. Backend hash refresh token nhan duoc.
-4. Backend tim trong `refresh_tokens`.
-5. Neu hop le va chua revoke:
-   - cap access token moi
-   - co the rotate refresh token
-   - revoke refresh token cu
-
-Ghi chu:
-- Access token van khong can query DB.
-- DB chi can refresh token state.
-
-
-6. Luong 6 - Logout
--------------------
-
-1. Client goi `/auth/logout`.
-2. Backend danh dau dong refresh token hien tai la revoked.
-3. Access token cu van song toi het han, nhung khong the refresh tiep.
-
-
-7. Luong 7 - Reminder notification
-----------------------------------
+10. Luong 10 - Reminder notification
+------------------------------------
 
 1. Worker hoac notification service doc `reminder_metadata`.
 2. Khi toi gio nhac, service tao notification.
@@ -162,18 +259,19 @@ Ghi chu:
 - PostgreSQL van giu reminder that va trang thai can review.
 
 
-8. Luong 8 - Admin retry failed job
------------------------------------
+11. Luong 11 - Admin retry failed job
+-------------------------------------
 
-1. Admin mo trang job monitor.
-2. Backend query `processing_jobs` voi `status = failed`.
-3. Admin bam retry.
-4. Backend tao lai job moi hoac day lai job cu sang Redis.
-5. Backend ghi audit vao `admin_audit_logs`.
+1. Admin login qua cung auth system, nhung user can admin permission.
+2. Admin mo trang job monitor.
+3. Backend query `processing_jobs` voi `status = failed`.
+4. Admin bam retry.
+5. Backend tao lai job moi hoac day lai job cu sang Redis.
+6. Backend ghi audit vao `admin_audit_logs`.
 
 
-9. Luong 9 - Search va tag
---------------------------
+12. Luong 12 - Search va tag
+----------------------------
 
 1. User tao hoac chon tag.
 2. Backend ghi vao `tags` neu chua co.
@@ -181,12 +279,14 @@ Ghi chu:
 4. Search / filter doc tu `capture_items`, `tags`, `item_tags`.
 
 
-10. Nguyen tac ket luan
+13. Nguyen tac ket luan
 -----------------------
 
 - PostgreSQL giu du lieu that.
 - Redis chi giu queue/job tam thoi.
 - Object storage giu file bytes.
+- Web auth dung HttpOnly cookie.
+- Mobile auth dung bearer token.
 - Access token stateless.
 - Refresh token stateful trong PostgreSQL.
 - Item trung tam van la `capture_items`.

@@ -11,8 +11,9 @@ GET /api/v1/inbox
 
 Mô tả: Lấy danh sách các capture item trong Inbox, sắp xếp mới nhất trước.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Query params:
   cursor           — string (optional). Cursor từ response trước.
@@ -39,8 +40,9 @@ GET /api/v1/inbox/items/:id
 
 Mô tả: Lấy chi tiết một item cụ thể trong Inbox.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item.
@@ -60,8 +62,9 @@ PATCH /api/v1/inbox/items/:id
 Mô tả: Chỉnh sửa item — có thể sửa category, title, content, summary, tags và metadata đặc thù theo category.
        Đây là single endpoint cho tất cả loại chỉnh sửa. Manual changes sẽ override AI suggestions.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: application/json
 
 Path params:
@@ -111,8 +114,9 @@ POST /api/v1/inbox/items/:id/confirm
 
 Mô tả: User xác nhận (confirm) kết quả AI của item — đánh dấu reviewStatus = "reviewed".
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item.
@@ -134,8 +138,9 @@ POST /api/v1/inbox/items/:id/retry
 
 Mô tả: Retry AI processing khi item ở trạng thái "failed". Đặt item về "pending" và đẩy lại job vào queue.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item.
@@ -157,8 +162,9 @@ DELETE /api/v1/inbox/items/:id
 
 Mô tả: Archive hoặc xóa item. Item sẽ bị ẩn khỏi tất cả view bình thường (soft delete).
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item.

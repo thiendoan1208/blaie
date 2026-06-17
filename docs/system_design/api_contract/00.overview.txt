@@ -1,6 +1,6 @@
-﻿API Contract — Blaie MVP V1 — Overview
+API Contract - Blaie MVP V1 - Overview
 
-Tài liệu này quy định các quy ước chung áp dụng cho toàn bộ API của dự án Blaie.
+Tai lieu nay quy dinh cac quy uoc chung ap dung cho toan bo API cua du an Blaie.
 
 ----------------------------------------------------------------------
 
@@ -8,21 +8,61 @@ Tài liệu này quy định các quy ước chung áp dụng cho toàn bộ API
 
 /api/v1
 
-Ví dụ: POST /api/v1/auth/login
+Vi du: POST /api/v1/auth/login
 
 ----------------------------------------------------------------------
 
 2. Authentication
 
-- Tất cả endpoints (trừ POST /auth/register và POST /auth/login) yêu cầu đăng nhập.
-- Sử dụng JWT (stateless).
-- Token được lưu trong httpOnly cookie sau khi đăng nhập.
-- Mỗi request gửi token qua header:
+Tat ca endpoints, tru cac public auth endpoints, yeu cau dang nhap.
+
+Public auth endpoints:
+- POST /auth/register
+- POST /auth/login
+- GET /auth/google/start
+- GET /auth/google/callback
+- POST /auth/google/mobile
+
+Blaie dung JWT access token ngan han va refresh token stateful.
+
+Transport theo client:
+
+2.1. Web
+
+- Web V1 dung HttpOnly cookies.
+- Backend set access token cookie va refresh token cookie sau login/register/Google callback.
+- Browser khong doc token bang JavaScript.
+- Web FE goi API voi credentials/cookies.
+- Backend doc token tu cookie truoc khi xu ly request.
+
+2.2. Mobile
+
+- Mobile dung bearer access token.
+- Mobile nhan accessToken va refreshToken trong JSON response.
+- Mobile gui:
 
   Authorization: Bearer <access_token>
 
-- Backend sẽ đọc từ Authorization header. Cookie httpOnly được dùng để lưu trữ an toàn phía client.
-- Nếu token hết hạn hoặc không hợp lệ, API trả về 401 UNAUTHORIZED.
+- Backend doc bearer token tu Authorization header.
+
+2.3. Backend token resolution
+
+Backend auth filter ho tro ca hai nguon token:
+
+1. HttpOnly cookie token cho web.
+2. Authorization bearer token cho mobile.
+
+Neu request co ca cookie va bearer token, backend nen uu tien Authorization header de
+tranh nhap nhang trong cac client mobile/test.
+
+Neu token thieu, het han, bi revoke, hoac khong hop le, API tra ve 401 UNAUTHORIZED.
+
+Refresh token:
+
+- Access token khong luu DB.
+- Refresh token chi luu hash trong PostgreSQL.
+- Web refresh token nam trong HttpOnly cookie.
+- Mobile refresh token nam trong secure storage phia client.
 
 ----------------------------------------------------------------------
 
@@ -34,13 +74,19 @@ JSON request body:
 File upload:
   Content-Type: multipart/form-data
 
+Web cookie requests:
+  Browser must send credentials/cookies.
+
+Mobile bearer requests:
+  Authorization: Bearer <access_token>
+
 ----------------------------------------------------------------------
 
 4. Response Format
 
-Tất cả response đều có format thống nhất:
+Tat ca response co body deu co format thong nhat:
 
-4.1. Success (có data):
+4.1. Success co data:
 
 {
   "data": { ... },
@@ -52,13 +98,13 @@ Tất cả response đều có format thống nhất:
   }
 }
 
-Ghi chú:
-- "message" chỉ trả về khi cần thông báo bổ sung.
-- "meta" chỉ trả về trong response danh sách (list endpoints).
+Ghi chu:
+- "message" chi tra ve khi can thong bao bo sung.
+- "meta" chi tra ve trong response danh sach.
 
-4.2. Success (không có body):
+4.2. Success khong co body:
 
-HTTP 204 No Content — không có response body.
+HTTP 204 No Content - khong co response body.
 
 4.3. Error:
 
@@ -71,66 +117,69 @@ HTTP 204 No Content — không có response body.
   "requestId": "req_abc123"
 }
 
-Ghi chú:
-- "errors" chỉ xuất hiện khi lỗi validation (422).
-- "requestId" có trong mọi response lỗi để trace log.
+Ghi chu:
+- "errors" chi xuat hien khi loi validation.
+- "requestId" co trong moi response loi de trace log.
 
 ----------------------------------------------------------------------
 
-5. Pagination (Cursor-based)
+5. Pagination - Cursor-based
 
-Blaie dùng cursor-based pagination cho tất cả list endpoints.
+Blaie dung cursor-based pagination cho tat ca list endpoints.
 
 Request query params:
-  cursor=<cursor_value>    (optional, bỏ qua cho trang đầu)
-  limit=<number>           (optional, default 20, max 50)
+  cursor=<cursor_value>    optional, bo qua cho trang dau
+  limit=<number>           optional, default 20, max 50
 
 Response meta:
-  nextCursor: null nếu không còn trang tiếp theo
+  nextCursor: null neu khong con trang tiep theo
   hasMore: true/false
-  limit: số lượng item đang dùng
+  limit: so luong item dang dung
 
-Ví dụ request trang đầu:
+Vi du request trang dau:
   GET /api/v1/inbox?limit=20
 
-Ví dụ request trang tiếp:
+Vi du request trang tiep:
   GET /api/v1/inbox?cursor=eyJpZCI6Ijg1In0&limit=20
 
 ----------------------------------------------------------------------
 
 6. HTTP Status Codes
 
-200  OK                    — Request thành công, có response body.
-201  Created               — Tạo resource mới thành công.
-204  No Content            — Thành công, không có body (delete, logout).
-400  Bad Request           — Request malformed, JSON sai cú pháp.
-401  Unauthorized          — Chưa đăng nhập hoặc token không hợp lệ.
-403  Forbidden             — Đã đăng nhập nhưng không có quyền.
-404  Not Found             — Resource không tồn tại.
-409  Conflict              — Xung đột với state hiện tại.
-422  Unprocessable Entity  — Validation lỗi (đã parse được nhưng vi phạm rule).
-500  Internal Server Error — Lỗi server không mong muốn.
-503  Service Unavailable   — Server hoặc dependency tạm thời không sẵn sàng.
+200  OK                    - Request thanh cong, co response body.
+201  Created               - Tao resource moi thanh cong.
+204  No Content            - Thanh cong, khong co body.
+400  Bad Request           - Request malformed, JSON sai cu phap.
+401  Unauthorized          - Chua dang nhap hoac token khong hop le.
+403  Forbidden             - Da dang nhap nhung khong co quyen.
+404  Not Found             - Resource khong ton tai.
+409  Conflict              - Xung dot voi state hien tai.
+422  Unprocessable Entity  - Validation loi.
+500  Internal Server Error - Loi server khong mong muon.
+503  Service Unavailable   - Server hoac dependency tam thoi khong san sang.
 
 ----------------------------------------------------------------------
 
 7. Common Error Codes
 
-UNAUTHORIZED              — Token thiếu hoặc không hợp lệ.
-FORBIDDEN                 — Không có quyền thực hiện action này.
-NOT_FOUND                 — Resource không tìm thấy.
-VALIDATION_ERROR          — Input không hợp lệ (kèm errors field).
-CONFLICT                  — Trạng thái hiện tại không cho phép action.
-INVALID_CREDENTIALS       — Sai email hoặc password.
-INTERNAL_SERVER_ERROR     — Lỗi server không xác định.
+UNAUTHORIZED              - Token thieu hoac khong hop le.
+FORBIDDEN                 - Khong co quyen thuc hien action nay.
+NOT_FOUND                 - Resource khong tim thay.
+VALIDATION_ERROR          - Input khong hop le.
+CONFLICT                  - Trang thai hien tai khong cho phep action.
+INVALID_CREDENTIALS       - Sai username/email hoac password.
+EMAIL_ALREADY_EXISTS      - Email da duoc dung.
+USERNAME_ALREADY_EXISTS   - Username da duoc dung.
+GOOGLE_AUTH_FAILED        - Google sign-in khong hop le hoac verify that bai.
+INTERNAL_SERVER_ERROR     - Loi server khong xac dinh.
 
-Error code đặc thù của từng endpoint sẽ được định nghĩa trong file contract tương ứng.
+Error code dac thu cua tung endpoint se duoc dinh nghia trong file contract tuong ung.
 
 ----------------------------------------------------------------------
 
-8. CaptureItem — Shared Response Schema
+8. CaptureItem - Shared Response Schema
 
-CaptureItem là object cốt lõi của toàn hệ thống. Schema này dùng chung ở nhiều endpoint.
+CaptureItem la object cot loi cua toan he thong. Schema nay dung chung o nhieu endpoint.
 
 {
   "id": "uuid",
@@ -168,6 +217,6 @@ CaptureItem là object cốt lõi của toàn hệ thống. Schema này dùng ch
   "updatedAt": "ISO8601"
 }
 
-Ghi chú:
-- taskMetadata, reminderMetadata, calendarMetadata chỉ có giá trị nếu category tương ứng.
-- category = null khi item đang trong trạng thái pending/processing.
+Ghi chu:
+- taskMetadata, reminderMetadata, calendarMetadata chi co gia tri neu category tuong ung.
+- category = null khi item dang trong trang thai pending/processing.

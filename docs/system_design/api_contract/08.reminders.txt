@@ -11,8 +11,9 @@ GET /api/v1/reminders
 Mô tả: Lấy danh sách reminder.
        Sắp xếp theo reminderTime tăng dần (nhắc nhở sắp tới trước).
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Query params:
   filter — string (optional). Nhóm theo: upcoming | past.
@@ -53,8 +54,9 @@ PATCH /api/v1/reminders/:id
 
 Mô tả: Cập nhật thời gian nhắc nhở.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: application/json
 
 Path params:
@@ -89,8 +91,9 @@ POST /api/v1/reminders/:id/complete
 
 Mô tả: Đánh dấu reminder là đã xong.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item (phải là reminder).

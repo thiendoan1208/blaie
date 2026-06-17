@@ -1,0 +1,72 @@
+Auth feature plan - local first, Google later
+
+Muc tieu
+--------
+Trien khai auth cho local account truoc. Google sign-in de sau khi local flow da on dinh.
+
+
+1. Pham vi hien tai
+-------------------
+
+Lam truoc:
+- register local
+- login local
+- refresh access token
+- logout
+- me
+- cookie auth cho web
+
+Lam sau:
+- Google OAuth web callback
+- Google mobile login
+- account linking Google/local
+
+
+2. Contract can giu
+-------------------
+
+- Web dung HttpOnly cookie.
+- Backend van ho tro resolver cho cookie va bearer, nhung FE web chi dung cookie truoc.
+- Access token la JWT ngan han.
+- Refresh token la random opaque token, chi luu hash trong PostgreSQL.
+- DB da co `users`, `auth_identities`, `refresh_tokens`.
+
+
+3. Thu tu code
+-------------
+
+1. Viet test cho local register/login flow.
+2. Viet test cho refresh/logout/me.
+3. Viet test cho cookie set/clear va request auth.
+4. Implement service toi thieu de pass test.
+5. Refactor sau khi green.
+
+
+4. Thu tu test
+-------------
+
+Can uu tien:
+- username/email trung
+- local identity thieu password hash
+- user disabled
+- access token het han
+- refresh token revoke/rotate
+- cookie khong co
+- auth me tra user hien tai
+
+
+5. Rule backend
+--------------
+
+- Khong lam Google truoc khi local web flow xong.
+- Khong dua mobile FE vao luc nay, nhung backend khong duoc khoa duong bearer.
+- Controller nho, logic nam trong application/service.
+- DB migration la source of truth cho schema auth.
+
+
+6. Ket luan
+-----------
+
+Local auth la MVP path hien tai. Khi local cookie flow on dinh va co test pass,
+luon co san duong mo rong sang Google va mobile bearer ma khong phai rewrite lai
+core auth model.

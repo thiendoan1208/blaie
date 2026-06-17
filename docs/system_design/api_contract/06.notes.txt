@@ -10,8 +10,9 @@ GET /api/v1/notes
 
 Mô tả: Lấy danh sách note, hỗ trợ tìm kiếm theo nội dung và lọc theo tag.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Query params:
   q      — string (optional). Tìm kiếm theo title hoặc content (full-text search cơ bản).
@@ -50,8 +51,9 @@ GET /api/v1/notes/:id
 
 Mô tả: Lấy chi tiết một note cụ thể, bao gồm nội dung đầy đủ và original input.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item (phải là note).

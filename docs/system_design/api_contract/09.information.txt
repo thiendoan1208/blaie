@@ -13,8 +13,9 @@ GET /api/v1/information
 
 Mô tả: Lấy danh sách information item, hỗ trợ tìm kiếm và lọc theo tag.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Query params:
   q      — string (optional). Tìm kiếm theo title hoặc content.
@@ -52,8 +53,9 @@ GET /api/v1/information/:id
 
 Mô tả: Lấy chi tiết một information item cụ thể, bao gồm nội dung đầy đủ và original input.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item (phải là information).

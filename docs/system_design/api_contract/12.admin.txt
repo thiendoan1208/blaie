@@ -20,8 +20,9 @@ GET /api/v1/admin/users
 
 Mô tả: Lấy danh sách toàn bộ user trong hệ thống. Dùng cho vận hành, debug.
 
-Headers (required):
-  Authorization: Bearer <admin_token>
+Auth required:
+  Web admin: HttpOnly auth cookie with admin permission
+  Mobile admin: Authorization: Bearer <access_token> with admin permission
 
 Query params:
   status — string (optional). Filter theo: active | disabled.
@@ -62,8 +63,9 @@ PATCH /api/v1/admin/users/:id/disable
 Mô tả: Vô hiệu hóa tài khoản user. User bị disable sẽ không thể đăng nhập.
        Hành động này được log trong audit log.
 
-Headers (required):
-  Authorization: Bearer <admin_token>
+Auth required:
+  Web admin: HttpOnly auth cookie with admin permission
+  Mobile admin: Authorization: Bearer <access_token> with admin permission
 
 Path params:
   id — uuid của user cần disable.
@@ -96,8 +98,9 @@ GET /api/v1/admin/jobs
 
 Mô tả: Lấy danh sách processing job, filter theo status. Dùng để theo dõi hàng chờ AI.
 
-Headers (required):
-  Authorization: Bearer <admin_token>
+Auth required:
+  Web admin: HttpOnly auth cookie with admin permission
+  Mobile admin: Authorization: Bearer <access_token> with admin permission
 
 Query params:
   status — string (optional). Filter theo: pending | processing | completed | failed.
@@ -134,8 +137,9 @@ GET /api/v1/admin/jobs/:id
 Mô tả: Lấy chi tiết đầy đủ một processing job cụ thể, bao gồm stack trace lỗi nếu có.
        Dùng để debug khi job thất bại.
 
-Headers (required):
-  Authorization: Bearer <admin_token>
+Auth required:
+  Web admin: HttpOnly auth cookie with admin permission
+  Mobile admin: Authorization: Bearer <access_token> with admin permission
 
 Path params:
   id — uuid của processing job.
@@ -172,8 +176,9 @@ POST /api/v1/admin/jobs/:id/retry
 Mô tả: Admin retry một processing job đang ở trạng thái "failed".
        Đặt job về "pending" và đẩy lại vào queue. Hành động này được log trong audit log.
 
-Headers (required):
-  Authorization: Bearer <admin_token>
+Auth required:
+  Web admin: HttpOnly auth cookie with admin permission
+  Mobile admin: Authorization: Bearer <access_token> with admin permission
 
 Path params:
   id — uuid của processing job.
@@ -205,8 +210,9 @@ GET /api/v1/admin/analytics
 
 Mô tả: Lấy các chỉ số vận hành cơ bản của hệ thống.
 
-Headers (required):
-  Authorization: Bearer <admin_token>
+Auth required:
+  Web admin: HttpOnly auth cookie with admin permission
+  Mobile admin: Authorization: Bearer <access_token> with admin permission
 
 Response 200:
 {

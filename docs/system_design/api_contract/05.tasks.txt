@@ -10,8 +10,9 @@ GET /api/v1/tasks
 
 Mô tả: Lấy danh sách task, có thể filter theo nhóm thời gian.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Query params:
   filter   — string (optional). Nhóm theo: today | upcoming | no_date.
@@ -54,8 +55,9 @@ PATCH /api/v1/tasks/:id
 
 Mô tả: Cập nhật due date hoặc priority của task.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: application/json
 
 Path params:
@@ -92,8 +94,9 @@ POST /api/v1/tasks/:id/complete
 
 Mô tả: Đánh dấu task là đã hoàn thành.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item (phải là task).

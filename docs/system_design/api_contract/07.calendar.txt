@@ -11,8 +11,9 @@ GET /api/v1/calendar/events
 Mô tả: Lấy danh sách calendar event, có thể filter theo khoảng thời gian.
        Sắp xếp theo startTime tăng dần (sự kiện sắp tới trước).
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Query params:
   from   — ISO8601 datetime (optional). Chỉ lấy event có startTime >= from.
@@ -55,8 +56,9 @@ GET /api/v1/calendar/events/:id
 
 Mô tả: Lấy chi tiết một calendar event cụ thể.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của item (phải là calendar_event).
@@ -100,8 +102,9 @@ PATCH /api/v1/calendar/events/:id
 
 Mô tả: Cập nhật thời gian hoặc địa điểm của calendar event.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: application/json
 
 Path params:

@@ -1,106 +1,267 @@
-API Contract — 01. Auth
+API Contract - 01. Auth
 
 Base path: /api/v1/auth
 
 ----------------------------------------------------------------------
 
-POST /api/v1/auth/register
+1. Shared Models
 
-Mô tả: Đăng ký tài khoản mới bằng email và password.
+CurrentUser:
+
+{
+  "id": "uuid",
+  "username": "string | null",
+  "email": "user@example.com | null",
+  "displayName": "Nguyen Van A",
+  "avatarUrl": "string | null",
+  "admin": false,
+  "createdAt": "2026-06-14T10:00:00Z"
+}
+
+TokenPair:
+
+{
+  "accessToken": "jwt",
+  "refreshToken": "opaque_refresh_token",
+  "tokenType": "Bearer",
+  "expiresInSeconds": 900
+}
+
+Ghi chu:
+- Web responses khong tra TokenPair.
+- Mobile responses tra TokenPair.
+- Web nhan token qua HttpOnly cookies.
+- Mobile nhan token qua JSON va luu bang secure storage.
+
+----------------------------------------------------------------------
+
+2. POST /api/v1/auth/register
+
+Mo ta: Dang ky tai khoan local bang username/email va password.
 
 Request body:
+
 {
-  "name": "string (required, min 1, max 100)",
+  "username": "string (required, min 3, max 32)",
   "email": "string (required, valid email format)",
-  "password": "string (required, min 8 characters)"
+  "displayName": "string (required, min 1, max 100)",
+  "password": "string (required, min 8 characters)",
+  "clientType": "web | mobile"
 }
 
-Response 201:
+Response 201 for web:
+
 {
   "data": {
-    "id": "uuid",
-    "name": "Nguyen Van A",
-    "email": "user@example.com",
-    "createdAt": "2026-06-14T10:00:00Z"
+    "user": CurrentUser
   }
 }
 
-Ghi chú:
-- Server set httpOnly cookie chứa JWT sau khi đăng ký thành công.
-- Client đọc token từ cookie và gửi kèm header Authorization: Bearer <token> cho các request sau.
+Set-Cookie for web:
+- access token cookie HttpOnly
+- refresh token cookie HttpOnly
+
+Response 201 for mobile:
+
+{
+  "data": {
+    "user": CurrentUser,
+    "tokens": TokenPair
+  }
+}
 
 Errors:
-  409  CONFLICT          EMAIL_ALREADY_EXISTS  — Email đã được dùng để đăng ký.
-  422  VALIDATION_ERROR                        — Name/email/password không hợp lệ.
-                         errors: {
-                           "email": ["Email không hợp lệ"],
-                           "password": ["Password phải có ít nhất 8 ký tự"]
-                         }
+  409  CONFLICT          EMAIL_ALREADY_EXISTS
+  409  CONFLICT          USERNAME_ALREADY_EXISTS
+  422  VALIDATION_ERROR
 
 ----------------------------------------------------------------------
 
-POST /api/v1/auth/login
+3. POST /api/v1/auth/login
 
-Mô tả: Đăng nhập bằng email và password, nhận JWT.
+Mo ta: Dang nhap local bang username hoac email + password.
 
 Request body:
+
 {
-  "email": "string (required)",
-  "password": "string (required)"
+  "identifier": "string (required, username or email)",
+  "password": "string (required)",
+  "clientType": "web | mobile",
+  "deviceId": "string (optional, mobile only)"
 }
 
-Response 200:
+Response 200 for web:
+
 {
   "data": {
-    "id": "uuid",
-    "name": "Nguyen Van A",
-    "email": "user@example.com",
-    "createdAt": "2026-06-14T10:00:00Z"
+    "user": CurrentUser
   }
 }
 
-Ghi chú:
-- Server set httpOnly cookie chứa JWT.
-- Client lưu và gửi token qua Authorization: Bearer <token> header.
+Set-Cookie for web:
+- access token cookie HttpOnly
+- refresh token cookie HttpOnly
 
-Errors:
-  401  UNAUTHORIZED      INVALID_CREDENTIALS   — Sai email hoặc password.
-  422  VALIDATION_ERROR                        — Email/password bỏ trống.
+Response 200 for mobile:
 
-----------------------------------------------------------------------
-
-POST /api/v1/auth/logout
-
-Mô tả: Đăng xuất. Server clear httpOnly cookie.
-
-Request: Không có body.
-
-Headers (required):
-  Authorization: Bearer <token>
-
-Response 204: No Content.
-
-Errors:
-  401  UNAUTHORIZED  — Token không hợp lệ hoặc đã hết hạn.
-
-----------------------------------------------------------------------
-
-GET /api/v1/auth/me
-
-Mô tả: Lấy thông tin user đang đăng nhập.
-
-Headers (required):
-  Authorization: Bearer <token>
-
-Response 200:
 {
   "data": {
-    "id": "uuid",
-    "name": "Nguyen Van A",
-    "email": "user@example.com",
-    "createdAt": "2026-06-14T10:00:00Z"
+    "user": CurrentUser,
+    "tokens": TokenPair
   }
 }
 
 Errors:
-  401  UNAUTHORIZED  — Token không hợp lệ hoặc thiếu.
+  401  UNAUTHORIZED      INVALID_CREDENTIALS
+  422  VALIDATION_ERROR
+
+----------------------------------------------------------------------
+
+4. GET /api/v1/auth/google/start
+
+Mo ta: Bat dau Google OAuth cho web.
+
+Query params:
+  redirectUri=string optional
+
+Response:
+- 302 redirect den Google OAuth consent/login.
+
+Ghi chu:
+- Endpoint nay chi dung cho web.
+- Backend tao state/nonce an toan theo implementation.
+
+----------------------------------------------------------------------
+
+5. GET /api/v1/auth/google/callback
+
+Mo ta: Google OAuth callback cho web.
+
+Query params:
+  code=string
+  state=string
+
+Response:
+- 302 redirect ve web app sau khi login thanh cong.
+
+Set-Cookie:
+- access token cookie HttpOnly
+- refresh token cookie HttpOnly
+
+Errors:
+  401  UNAUTHORIZED      GOOGLE_AUTH_FAILED
+
+----------------------------------------------------------------------
+
+6. POST /api/v1/auth/google/mobile
+
+Mo ta: Dang nhap Google cho mobile bang Google ID token.
+
+Request body:
+
+{
+  "idToken": "string (required)",
+  "deviceId": "string (optional)"
+}
+
+Response 200:
+
+{
+  "data": {
+    "user": CurrentUser,
+    "tokens": TokenPair
+  }
+}
+
+Errors:
+  401  UNAUTHORIZED      GOOGLE_AUTH_FAILED
+  422  VALIDATION_ERROR
+
+----------------------------------------------------------------------
+
+7. POST /api/v1/auth/refresh
+
+Mo ta: Cap access token moi bang refresh token.
+
+Web request:
+- Khong can body.
+- Browser gui refresh token bang HttpOnly cookie.
+
+Mobile request body:
+
+{
+  "refreshToken": "string (required)"
+}
+
+Response 200 for web:
+
+{
+  "data": {
+    "user": CurrentUser
+  }
+}
+
+Set-Cookie for web:
+- rotated access token cookie HttpOnly
+- rotated refresh token cookie HttpOnly
+
+Response 200 for mobile:
+
+{
+  "data": {
+    "user": CurrentUser,
+    "tokens": TokenPair
+  }
+}
+
+Errors:
+  401  UNAUTHORIZED
+
+----------------------------------------------------------------------
+
+8. POST /api/v1/auth/logout
+
+Mo ta: Dang xuat va revoke refresh token hien tai.
+
+Web request:
+- Khong can body.
+- Browser gui auth cookies.
+
+Mobile request body:
+
+{
+  "refreshToken": "string (required)"
+}
+
+Response 204:
+- No Content.
+
+Web side effect:
+- Backend clear auth cookies.
+
+Mobile side effect:
+- Client xoa tokens khoi secure storage.
+
+Errors:
+  401  UNAUTHORIZED
+
+----------------------------------------------------------------------
+
+9. GET /api/v1/auth/me
+
+Mo ta: Lay thong tin user dang dang nhap.
+
+Auth:
+- Web: HttpOnly cookie.
+- Mobile: Authorization bearer token.
+
+Response 200:
+
+{
+  "data": {
+    "user": CurrentUser
+  }
+}
+
+Errors:
+  401  UNAUTHORIZED

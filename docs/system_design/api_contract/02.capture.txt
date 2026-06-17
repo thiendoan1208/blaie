@@ -11,8 +11,9 @@ POST /api/v1/captures/text
 
 Mô tả: Gửi nội dung text, tạo item ngay, đưa AI job vào queue xử lý ngầm.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: application/json
 
 Request body:
@@ -55,8 +56,9 @@ POST /api/v1/captures/image
 
 Mô tả: Upload ảnh (chụp hoặc từ thư viện), tạo item ngay, AI sẽ chạy OCR/image understanding ngầm.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: multipart/form-data
 
 Request body (multipart):
@@ -100,8 +102,9 @@ POST /api/v1/captures/audio
 
 Mô tả: Upload file audio, tạo item ngay, AI sẽ transcribe rồi classify ngầm.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: multipart/form-data
 
 Request body (multipart):

@@ -1,4 +1,4 @@
-﻿# ADR-013: Use Authenticated User Mode for MVP V1
+# ADR-013: Use Authenticated User Mode for MVP V1
 
 ## Status
 
@@ -6,48 +6,107 @@ Accepted
 
 ## Context
 
-Blaie lưu dữ liệu cá nhân của user: notes, tasks, reminders, voice/audio, images và AI
-results. V1 cần đảm bảo mỗi user chỉ thấy dữ liệu của chính mình. Guest/no-signin mode đã
-được ghi nhận là future idea, không phải V1.
+Blaie stores private user data: notes, tasks, reminders, voice/audio, images, and AI
+results. V1 must ensure each user only sees their own data. Guest/no-signin mode is a
+future idea, not part of V1.
+
+Blaie will support both web and mobile clients. Web is the first implementation target.
+Mobile will come later, but the backend and database should not be designed in a way that
+forces a later auth rewrite.
+
+The product also needs more than one sign-in method:
+
+- local username/email + password
+- Google sign-in
 
 ## Decision
 
 Require authentication for MVP V1.
 
-User cần login/signup để sử dụng app. Backend luôn derive user identity từ authenticated
-session/token, không nhận userId từ client body cho operation cá nhân.
+The backend must derive user identity from an authenticated token/session and must not
+accept `userId`, `role`, or `ownerId` from client request bodies to decide ownership or
+authorization.
 
-Auth implementation chi tiết sẽ chốt khi thiết kế backend:
+Auth transport is split by client type:
 
-dựa theo adr 13 thì tôi sẽ chốt dùng bearer token  gửi qua header + với access và refresh token
+- Web uses HttpOnly cookies first.
+- Mobile uses bearer tokens in the `Authorization` header when the mobile app is built.
+- Backend authentication code should support both cookie token resolution and bearer
+  token resolution from the start.
 
-- Spring Security.
-- Session cookie HttpOnly hoặc JWT/Bearer token.
-- Mobile token storage cần được xem riêng.
+For web V1:
+
+- Login/register returns the current user response and sets secure HttpOnly cookies.
+- The browser does not read access or refresh tokens with JavaScript.
+- Web requests rely on cookies being sent with credentials.
+- Logout clears/revokes the refresh token cookie and expires auth cookies.
+
+For mobile:
+
+- Login/register returns the current user plus access and refresh tokens in the JSON body.
+- Mobile stores tokens in platform secure storage.
+- Mobile sends `Authorization: Bearer <access_token>` on authenticated requests.
+- Refresh rotates refresh tokens and returns a new token pair.
+
+For Google sign-in:
+
+- Web can use an OAuth redirect/callback flow where the backend sets HttpOnly cookies.
+- Mobile can send a Google ID token to the backend for verification, then receive bearer
+  tokens.
+- Google identity should link to the same `users` table through an auth identity table.
+
+Token model:
+
+- Access token is short-lived and stateless.
+- Refresh token is long-lived, random, stored only as a hash in PostgreSQL.
+- Refresh tokens are rotated and revocable per client/device/session.
+- Both web cookie sessions and mobile bearer sessions use the same refresh-token storage
+  model.
 
 ## Consequences
 
-Ưu điểm:
+Advantages:
 
-- Data ownership rõ ràng.
-- Cross-device sync dễ hơn.
-- Security boundary rõ hơn.
-- V1 scope đơn giản hơn guest + migration account flow.
+- Data ownership is clear.
+- Web can avoid storing tokens in localStorage.
+- Mobile can use the standard bearer-token model.
+- Cross-device sync remains straightforward.
+- Google sign-in can be added without changing the user ownership model.
+- Refresh-token state supports logout, rotation, and device/session revocation.
 
-Trade-off:
+Trade-offs:
 
-- User phải sign up/login trước khi dùng.
-- Activation có thể friction hơn.
-- Mobile/web auth strategy cần thiết kế cẩn thận.
+- Backend auth is slightly more complex because it resolves tokens from both cookies and
+  headers.
+- Web cookie auth needs CORS, SameSite, Secure, and CSRF decisions.
+- Mobile secure token storage must be implemented carefully later.
+- Google sign-in requires provider verification and identity linking.
 
 Mitigation:
 
-- Login/signup flow phải nhanh.
-- Có thể thêm social login sau nếu cần.
-- Guest/no-signin mode để Future/V2.
+- Implement web cookie auth first, but keep token resolver and database schema
+  mobile-ready.
+- Use HttpOnly, Secure cookies in production.
+- Use SameSite=Lax by default for same-site web flows; revisit if cross-site deployment
+  requires `SameSite=None; Secure`.
+- Do not store tokens in web localStorage.
+- Do not log passwords, tokens, raw cookies, or raw Authorization headers.
+- Keep auth module boundaries explicit: `api`, `application`, `domain`, and
+  `infrastructure`.
 
 ## Alternatives Considered
 
+### Bearer-only auth for web and mobile
+
+Rejected for web-first V1 because it pushes token storage into browser JavaScript and
+increases XSS blast radius.
+
+### Cookie-only auth for every client
+
+Rejected because mobile apps need a simpler bearer-token flow with platform secure
+storage.
+
 ### Guest/no-signin mode in V1
 
-Không chọn vì tăng phức tạp sync, storage limit, merge account và abuse control.
+Rejected because it increases sync, storage limit, account merge, and abuse-control
+complexity.

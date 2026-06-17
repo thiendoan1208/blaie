@@ -12,8 +12,9 @@ GET /api/v1/search
 
 Mô tả: Tìm kiếm global theo từ khóa. Hỗ trợ filter thêm theo category.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Query params:
   q        — string (required, min 1 ký tự). Từ khóa tìm kiếm.

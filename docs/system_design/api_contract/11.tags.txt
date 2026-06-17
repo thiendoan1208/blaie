@@ -11,8 +11,9 @@ GET /api/v1/tags
 Mô tả: Lấy toàn bộ danh sách tag của user hiện tại.
        Không phân trang vì số lượng tag thường nhỏ.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Response 200:
 {
@@ -29,8 +30,9 @@ POST /api/v1/tags
 
 Mô tả: Tạo tag mới. Tên tag phải unique trong phạm vi user.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: application/json
 
 Request body:
@@ -60,8 +62,9 @@ DELETE /api/v1/tags/:id
 
 Mô tả: Xóa tag. Tag sẽ bị gỡ khỏi tất cả item đang dùng nó.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id — uuid của tag.
@@ -77,8 +80,9 @@ POST /api/v1/items/:id/tags
 
 Mô tả: Gắn một tag vào item.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
   Content-Type: application/json
 
 Path params:
@@ -113,8 +117,9 @@ DELETE /api/v1/items/:id/tags/:tagId
 
 Mô tả: Gỡ một tag khỏi item.
 
-Headers (required):
-  Authorization: Bearer <token>
+Auth required:
+  Web: HttpOnly auth cookie
+  Mobile: Authorization: Bearer <access_token>
 
 Path params:
   id    — uuid của item.

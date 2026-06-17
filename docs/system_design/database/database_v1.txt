@@ -4,10 +4,13 @@ Goal
 ----
 Chot cac bang loi cho MVP V1 theo huong:
 
-- Postgres la source of truth
-- Redis chi dung cho queue / background processing / cache tam thoi
-- Object storage luu file bytes, DB chi luu metadata + file key
-- Auth dung bearer access token + refresh token
+- PostgreSQL la source of truth.
+- Redis chi dung cho queue / background processing / cache tam thoi.
+- Object storage luu file bytes, DB chi luu metadata + file key.
+- Web auth dung HttpOnly cookie truoc.
+- Mobile auth dung bearer token sau.
+- Access token stateless, refresh token stateful va chi luu hash trong PostgreSQL.
+- Local username/email + password va Google login cung link ve mot bang users.
 
 
 1. Bang loi nen co
@@ -16,74 +19,121 @@ Chot cac bang loi cho MVP V1 theo huong:
 1) users
 - Muc dich: bang goc cua moi ownership trong he thong.
 - Dung de: auth, phan quyen, link toi item/file/tag/job.
-- Uu diem: don gian, ro owner, de check data isolation.
+- Field goi y:
+  - id uuid primary key
+  - username varchar unique nullable/required theo policy dang ky local
+  - email varchar unique nullable/required theo identity da verify
+  - display_name varchar
+  - avatar_url text nullable
+  - status varchar: active, disabled, deleted
+  - admin boolean default false
+  - created_at timestamptz
+  - updated_at timestamptz
+- Uu diem: ro owner, de check data isolation.
 - Nhuoc diem: sau nay neu co team/workspace se phai mo rong scope.
-- Cong nghe lien quan: Spring Security lay principal tu access token, PostgreSQL giu user record.
+- Cong nghe lien quan: Spring Security tao principal tu token, PostgreSQL giu user record.
 
-2) refresh_tokens
+2) auth_identities
+- Muc dich: luu cach user dang nhap vao cung mot account.
+- Dung de: local username/email + password, Google login, identity linking sau nay.
+- Field goi y:
+  - id uuid primary key
+  - user_id uuid references users(id)
+  - provider varchar: local, google
+  - provider_subject varchar nullable
+  - username_normalized varchar nullable
+  - email_normalized varchar nullable
+  - email_verified boolean default false
+  - password_hash text nullable
+  - created_at timestamptz
+  - updated_at timestamptz
+- Constraint goi y:
+  - unique(provider, provider_subject) where provider_subject is not null
+  - unique(username_normalized) where provider = local and username_normalized is not null
+  - unique(email_normalized) where provider = local and email_normalized is not null
+- Ghi chu:
+  - provider = local can password_hash.
+  - provider = google can provider_subject tu Google `sub`, password_hash null.
+  - Login local cho phep identifier la username hoac email.
+
+3) refresh_tokens
 - Muc dich: luu refresh token dang hash de rotate/revoke.
-- Dung de: login session, refresh access token, logout, revoke tung thiet bi.
-- Uu diem: khong can luu access token, van revoke duoc.
+- Dung de: web cookie session, mobile session, logout, revoke tung thiet bi.
+- Field goi y:
+  - id uuid primary key
+  - user_id uuid references users(id)
+  - token_hash varchar unique
+  - client_type varchar: web, mobile
+  - token_transport varchar: cookie, bearer
+  - device_id varchar nullable
+  - user_agent text nullable
+  - ip_address inet nullable
+  - expires_at timestamptz
+  - revoked_at timestamptz nullable
+  - replaced_by_token_id uuid nullable references refresh_tokens(id)
+  - created_at timestamptz
+  - last_used_at timestamptz nullable
+- Uu diem: khong can luu access token, van revoke/rotate duoc.
 - Nhuoc diem: can logic rotation va hash token dung cach.
 - Cong nghe lien quan: PostgreSQL la noi luu refresh token state; access token van stateless.
 
-3) capture_items
+4) capture_items
 - Muc dich: bang trung tam cua universal inbox.
 - Dung de: luu moi lan user capture text/image/voice/audio.
 - Uu diem: tat ca input deu di qua 1 dau moi; inbox, search, review, edit deu bam vao day.
 - Nhuoc diem: nhieu field nullable vi category co dinh nhung du lieu khac nhau.
 - Cong nghe lien quan: backend/API ghi ngay, worker cap nhat sau; day la source of truth cho UI.
 
-4) file_assets
+5) file_assets
 - Muc dich: luu metadata file image/audio, khong luu binary trong DB.
 - Dung de: tro toi object storage private nhu S3/R2/MinIO.
 - Uu diem: DB nhe, de xoa/giu file theo retention.
 - Nhuoc diem: can quan ly signed URL, cleanup, orphan file.
 - Cong nghe lien quan: object storage giu bytes; PostgreSQL giu storage_key, mime_type, size, status.
 
-5) tags
+6) tags
 - Muc dich: tag do user tao.
 - Dung de: filter, search, gom nhom item.
 - Uu diem: linh hoat, dung chung cho tat ca item type.
 - Nhuoc diem: can index tot neu tag nhieu.
 - Cong nghe lien quan: query tu PostgreSQL; frontend dung cho filter UI.
 
-6) item_tags
+7) item_tags
 - Muc dich: bang noi N-N giua capture_items va tags.
 - Dung de: gan nhieu tag cho 1 item va 1 tag cho nhieu item.
 - Uu diem: chuan hoa du lieu, de mo rong.
 - Nhuoc diem: them join khi doc.
 - Cong nghe lien quan: query/filter trong PostgreSQL.
 
-7) task_metadata
+8) task_metadata
 - Muc dich: luu thong tin rieng cho task.
 - Dung de: due_date, priority, completed_at.
 - Uu diem: tach dung nghiep vu, khong nhung cac field task vao item chung.
 - Nhuoc diem: can join khi hien thi task detail.
 - Cong nghe lien quan: UI task view doc tu capture_items + task_metadata.
 
-8) reminder_metadata
+9) reminder_metadata
 - Muc dich: luu metadata rieng cho reminder.
 - Dung de: reminder_time, completed_at, trang thai nhac.
 - Uu diem: tach ro reminder voi event/task.
 - Nhuoc diem: them mot bang phu nua.
 - Cong nghe lien quan: worker/notification service doc tu PostgreSQL de push nhac.
 
-9) calendar_event_metadata
+10) calendar_event_metadata
 - Muc dich: luu metadata rieng cho calendar event.
 - Dung de: start_time, end_time, location.
 - Uu diem: query event theo thoi gian ro rang.
 - Nhuoc diem: them join khi render calendar.
 - Cong nghe lien quan: frontend calendar view lay data tu PostgreSQL.
 
-10) processing_jobs
+11) processing_jobs
 - Muc dich: luu history va trang thai xu ly AI tung item.
 - Dung de: pending, processing, completed, failed, retry_count, error.
 - Uu diem: monitor, retry, audit duoc; khong phu thuoc Redis de biet trang thai that.
 - Nhuoc diem: phai dong bo voi capture_items carefully.
 - Cong nghe lien quan: Redis Stream/queue chi la transport; PostgreSQL giu trang thai ben vung.
 
-11) admin_audit_logs
+12) admin_audit_logs
 - Muc dich: ghi lai thao tac admin.
 - Dung de: disable user, retry job, inspect failure, thay doi setting.
 - Uu diem: co trace khi van hanh, debug duoc.
@@ -94,16 +144,28 @@ Chot cac bang loi cho MVP V1 theo huong:
 2. Bang nen can nhac som
 ------------------------
 
-12) notification_deliveries
+13) notification_deliveries
 - Dung neu muon track viec gui reminder notification rieng.
 - Huu ich cho retry, audit, va quan ly push.
 
-13) ai_usage_events
+14) ai_usage_events
 - Dung de track usage AI theo user/global ngay tu V1.
 - Rat hop voi dinh huong quota/payment ve sau.
 
 
-3. Redis dung o dau
+3. Auth storage rules
+---------------------
+
+- Access token khong luu DB.
+- Refresh token chi luu hash trong DB.
+- Web refresh token duoc gui bang HttpOnly cookie.
+- Mobile refresh token duoc tra ve client va luu bang secure storage.
+- `client_type` va `token_transport` giup revoke/inspect session theo web/mobile.
+- Password plaintext khong bao gio duoc luu.
+- Google raw token khong luu DB; chi luu provider subject va metadata can thiet.
+
+
+4. Redis dung o dau
 -------------------
 
 Redis khong phai source of truth.
@@ -117,26 +179,33 @@ No nen dung cho:
 Redis khong nen dung thay cho:
 
 - users
+- auth_identities
 - refresh_tokens
 - capture_items
 - metadata item
 - job state that
 
 
-4. Lua chon tong the
+5. Lua chon tong the
 --------------------
 
 Co the hieu nhe:
 
-- PostgreSQL giu du lieu that
-- Redis giu viec dang cho xu ly
-- Object storage giu file bytes
-- Access token stateless, refresh token stateful trong PostgreSQL
+- PostgreSQL giu du lieu that.
+- Redis giu viec dang cho xu ly.
+- Object storage giu file bytes.
+- Web auth dung HttpOnly cookies.
+- Mobile auth dung bearer tokens.
+- Access token stateless.
+- Refresh token stateful trong PostgreSQL.
+- Local va Google identity cung tro ve users de ownership khong bi tach doi.
 
 Day la cau truc hop voi MVP V1 vi:
 
-- de implement
+- de implement web truoc
+- mobile-ready ma khong can rewrite backend auth
 - de debug
 - de retry
+- de revoke session thiet bi
 - de scale worker rieng
 - khong lam DB phinh vi file/media
