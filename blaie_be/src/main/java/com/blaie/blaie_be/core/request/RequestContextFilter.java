@@ -16,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestContextFilter extends OncePerRequestFilter {
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
+    private static final int MAX_REQUEST_ID_LENGTH = 128;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -36,9 +37,29 @@ public class RequestContextFilter extends OncePerRequestFilter {
 
     private String resolveRequestId(HttpServletRequest request) {
         String requestId = request.getHeader(REQUEST_ID_HEADER);
-        if (requestId != null && !requestId.isBlank()) {
+        if (isValidRequestId(requestId)) {
             return requestId;
         }
         return UUID.randomUUID().toString();
+    }
+
+    private boolean isValidRequestId(String requestId) {
+        if (requestId == null || requestId.isEmpty() || requestId.length() > MAX_REQUEST_ID_LENGTH) {
+            return false;
+        }
+        for (int index = 0; index < requestId.length(); index++) {
+            char character = requestId.charAt(index);
+            boolean allowed = character >= 'A' && character <= 'Z'
+                    || character >= 'a' && character <= 'z'
+                    || character >= '0' && character <= '9'
+                    || character == '.'
+                    || character == '_'
+                    || character == ':'
+                    || character == '-';
+            if (!allowed) {
+                return false;
+            }
+        }
+        return true;
     }
 }

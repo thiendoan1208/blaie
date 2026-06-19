@@ -60,6 +60,14 @@ public class GlobalExceptionHandler {
         return buildResponse(errorCode, exception.getReason(), null);
     }
 
+    @ExceptionHandler({
+        org.springframework.security.access.AccessDeniedException.class,
+        org.springframework.security.authorization.AuthorizationDeniedException.class
+    })
+    public void handleAccessDeniedException(Exception exception) throws Exception {
+        throw exception;
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnhandledException(Exception exception, WebRequest request) {
         log.error("Unhandled exception", exception);

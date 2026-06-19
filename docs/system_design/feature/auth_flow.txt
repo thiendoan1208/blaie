@@ -1,0 +1,190 @@
+================================================================================
+BLAIE PROJECT - AUTHENTICATION & SECURITY SYSTEM DESIGN DOCUMENTATION (AUTH FLOW)
+================================================================================
+
+This document describes in detail the core security mechanisms, stateless architecture,
+detailed operations flow for each API endpoint, and the fine-grained business authorization 
+patterns implemented in the Blaie Backend project.
+
+--------------------------------------------------------------------------------
+PART I: BACKEND SECURITY ARCHITECTURE
+--------------------------------------------------------------------------------
+
+The security system of Blaie Backend is designed based on a stateless architecture
+combining production-ready security best practices:
+
+1. Stateless Authentication (JWT + Cookies/Bearer)
+   - The user session is stateless; no session state is maintained on the server memory.
+   - The system supports dual access token delivery methods:
+     * Request Header: `Authorization: Bearer <token>`
+     * Request Cookie: `blaie_at` (Access Token, short-lived - default: 15 minutes).
+   - Session extension is handled via a secure Refresh Token stored in a HttpOnly cookie 
+     named `blaie_rt` (Secure, SameSite=Lax, long-lived - default: 30 days).
+
+2. Deny-by-Default Security Filter Chain
+   - Implements the "Secure by Default" principle via `.anyRequest().authenticated()`.
+   - All business API endpoints are protected and reject requests without valid authentication.
+   - Specific endpoints are explicitly whitelisted (PermitAll) for the auth lifecycle:
+     * POST `/api/v1/auth/register` (Account Registration)
+     * POST `/api/v1/auth/login` (Authentication / Login)
+     * POST `/api/v1/auth/refresh` (Session Refresh)
+     * POST `/api/v1/auth/logout` (Logout)
+     * GET `/api/v1/auth/csrf` (CSRF Token Bootstrap)
+     * GET `/error` (System Default Error Page)
+
+3. Smart CSRF (Cross-Site Request Forgery) Protection
+   - Implements the Double Submit Cookie pattern using `CookieCsrfTokenRepository`.
+   - **Bearer-only Request Exemption:**
+     * If a client sends a request with the `Authorization: Bearer <token>` header AND does 
+       not include any authentication cookies (`blaie_at` or `blaie_rt`), CSRF validation 
+       is automatically bypassed.
+     * **Security Analysis:** This is highly secure because CSRF attacks exploit the browser's 
+       automatic transmission of cookies. A browser *never* automatically appends custom headers 
+       like `Authorization: Bearer ...`. The frontend application must explicitly extract the token 
+       from its memory space (State / Memory) and attach it. Since malicious third-party scripts 
+       on other domains cannot read local memory of `blaie.com` due to Same-Origin Policy (SOP), 
+       they cannot forge this header. Therefore, bearer-only APIs are naturally immune to CSRF.
+     * **Impersonation Prevention:** If a malicious script attempts to trick the browser into sending 
+       cookies while trying to pretend to be a "mobile/bearer-only client" by sending a fake bearer 
+       header, the backend's validation check (`hasAuthCookie(request)`) will detect the presence 
+       of the auth cookies. The request will immediately lose its "Bearer-only" status and CSRF 
+       verification will be strictly enforced.
+   - **Browser Clients (Cookie-based):** For requests carrying cookies, the backend enforces CSRF 
+     protection. The client must read the CSRF token from the `XSRF-TOKEN` cookie (configured with 
+     `HttpOnly = false` so local JavaScript can access it) and send it back via the `X-XSRF-TOKEN` 
+     request header for write operations (`POST`, `PUT`, `PATCH`, `DELETE`).
+
+4. Strict CORS Control
+   - Allowed origins are dynamically checked and must match configured values in 
+     `blaie.security.cors.allowed-origins` (e.g., `http://localhost:3000`).
+   - Wildcards `*` are strictly prohibited since credentials (cookies) are allowed (`allowCredentials = true`).
+   - Standard HTTP methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) and security headers 
+     (`Content-Type`, `Authorization`, `X-XSRF-TOKEN`, `X-Request-ID`) are fully supported.
+
+5. Unified Security Error Translation (Filter Chain vs. MVC Exception Handler)
+   - To understand error translation, we must separate the request lifecycle into two layers:
+     * **Layer 1: Security Filter Chain (Outer Wall):** Handles incoming requests before they reach 
+       Spring MVC (e.g., `AuthRequestFilter`, `CsrfFilter`, `CorsFilter`).
+     * **Layer 2: Spring MVC / Controllers (Inner Logic):** Processes business logic once the request 
+       passes the outer wall.
+   - **Why are AppAuthenticationEntryPoint and AppAccessDeniedHandler necessary?**
+     * `GlobalExceptionHandler` (`@RestControllerAdvice`) belongs to Layer 2. If a request is rejected 
+       due to missing authentication (401) or CSRF token mismatch (403) at Layer 1, it **never reaches** 
+       the DispatcherServlet or the Controller. Therefore, `GlobalExceptionHandler` is completely unaware 
+       of the request.
+     * To handle these outer-wall exceptions, Spring Security triggers `AppAuthenticationEntryPoint` 
+       (for 401 Unauthorized) and `AppAccessDeniedHandler` (for 403 Forbidden). Both handlers use 
+       `SecurityErrorResponseWriter` to serialize errors to the client as JSON conforming to 
+       `ApiErrorResponse` with a tracking `X-Request-ID`.
+     * **Layer 2 Exceptions:** For security exceptions thrown within Layer 2 (such as `@PreAuthorize` 
+       failures on controllers), they are caught by `GlobalExceptionHandler`. To maintain response 
+       consistency, `GlobalExceptionHandler` explicitly rethrows these exceptions, allowing them to 
+       propagate back to the Filter Chain where `AppAccessDeniedHandler` formats the final response.
+
+--------------------------------------------------------------------------------
+PART II: DETAILED ENDPOINT OPERATIONS FLOW
+--------------------------------------------------------------------------------
+
+The following section outlines the step-by-step data flow through the `AuthController` endpoints:
+
+1. GET `/api/v1/auth/csrf` (CSRF Bootstrap)
+   - **Purpose:** Issues the initial CSRF token for browser-based clients so they can proceed 
+     to call write endpoints (like Login and Register).
+   - **Flow:**
+     1. Client sends a GET request (GET requests are safe/idempotent and exempt from CSRF checks).
+     2. Spring Security generates a random `CsrfToken`.
+     3. Controller returns a `CsrfTokenResponse` containing the token value and header name.
+     4. A cookie named `XSRF-TOKEN` is written with `HttpOnly = false` so the frontend application 
+        can read it via JavaScript.
+
+2. POST `/api/v1/auth/register` (User Registration)
+   - **Flow:**
+     1. Receives input parameters via `RegisterLocalRequest`. Spring validation is executed.
+     2. Service normalizes `username` and `email` to lowercase.
+     3. Checks database for duplicates. If found, raises a 409 Conflict exception 
+        (`USERNAME_ALREADY_EXISTS` / `EMAIL_ALREADY_EXISTS`).
+     4. Hashes the password using `BCryptPasswordEncoder`.
+     5. Saves the new User record to `users` and the local credential record to `auth_identities`.
+     6. Issues an Access Token and a Refresh Token, saving the refresh token record to `refresh_tokens`.
+     7. Appends `blaie_at` and `blaie_rt` cookies to the response and returns the User object.
+
+3. POST `/api/v1/auth/login` (Authentication)
+   - **Flow:**
+     1. Receives `identifier` (username or email) and `password`.
+     2. Inspects `identifier` for the presence of `@` to route the query to `email_normalized` 
+        or `username_normalized` in the DB.
+     3. Validates the password using `passwordEncoder.matches()`. If invalid, throws 401 `INVALID_CREDENTIALS`.
+     4. Verifies the user's account status is `ACTIVE`. If disabled, throws 403 Forbidden.
+     5. Records a new session in `refresh_tokens` and issues a new Access Token.
+     6. Sets the auth cookies in the response and returns the User object.
+
+4. GET `/api/v1/auth/me` (Current User Info Retrieval)
+   - **Flow:**
+     1. Request passes through `AuthRequestFilter`. Extracts the Access Token from the Header 
+        or `blaie_at` cookie.
+     2. Decodes the token, extracts `userId`, and verifies user status in the DB.
+     3. If valid and `ACTIVE`, stores the `CurrentUser` in `CurrentUserHolder` and `SecurityContextHolder`.
+     4. If the token is missing/invalid, Spring Security rejects the request at the filter layer (returns 401).
+     5. If authenticated, the controller retrieves user data from the DB using the holder's ID and responds to the client.
+
+5. POST `/api/v1/auth/refresh` (Session Refresh)
+   - **Flow:**
+     1. Extracts the Refresh Token from the `blaie_rt` cookie.
+     2. Hashes the token to query the `refresh_tokens` table (using `PESSIMISTIC_WRITE` lock to prevent race conditions).
+     3. **Replay Attack Detection (RTR):** If the token is already revoked (`isRevoked` = true), the system detects 
+        token reuse. It immediately revokes the entire family of tokens associated with `tokenFamilyId` (`revokeFamily`) 
+        and throws a 401 `SESSION_REVOKED` error.
+     4. **Expiration Check:** If the token has expired, marks it as revoked and throws a 401 `SESSION_EXPIRED` error.
+     5. **User Status Check:** If the user's account status is not `ACTIVE`, revokes all active sessions for this user 
+        (`revokeAllUserTokens`) and throws a 403 Forbidden error.
+     6. If valid, generates a new Refresh Token (within the same Family), rotates the old token by marking it 
+        as `rotated`, and issues a new Access Token.
+     7. Appends the new cookies to the response.
+   - **Technical Note:** The `refreshWeb` method is annotated with `@Transactional(noRollbackFor = AppException.class)` 
+     to ensure that database updates for token, family, or user-wide revocations are committed even if the method 
+     raises security-related `AppException`s.
+
+6. POST `/api/v1/auth/logout` (Idempotent Logout)
+   - **Flow:**
+     1. Retrieves the Refresh Token from the `blaie_rt` cookie.
+     2. **Idempotency Check:** If the token is empty, not found, or already revoked, the method terminates 
+        silently (returning 204 No Content) to avoid throwing errors on double clicks.
+     3. Otherwise, revokes the token in the DB with the reason `logout`.
+     4. Clears both `blaie_at` and `blaie_rt` cookies by setting their values to empty and `Max-Age = 0` in the response.
+
+--------------------------------------------------------------------------------
+PART III: FINE-GRAINED BUSINESS AUTHORIZATION (AUTHZ)
+--------------------------------------------------------------------------------
+
+The project enforces a strict boundary between Authentication (AuthN) and Authorization (AuthZ):
+
+1. Separation of Concerns
+   - The Security Filter Chain handles **Authentication** (Verifying the user identity).
+   - Fine-grained **Authorization** (Verifying if the user can perform a specific action on a specific resource) 
+     is managed actively in the business layer by `DefaultAuthorizationService`.
+
+2. Authorization Actions & Owned Resources
+   - Actions are defined in the `PermissionAction` enum (e.g., `ITEM_READ`, `CAPTURE_CREATE`, `ADMIN_USER_MANAGE`).
+   - Resource models implement `OwnedResource` (exposing `ownerId` and `tenantId` fields).
+   - `DefaultAuthorizationService` checks permissions dynamically:
+     * `can(PermissionAction action)`: Validates if the current user possesses the given global permission.
+     * `can(PermissionAction action, OwnedResource resource)`: Validates permissions relative to data ownership:
+       - If the user is an `ADMIN`, access is granted.
+       - If the resource tenant does not match the user's tenant, access is denied (403).
+       - If the user is the owner (`ownerId` matches the user's ID), access is granted.
+       - Otherwise, falls back to checking the user's specific permissions.
+
+3. Spring Method Security Integration
+   - Authorization rules are declared directly on Controller or Service methods using `@PreAuthorize` with SpEL:
+     * Static permission checking:
+       `@PreAuthorize("@defaultAuthorizationService.can(T(com.blaie.blaie_be.authz.domain.PermissionAction).ITEM_READ)")`
+     * Dynamic ownership and tenant checking:
+       `@PreAuthorize("@defaultAuthorizationService.can(T(com.blaie.blaie_be.authz.domain.PermissionAction).ITEM_WRITE, @itemService.getOwnedResource(#id))")`
+   - **Current Status:** The Authz service and `@PreAuthorize` method security mechanisms are fully implemented 
+     and tested in the integration test suite (`LocalAuthWebFlowTest` via `SecurityTestController`). They are ready 
+     to be applied to production business controllers as they are developed.
+
+--------------------------------------------------------------------------------
+Document updated automatically by the Pair-Programming Agent.
+For any questions or updates regarding business workflows, please modify this file directly.
+================================================================================
