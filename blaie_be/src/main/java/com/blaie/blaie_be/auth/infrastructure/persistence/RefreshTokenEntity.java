@@ -3,17 +3,20 @@ package com.blaie.blaie_be.auth.infrastructure.persistence;
 import com.blaie.blaie_be.auth.domain.AuthConstants;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
 @Table(name = "refresh_tokens")
+@EntityListeners(AuditingEntityListener.class)
 public class RefreshTokenEntity {
     @Id
     private UUID id;
@@ -54,6 +57,7 @@ public class RefreshTokenEntity {
     private RefreshTokenEntity replacedByToken;
 
     @Column(name = "created_at", nullable = false)
+    @CreatedDate
     private Instant createdAt;
 
     @Column(name = "last_used_at")
@@ -73,16 +77,6 @@ public class RefreshTokenEntity {
         refreshToken.expiresAt = expiresAt;
         refreshToken.userAgent = blankToNull(userAgent);
         return refreshToken;
-    }
-
-    @PrePersist
-    void prePersist() {
-        if (id == null) {
-            id = UUID.randomUUID();
-        }
-        if (createdAt == null) {
-            createdAt = Instant.now();
-        }
     }
 
     public boolean isRevoked() {

@@ -1,8 +1,8 @@
 package com.blaie.blaie_be.auth.application;
 
-import com.blaie.blaie_be.auth.api.response.AuthUserResponse;
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
+import com.blaie.blaie_be.auth.application.result.AuthUserResult;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
 import com.blaie.blaie_be.auth.domain.AuthConstants;
 import com.blaie.blaie_be.auth.infrastructure.persistence.AuthIdentityEntity;
@@ -18,6 +18,7 @@ import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.security.CurrentUser;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +40,7 @@ public class AuthServiceImpl implements AuthService {
     private final String dummyPasswordHash;
     private final AuthTokenService authTokenService;
     private final AuthProperties authProperties;
+    private final Clock clock;
 
     public AuthServiceImpl(
             UserRepository userRepository,
@@ -46,7 +48,8 @@ public class AuthServiceImpl implements AuthService {
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
             AuthTokenService authTokenService,
-            AuthProperties authProperties
+            AuthProperties authProperties,
+            Clock clock
     ) {
         this.userRepository = userRepository;
         this.authIdentityRepository = authIdentityRepository;
@@ -55,6 +58,7 @@ public class AuthServiceImpl implements AuthService {
         this.dummyPasswordHash = passwordEncoder.encode(DUMMY_PASSWORD);
         this.authTokenService = authTokenService;
         this.authProperties = authProperties;
+        this.clock = clock;
     }
 
     @Transactional
@@ -66,12 +70,10 @@ public class AuthServiceImpl implements AuthService {
         String usernameNormalized = normalize(username);
         String emailNormalized = normalize(email);
 
-        if (authIdentityRepository.existsByProviderAndUsernameNormalized(AuthConstants.PROVIDER_LOCAL, usernameNormalized)
-                || userRepository.existsByUsernameNormalized(usernameNormalized)) {
+        if (userRepository.existsByUsernameNormalized(usernameNormalized)) {
             throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
         }
-        if (authIdentityRepository.existsByProviderAndEmailNormalized(AuthConstants.PROVIDER_LOCAL, emailNormalized)
-                || userRepository.existsByEmailNormalized(emailNormalized)) {
+        if (userRepository.existsByEmailNormalized(emailNormalized)) {
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
@@ -81,7 +83,7 @@ public class AuthServiceImpl implements AuthService {
             );
             String passwordHash = passwordEncoder.encode(command.password());
             authIdentityRepository.saveAndFlush(
-                    AuthIdentityEntity.local(user, usernameNormalized, emailNormalized, passwordHash)
+                    AuthIdentityEntity.local(user, passwordHash)
             );
             return issueWebAuth(user, UUID.randomUUID(), userAgent);
         } catch (DataIntegrityViolationException exception) {
@@ -93,16 +95,20 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public WebAuthResult loginLocal(LoginLocalCommand command, String userAgent) {
         String identifierNormalized = normalize(command.identifier());
-        Optional<AuthIdentityEntity> identity = findLocalIdentity(identifierNormalized);
-        String passwordHash = identity.map(AuthIdentityEntity::passwordHash).orElse(dummyPasswordHash);
+        AuthIdentityEntity identity = findLocalIdentity(identifierNormalized).orElse(null);
+        String passwordHash = identity == null ? dummyPasswordHash : identity.passwordHash();
         boolean passwordMatches = passwordEncoder.matches(command.password(), passwordHash);
-        if (identity.isEmpty() || !passwordMatches) {
+
+        if (identity == null || !passwordMatches) {
             throw new AppException(ErrorCode.INVALID_CREDENTIALS);
         }
-        UserEntity user = identity.orElseThrow().user();
+        
+        UserEntity user = identity.user();
+        
         if (!AuthConstants.USER_STATUS_ACTIVE.equals(user.status())) {
             throw new AppException(ErrorCode.FORBIDDEN);
         }
+        
         return issueWebAuth(user, UUID.randomUUID(), userAgent);
     }
 
@@ -110,7 +116,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public WebAuthResult refreshWeb(String refreshToken, String userAgent) {
         RefreshTokenEntity currentToken = requireRefreshToken(refreshToken);
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         if (currentToken.isRevoked()) {
             refreshTokenRepository.revokeFamily(currentToken.tokenFamilyId(), "family_breach", now);
             throw new AppException(ErrorCode.SESSION_REVOKED);
@@ -137,7 +143,7 @@ public class AuthServiceImpl implements AuthService {
         currentToken.markUsed(now);
         currentToken.revoke("rotated", nextRefreshToken, now);
         return new WebAuthResult(
-                user.toAuthUserResponse(),
+                toAuthUserResult(user),
                 authTokenService.issueAccessToken(user.id()),
                 authProperties.accessTokenTtl(),
                 nextRefreshTokenValue,
@@ -160,20 +166,20 @@ public class AuthServiceImpl implements AuthService {
         if (currentToken.isRevoked()) {
             return;
         }
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         currentToken.markUsed(now);
         currentToken.revoke("logout", null, now);
     }
 
     @Transactional(readOnly = true)
     @Override
-    public AuthUserResponse currentUser() {
+    public AuthUserResult currentUser() {
         UUID userId = CurrentUserHolder.current()
                 .map(CurrentUser::userId)
                 .map(this::parseUserId)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
         return userRepository.findByIdAndStatus(userId, AuthConstants.USER_STATUS_ACTIVE)
-                .map(UserEntity::toAuthUserResponse)
+                .map(this::toAuthUserResult)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
     }
 
@@ -183,12 +189,12 @@ public class AuthServiceImpl implements AuthService {
                 user,
                 authTokenService.hashRefreshToken(refreshTokenValue),
                 tokenFamilyId,
-                Instant.now().plus(authProperties.refreshTokenTtl()),
+                clock.instant().plus(authProperties.refreshTokenTtl()),
                 userAgent
         );
         refreshTokenRepository.save(refreshToken);
         return new WebAuthResult(
-                user.toAuthUserResponse(),
+                toAuthUserResult(user),
                 authTokenService.issueAccessToken(user.id()),
                 authProperties.accessTokenTtl(),
                 refreshTokenValue,
@@ -202,6 +208,17 @@ public class AuthServiceImpl implements AuthService {
                 identifierNormalized
         );
         return identities.size() == 1 ? Optional.of(identities.getFirst()) : Optional.empty();
+    }
+
+    private AuthUserResult toAuthUserResult(UserEntity user) {
+        return new AuthUserResult(
+                user.id(),
+                user.username(),
+                user.email(),
+                user.displayName(),
+                user.avatarUrl(),
+                user.createdAt()
+        );
     }
 
     private RefreshTokenEntity requireRefreshToken(String refreshToken) {

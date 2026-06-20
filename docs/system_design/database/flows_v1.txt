@@ -15,8 +15,8 @@ Input:
 
 DB co dong:
 1. Normalize identifier.
-2. Query `auth_identities` provider = local theo username_normalized hoac email_normalized.
-3. Join/lay `users`.
+2. Query `auth_identities` provider = local va join `users`.
+3. Match identifier voi `users.username_normalized` hoac `users.email_normalized`.
 4. Kiem tra `users.status = active`.
 5. Verify password_hash.
 6. Tao `refresh_tokens` moi voi:

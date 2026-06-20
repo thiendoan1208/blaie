@@ -23,7 +23,7 @@ class AuthPersistenceExceptionTranslatorTest {
     @Test
     void emailConstraintsMapToEmailConflict() {
         RuntimeException translated = AuthPersistenceExceptionTranslator.translateRegistrationDuplicate(
-                violation("uq_auth_identities_local_email_normalized")
+                violation("uq_users_email_normalized")
         );
 
         Assertions.assertThat(translated)

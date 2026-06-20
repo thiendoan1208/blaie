@@ -14,7 +14,6 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
@@ -22,12 +21,12 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(AppException.class)
-    public ResponseEntity<ApiErrorResponse> handleAppException(AppException exception, WebRequest request) {
+    public ResponseEntity<ApiErrorResponse> handleAppException(AppException exception) {
         return buildResponse(exception.errorCode(), exception.getMessage(), exception.fieldErrors());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiErrorResponse> handleValidationException(MethodArgumentNotValidException exception, WebRequest request) {
+    public ResponseEntity<ApiErrorResponse> handleValidationException(MethodArgumentNotValidException exception) {
         Map<String, List<String>> errors = new LinkedHashMap<>();
         for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
             errors.computeIfAbsent(fieldError.getField(), key -> new ArrayList<>()).add(fieldError.getDefaultMessage());
@@ -36,7 +35,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiErrorResponse> handleConstraintViolationException(ConstraintViolationException exception, WebRequest request) {
+    public ResponseEntity<ApiErrorResponse> handleConstraintViolationException(ConstraintViolationException exception) {
         Map<String, List<String>> errors = new LinkedHashMap<>();
         exception.getConstraintViolations().forEach(violation ->
                 errors.computeIfAbsent(violation.getPropertyPath().toString(), key -> new ArrayList<>())
@@ -45,7 +44,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<ApiErrorResponse> handleResponseStatusException(ResponseStatusException exception, WebRequest request) {
+    public ResponseEntity<ApiErrorResponse> handleResponseStatusException(ResponseStatusException exception) {
         HttpStatus status = HttpStatus.valueOf(exception.getStatusCode().value());
         ErrorCode errorCode = switch (status) {
             case UNAUTHORIZED -> ErrorCode.UNAUTHORIZED;
@@ -69,7 +68,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiErrorResponse> handleUnhandledException(Exception exception, WebRequest request) {
+    public ResponseEntity<ApiErrorResponse> handleUnhandledException(Exception exception) {
         log.error("Unhandled exception", exception);
         return buildResponse(ErrorCode.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_SERVER_ERROR.defaultMessage(), null);
     }

@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Base64;
 import java.util.UUID;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -77,8 +78,11 @@ class AuthTokenServiceTest {
     @Test
     void forgedSignatureIsRejected() {
         String token = tokenServiceAt(NOW).issueAccessToken(UUID.randomUUID());
-        char replacement = token.charAt(token.length() - 1) == 'A' ? 'B' : 'A';
-        String forgedToken = token.substring(0, token.length() - 1) + replacement;
+        String[] parts = token.split("\\.");
+        byte[] forgedSignature = Base64.getUrlDecoder().decode(parts[2]);
+        forgedSignature[0] ^= 1;
+        String forgedToken = parts[0] + "." + parts[1] + "."
+                + Base64.getUrlEncoder().withoutPadding().encodeToString(forgedSignature);
 
         Assertions.assertThat(tokenServiceAt(NOW).parseAccessToken(forgedToken)).isEmpty();
     }

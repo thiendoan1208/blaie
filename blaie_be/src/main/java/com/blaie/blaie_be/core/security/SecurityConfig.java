@@ -3,12 +3,16 @@ package com.blaie.blaie_be.core.security;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthRequestFilter;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthProperties;
+import com.blaie.blaie_be.auth.infrastructure.security.BearerTokenResolver;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.auditing.DateTimeProvider;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -31,6 +35,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableMethodSecurity
+@EnableJpaAuditing(dateTimeProviderRef = "auditingDateTimeProvider")
 public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(
@@ -81,6 +86,11 @@ public class SecurityConfig {
     }
 
     @Bean
+    DateTimeProvider auditingDateTimeProvider(Clock clock) {
+        return () -> Optional.of(clock.instant());
+    }
+
+    @Bean
     CookieCsrfTokenRepository csrfTokenRepository(AuthProperties authProperties) {
         CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         repository.setCookiePath("/");
@@ -112,6 +122,7 @@ public class SecurityConfig {
 
     @Bean
     UserDetailsService userDetailsService() {
+        // Prevent Spring Boot from auto-configuring a generated default user.
         return username -> {
             throw new UsernameNotFoundException("Username/password authentication is handled by the auth module");
         };
@@ -123,8 +134,7 @@ public class SecurityConfig {
 
     private boolean isBearerOnlyRequest(HttpServletRequest request) {
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        return authorization != null
-                && authorization.startsWith("Bearer ")
+        return BearerTokenResolver.resolve(authorization).isPresent()
                 && !hasAuthCookie(request);
     }
 

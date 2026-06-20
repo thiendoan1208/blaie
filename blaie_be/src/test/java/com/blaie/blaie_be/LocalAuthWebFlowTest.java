@@ -2,6 +2,7 @@ package com.blaie.blaie_be;
 
 import com.blaie.blaie_be.core.request.RequestContextFilter;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
@@ -63,6 +64,9 @@ class LocalAuthWebFlowTest {
     @Autowired
     private RequestContextFilter requestContextFilter;
 
+    @Autowired
+    private Clock clock;
+
     @BeforeEach
     void cleanDatabase() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
@@ -95,7 +99,8 @@ class LocalAuthWebFlowTest {
                 UUID.class,
                 username.toLowerCase()
         );
-        String expiredToken = signedAccessToken(userId, Instant.now().minusSeconds(120), Instant.now().minusSeconds(60));
+        Instant now = clock.instant();
+        String expiredToken = signedAccessToken(userId, now.minusSeconds(120), now.minusSeconds(60));
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .cookie(new MockCookie(ACCESS_COOKIE, "malformed-token")))
@@ -229,6 +234,48 @@ class LocalAuthWebFlowTest {
     }
 
     @Test
+    void meAcceptsBearerAccessTokenIgnoreCase() throws Exception {
+        String username = uniqueValue("mira-case");
+        String email = uniqueValue("mira-case") + "@example.com";
+        registerUser(username, email, "Mira Stone Case", "password123");
+
+        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.username").value(username));
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "BEARER " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.username").value(username));
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "bEaReR " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.username").value(username));
+    }
+
+    @Test
+    void csrfBypassAcceptsBearerIgnoreCase() throws Exception {
+        String username = uniqueValue("csrf-case");
+        String email = uniqueValue("csrf-case") + "@example.com";
+        registerUser(username, email, "Csrf Case User", "password123");
+        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
+
+        mockMvc.perform(post("/api/v1/test/write")
+                        .header(HttpHeaders.AUTHORIZATION, "bearer " + accessToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/v1/test/write")
+                        .header(HttpHeaders.AUTHORIZATION, "BEARER " + accessToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
     void refreshRotatesRefreshTokenAndRejectsOldToken() throws Exception {
         String username = uniqueValue("oliver");
         String email = uniqueValue("oliver") + "@example.com";
@@ -289,7 +336,8 @@ class LocalAuthWebFlowTest {
                 UUID.class,
                 username.toLowerCase()
         );
-        String expiredAccessToken = signedAccessToken(userId, Instant.now().minusSeconds(120), Instant.now().minusSeconds(60));
+        Instant now = clock.instant();
+        String expiredAccessToken = signedAccessToken(userId, now.minusSeconds(120), now.minusSeconds(60));
 
         MvcResult logoutResult = mockMvc.perform(withCsrf(post("/api/v1/auth/logout")
                         .cookie(

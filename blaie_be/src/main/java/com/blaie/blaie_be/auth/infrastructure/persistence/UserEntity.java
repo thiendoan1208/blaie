@@ -1,18 +1,20 @@
 package com.blaie.blaie_be.auth.infrastructure.persistence;
 
-import com.blaie.blaie_be.auth.api.response.AuthUserResponse;
 import com.blaie.blaie_be.auth.domain.AuthConstants;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
 @Table(name = "users")
+@EntityListeners(AuditingEntityListener.class)
 public class UserEntity {
     @Id
     private UUID id;
@@ -42,9 +44,11 @@ public class UserEntity {
     private boolean admin;
 
     @Column(name = "created_at", nullable = false)
+    @CreatedDate
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
+    @LastModifiedDate
     private Instant updatedAt;
 
     protected UserEntity() {
@@ -63,30 +67,28 @@ public class UserEntity {
         return user;
     }
 
-    @PrePersist
-    void prePersist() {
-        Instant now = Instant.now();
-        if (id == null) {
-            id = UUID.randomUUID();
-        }
-        if (status == null || status.isBlank()) {
-            status = AuthConstants.USER_STATUS_ACTIVE;
-        }
-        createdAt = now;
-        updatedAt = now;
-    }
-
-    @PreUpdate
-    void preUpdate() {
-        updatedAt = Instant.now();
-    }
-
-    public AuthUserResponse toAuthUserResponse() {
-        return new AuthUserResponse(id, username, email, displayName, avatarUrl, createdAt);
-    }
-
     public UUID id() {
         return id;
+    }
+
+    public String username() {
+        return username;
+    }
+
+    public String email() {
+        return email;
+    }
+
+    public String displayName() {
+        return displayName;
+    }
+
+    public String avatarUrl() {
+        return avatarUrl;
+    }
+
+    public Instant createdAt() {
+        return createdAt;
     }
 
     public String status() {

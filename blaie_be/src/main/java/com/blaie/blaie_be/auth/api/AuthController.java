@@ -3,6 +3,7 @@ package com.blaie.blaie_be.auth.api;
 import com.blaie.blaie_be.auth.api.request.LoginLocalRequest;
 import com.blaie.blaie_be.auth.api.request.RegisterLocalRequest;
 import com.blaie.blaie_be.auth.api.response.AuthUserEnvelope;
+import com.blaie.blaie_be.auth.api.response.AuthUserResponse;
 import com.blaie.blaie_be.auth.api.response.CsrfTokenResponse;
 import com.blaie.blaie_be.auth.application.AuthService;
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
@@ -60,7 +61,7 @@ public class AuthController {
 
     @GetMapping("/me")
     public ApiResponse<AuthUserEnvelope> me() {
-        return ApiResponse.of(new AuthUserEnvelope(authService.currentUser()));
+        return ApiResponse.of(new AuthUserEnvelope(AuthUserResponse.from(authService.currentUser())));
     }
 
     @GetMapping("/csrf")
@@ -92,6 +93,6 @@ public class AuthController {
         return ResponseEntity.status(status)
                 .header(HttpHeaders.SET_COOKIE, authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl()).toString())
                 .header(HttpHeaders.SET_COOKIE, authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl()).toString())
-                .body(ApiResponse.of(new AuthUserEnvelope(result.user())));
+                .body(ApiResponse.of(new AuthUserEnvelope(AuthUserResponse.from(result.user()))));
     }
 }

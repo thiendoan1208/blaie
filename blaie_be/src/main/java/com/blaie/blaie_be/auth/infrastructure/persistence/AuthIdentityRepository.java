@@ -7,16 +7,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface AuthIdentityRepository extends JpaRepository<AuthIdentityEntity, UUID> {
-    boolean existsByProviderAndUsernameNormalized(String provider, String usernameNormalized);
-
-    boolean existsByProviderAndEmailNormalized(String provider, String emailNormalized);
-
     @Query("""
             select identity
             from AuthIdentityEntity identity
             join fetch identity.user
             where identity.provider = :provider
-              and (identity.usernameNormalized = :identifier or identity.emailNormalized = :identifier)
+              and (
+                  identity.user.usernameNormalized = :identifier
+                  or identity.user.emailNormalized = :identifier
+              )
             """)
     List<AuthIdentityEntity> findAllByProviderAndIdentifier(
             @Param("provider") String provider,

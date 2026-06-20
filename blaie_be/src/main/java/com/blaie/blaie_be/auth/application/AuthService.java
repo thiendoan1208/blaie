@@ -1,8 +1,8 @@
 package com.blaie.blaie_be.auth.application;
 
-import com.blaie.blaie_be.auth.api.response.AuthUserResponse;
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
+import com.blaie.blaie_be.auth.application.result.AuthUserResult;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
 
 public interface AuthService {
@@ -14,5 +14,5 @@ public interface AuthService {
 
     void logoutWeb(String refreshToken);
 
-    AuthUserResponse currentUser();
+    AuthUserResult currentUser();
 }

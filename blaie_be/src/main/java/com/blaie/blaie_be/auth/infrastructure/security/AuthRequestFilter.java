@@ -22,7 +22,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 public class AuthRequestFilter extends OncePerRequestFilter {
-    private static final String BEARER_PREFIX = "Bearer ";
 
     private final AuthTokenService authTokenService;
     private final UserRepository userRepository;
@@ -57,11 +56,9 @@ public class AuthRequestFilter extends OncePerRequestFilter {
 
     private Optional<String> resolveAccessToken(HttpServletRequest request) {
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (authorization != null && authorization.startsWith(BEARER_PREFIX)) {
-            String bearerToken = authorization.substring(BEARER_PREFIX.length()).trim();
-            if (!bearerToken.isBlank()) {
-                return Optional.of(bearerToken);
-            }
+        Optional<String> bearerToken = BearerTokenResolver.resolve(authorization);
+        if (bearerToken.isPresent()) {
+            return bearerToken;
         }
         if (request.getCookies() == null) {
             return Optional.empty();

@@ -41,17 +41,15 @@ Chot cac bang loi cho MVP V1 theo huong:
   - user_id uuid references users(id)
   - provider varchar: local, google
   - provider_subject varchar nullable
-  - username_normalized varchar nullable
-  - email_normalized varchar nullable
   - email_verified boolean default false
   - password_hash text nullable
   - created_at timestamptz
   - updated_at timestamptz
 - Constraint goi y:
   - unique(provider, provider_subject) where provider_subject is not null
-  - unique(username_normalized) where provider = local and username_normalized is not null
-  - unique(email_normalized) where provider = local and email_normalized is not null
 - Ghi chu:
+  - `users` la canonical source cho username, email va cac gia tri normalized.
+  - `auth_identities` chi giu provider credentials va lien ket den user.
   - provider = local can password_hash.
   - provider = google can provider_subject tu Google `sub`, password_hash null.
   - Login local cho phep identifier la username hoac email.

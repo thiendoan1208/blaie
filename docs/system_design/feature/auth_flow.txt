@@ -111,8 +111,8 @@ The following section outlines the step-by-step data flow through the `AuthContr
 3. POST `/api/v1/auth/login` (Authentication)
    - **Flow:**
      1. Receives `identifier` (username or email) and `password`.
-     2. Inspects `identifier` for the presence of `@` to route the query to `email_normalized` 
-        or `username_normalized` in the DB.
+     2. Normalizes `identifier` and queries the local identity joined to its canonical `users` record.
+        The same query matches `users.username_normalized` or `users.email_normalized`.
      3. Validates the password using `passwordEncoder.matches()`. If invalid, throws 401 `INVALID_CREDENTIALS`.
      4. Verifies the user's account status is `ACTIVE`. If disabled, throws 403 Forbidden.
      5. Records a new session in `refresh_tokens` and issues a new Access Token.
