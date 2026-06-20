@@ -66,10 +66,10 @@ public class AuthTokenService {
             JsonNode header = objectMapper.readTree(BASE64_URL_DECODER.decode(parts[0]));
             if (!isTextClaim(header, "alg", "HS256")
                     || !isTextClaim(header, "typ", "JWT")
-                    || !header.path("kid").isTextual()) {
+                    || !header.path("kid").isString()) {
                 return Optional.empty();
             }
-            Optional<String> signingSecret = authProperties.accessTokenSecretFor(header.path("kid").asText());
+            Optional<String> signingSecret = authProperties.accessTokenSecretFor(header.path("kid").asString());
             if (signingSecret.isEmpty()) {
                 return Optional.empty();
             }
@@ -84,14 +84,14 @@ public class AuthTokenService {
             if (!isTextClaim(payload, "typ", "access")
                     || !isTextClaim(payload, "iss", authProperties.accessTokenIssuer())
                     || !isTextClaim(payload, "aud", authProperties.accessTokenAudience())
-                    || !payload.path("sub").isTextual()
-                    || !payload.path("jti").isTextual()
+                    || !payload.path("sub").isString()
+                    || !payload.path("jti").isString()
                     || !payload.path("iat").isIntegralNumber()
                     || !payload.path("exp").isIntegralNumber()) {
                 return Optional.empty();
             }
-            UUID userId = UUID.fromString(payload.path("sub").asText());
-            UUID tokenId = UUID.fromString(payload.path("jti").asText());
+            UUID userId = UUID.fromString(payload.path("sub").asString());
+            UUID tokenId = UUID.fromString(payload.path("jti").asString());
             Instant issuedAt = Instant.ofEpochSecond(payload.path("iat").asLong());
             Instant expiresAt = Instant.ofEpochSecond(payload.path("exp").asLong());
             Instant now = clock.instant();
@@ -140,7 +140,7 @@ public class AuthTokenService {
     }
 
     private boolean isTextClaim(JsonNode node, String claim, String expectedValue) {
-        return node.path(claim).isTextual() && expectedValue.equals(node.path(claim).asText());
+        return node.path(claim).isString() && expectedValue.equals(node.path(claim).asString());
     }
 
     private String base64Url(byte[] bytes) {
