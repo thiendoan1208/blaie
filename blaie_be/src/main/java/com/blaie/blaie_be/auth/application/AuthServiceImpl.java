@@ -67,6 +67,7 @@ public class AuthServiceImpl implements AuthService {
         String username = trim(command.username());
         String email = trim(command.email());
         String displayName = trim(command.displayName());
+        String password = trim(command.password());
         String usernameNormalized = normalize(username);
         String emailNormalized = normalize(email);
 
@@ -81,7 +82,7 @@ public class AuthServiceImpl implements AuthService {
             UserEntity user = userRepository.saveAndFlush(
                     UserEntity.localUser(username, usernameNormalized, email, emailNormalized, displayName)
             );
-            String passwordHash = passwordEncoder.encode(command.password());
+            String passwordHash = passwordEncoder.encode(password);
             authIdentityRepository.saveAndFlush(
                     AuthIdentityEntity.local(user, passwordHash)
             );
@@ -97,7 +98,7 @@ public class AuthServiceImpl implements AuthService {
         String identifierNormalized = normalize(command.identifier());
         AuthIdentityEntity identity = findLocalIdentity(identifierNormalized).orElse(null);
         String passwordHash = identity == null ? dummyPasswordHash : identity.passwordHash();
-        boolean passwordMatches = passwordEncoder.matches(command.password(), passwordHash);
+        boolean passwordMatches = passwordEncoder.matches(trim(command.password()), passwordHash);
 
         if (identity == null || !passwordMatches) {
             throw new AppException(ErrorCode.INVALID_CREDENTIALS);

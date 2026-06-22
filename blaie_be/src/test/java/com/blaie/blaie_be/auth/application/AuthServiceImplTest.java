@@ -48,12 +48,12 @@ class AuthServiceImplTest {
         );
 
         Assertions.assertThatThrownBy(() -> service.loginLocal(
-                        new LoginLocalCommand(" Missing@Example.com ", "password123"),
+                        new LoginLocalCommand(" Missing@Example.com ", " Password1! "),
                         "test-agent"
                 ))
                 .isInstanceOfSatisfying(AppException.class, exception ->
                         Assertions.assertThat(exception.errorCode()).isEqualTo(ErrorCode.INVALID_CREDENTIALS));
-        verify(passwordEncoder).matches("password123", "dummy-password-hash");
+        verify(passwordEncoder).matches("Password1!", "dummy-password-hash");
     }
 
     @Test

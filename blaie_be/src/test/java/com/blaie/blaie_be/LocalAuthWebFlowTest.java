@@ -93,7 +93,7 @@ class LocalAuthWebFlowTest {
     void invalidAndExpiredAccessTokensReturnUnauthorized() throws Exception {
         String username = uniqueValue("expired");
         String email = uniqueValue("expired") + "@example.com";
-        registerUser(username, email, "Expired User", "password123");
+        registerUser(username, email, "Expired User", "Password1!");
         UUID userId = jdbcTemplate.queryForObject(
                 "select id from users where username_normalized = ?",
                 UUID.class,
@@ -131,8 +131,8 @@ class LocalAuthWebFlowTest {
     void cookieWritesRequireCsrfButBearerWritesDoNot() throws Exception {
         String username = uniqueValue("csrf");
         String email = uniqueValue("csrf") + "@example.com";
-        registerUser(username, email, "Csrf User", "password123");
-        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        registerUser(username, email, "Csrf User", "Password1!");
+        MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
 
         mockMvc.perform(post("/api/v1/test/write")
@@ -155,8 +155,8 @@ class LocalAuthWebFlowTest {
     void authenticatedUserWithoutPermissionReturnsJsonForbidden() throws Exception {
         String username = uniqueValue("permission");
         String email = uniqueValue("permission") + "@example.com";
-        registerUser(username, email, "Permission User", "password123");
-        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        registerUser(username, email, "Permission User", "Password1!");
+        MvcResult loginResult = loginWithIdentifier(username, "Password1!");
 
         mockMvc.perform(get("/api/v1/test/permission")
                         .cookie(new MockCookie(ACCESS_COOKIE, cookieValue(loginResult, ACCESS_COOKIE)))
@@ -189,7 +189,7 @@ class LocalAuthWebFlowTest {
                                 "username", username,
                                 "email", email,
                                 "displayName", "Jane Doe",
-                                "password", "password123"
+                                "password", "Password1!"
                         )))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.user.username").value(username))
@@ -206,9 +206,9 @@ class LocalAuthWebFlowTest {
     void loginLocalAcceptsEmailAndReturnsAuthenticatedUser() throws Exception {
         String username = uniqueValue("lucas");
         String email = uniqueValue("lucas") + "@example.com";
-        registerUser(username, email, "Lucas Ray", "password123");
+        registerUser(username, email, "Lucas Ray", "Password1!");
 
-        MvcResult result = loginWithIdentifier(email, "password123");
+        MvcResult result = loginWithIdentifier(email, "Password1!");
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .cookie(new MockCookie(ACCESS_COOKIE, cookieValue(result, ACCESS_COOKIE))))
@@ -221,9 +221,9 @@ class LocalAuthWebFlowTest {
     void meAcceptsBearerAccessTokenFromCookieValue() throws Exception {
         String username = uniqueValue("mira");
         String email = uniqueValue("mira") + "@example.com";
-        registerUser(username, email, "Mira Stone", "password123");
+        registerUser(username, email, "Mira Stone", "Password1!");
 
-        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -237,9 +237,9 @@ class LocalAuthWebFlowTest {
     void meAcceptsBearerAccessTokenIgnoreCase() throws Exception {
         String username = uniqueValue("mira-case");
         String email = uniqueValue("mira-case") + "@example.com";
-        registerUser(username, email, "Mira Stone Case", "password123");
+        registerUser(username, email, "Mira Stone Case", "Password1!");
 
-        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -262,8 +262,8 @@ class LocalAuthWebFlowTest {
     void csrfBypassAcceptsBearerIgnoreCase() throws Exception {
         String username = uniqueValue("csrf-case");
         String email = uniqueValue("csrf-case") + "@example.com";
-        registerUser(username, email, "Csrf Case User", "password123");
-        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        registerUser(username, email, "Csrf Case User", "Password1!");
+        MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
 
         mockMvc.perform(post("/api/v1/test/write")
@@ -279,9 +279,9 @@ class LocalAuthWebFlowTest {
     void refreshRotatesRefreshTokenAndRejectsOldToken() throws Exception {
         String username = uniqueValue("oliver");
         String email = uniqueValue("oliver") + "@example.com";
-        registerUser(username, email, "Oliver Lane", "password123");
+        registerUser(username, email, "Oliver Lane", "Password1!");
 
-        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String oldRefreshToken = cookieValue(loginResult, REFRESH_COOKIE);
 
         MvcResult refreshResult = mockMvc.perform(withCsrf(post("/api/v1/auth/refresh")
@@ -309,9 +309,9 @@ class LocalAuthWebFlowTest {
     void logoutClearsCookiesAndRevokesRefreshToken() throws Exception {
         String username = uniqueValue("ava");
         String email = uniqueValue("ava") + "@example.com";
-        registerUser(username, email, "Ava Rose", "password123");
+        registerUser(username, email, "Ava Rose", "Password1!");
 
-        MvcResult loginResult = loginWithIdentifier(email, "password123");
+        MvcResult loginResult = loginWithIdentifier(email, "Password1!");
         String refreshToken = cookieValue(loginResult, REFRESH_COOKIE);
 
         mockMvc.perform(withCsrf(post("/api/v1/auth/logout")
@@ -328,8 +328,8 @@ class LocalAuthWebFlowTest {
     void logoutWorksWithExpiredAccessTokenAndIsIdempotent() throws Exception {
         String username = uniqueValue("logout-expired");
         String email = uniqueValue("logout-expired") + "@example.com";
-        registerUser(username, email, "Logout Expired", "password123");
-        MvcResult loginResult = loginWithIdentifier(username, "password123");
+        registerUser(username, email, "Logout Expired", "Password1!");
+        MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String refreshToken = cookieValue(loginResult, REFRESH_COOKIE);
         UUID userId = jdbcTemplate.queryForObject(
                 "select id from users where username_normalized = ?",
@@ -361,9 +361,9 @@ class LocalAuthWebFlowTest {
     void disabledUserRefreshRevokesAllActiveSessions() throws Exception {
         String username = uniqueValue("disabled");
         String email = uniqueValue("disabled") + "@example.com";
-        registerUser(username, email, "Disabled User", "password123");
-        String firstRefreshToken = cookieValue(loginWithIdentifier(username, "password123"), REFRESH_COOKIE);
-        loginWithIdentifier(email, "password123");
+        registerUser(username, email, "Disabled User", "Password1!");
+        String firstRefreshToken = cookieValue(loginWithIdentifier(username, "Password1!"), REFRESH_COOKIE);
+        loginWithIdentifier(email, "Password1!");
         UUID userId = jdbcTemplate.queryForObject(
                 "select id from users where username_normalized = ?",
                 UUID.class,
@@ -390,7 +390,7 @@ class LocalAuthWebFlowTest {
         String firstEmail = uniqueValue("zoe") + "@example.com";
         String secondEmail = uniqueValue("zoe") + "@example.net";
 
-        registerUser(username, firstEmail, "Zoe Hart", "password123");
+        registerUser(username, firstEmail, "Zoe Hart", "Password1!");
 
         mockMvc.perform(withCsrf(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -398,7 +398,7 @@ class LocalAuthWebFlowTest {
                                 "username", username,
                                 "email", secondEmail,
                                 "displayName", "Zoe Hart 2",
-                                "password", "password123"
+                                "password", "Password1!"
                         )))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("USERNAME_ALREADY_EXISTS"));
