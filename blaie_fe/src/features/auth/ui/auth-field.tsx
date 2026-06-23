@@ -1,7 +1,7 @@
-import type { InputHTMLAttributes, ReactNode } from "react";
+import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-type AuthFieldProps = InputHTMLAttributes<HTMLInputElement> & {
+export type AuthFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   id: string;
   label: string;
   hint?: string;
@@ -9,15 +9,10 @@ type AuthFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   trailing?: ReactNode;
 };
 
-export function AuthField({
-  id,
-  label,
-  hint,
-  error,
-  trailing,
-  className,
-  ...props
-}: AuthFieldProps) {
+export const AuthField = forwardRef<HTMLInputElement, AuthFieldProps>(function AuthField(
+  { id, label, hint, error, trailing, className, ...props },
+  ref,
+) {
   const descriptionId = hint || error ? `${id}-description` : undefined;
 
   return (
@@ -28,6 +23,7 @@ export function AuthField({
       <div className="relative">
         <input
           id={id}
+          ref={ref}
           aria-describedby={descriptionId}
           aria-invalid={error ? true : undefined}
           className={cn(
@@ -51,4 +47,4 @@ export function AuthField({
       ) : null}
     </div>
   );
-}
+});

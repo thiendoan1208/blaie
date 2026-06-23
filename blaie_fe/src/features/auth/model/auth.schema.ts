@@ -11,8 +11,14 @@ export const passwordSchema = z
   .min(1, "Password is required.")
   .min(8, "Password must contain 8-16 characters.")
   .max(16, "Password must contain 8-16 characters.")
-  .regex(UPPERCASE_PATTERN, "Password must include at least one uppercase letter.")
-  .regex(SPECIAL_CHARACTER_PATTERN, "Password must include at least one special character.");
+  .regex(
+    UPPERCASE_PATTERN,
+    "Password must include at least one uppercase letter.",
+  )
+  .regex(
+    SPECIAL_CHARACTER_PATTERN,
+    "Password must include at least one special character.",
+  );
 
 export const loginSchema = z.object({
   identifier: z
@@ -20,7 +26,7 @@ export const loginSchema = z.object({
     .trim()
     .min(1, "Enter your username or email.")
     .max(255, "Username or email must not exceed 255 characters."),
-  password: passwordSchema,
+  password: z.string().min(1, "Password is required."),
 });
 
 export const registerSchema = z.object({
@@ -39,7 +45,10 @@ export const registerSchema = z.object({
     .min(1, "Enter a username.")
     .min(3, "Username must contain 3-32 characters.")
     .max(32, "Username must contain 3-32 characters.")
-    .regex(USERNAME_PATTERN, "Use only letters, numbers, dots, underscores, or hyphens."),
+    .regex(
+      USERNAME_PATTERN,
+      "Use only letters, numbers, dots, underscores, or hyphens.",
+    ),
   email: z
     .string()
     .trim()

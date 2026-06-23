@@ -1,4 +1,5 @@
 import { PagePlaceholder } from "@/shared/ui/page-placeholder";
+import { routePaths } from "@/shared/routes/route-paths";
 
 export default async function ItemDetailPage({
   params,
@@ -11,7 +12,7 @@ export default async function ItemDetailPage({
     <PagePlaceholder
       title={`Item ${id}`}
       description="Placeholder for the item detail page."
-      links={[{ href: "/inbox", label: "Inbox" }, { href: "/", label: "Home" }]}
+      links={[{ href: routePaths.inbox, label: "Inbox" }, { href: routePaths.home, label: "Home" }]}
     />
   );
 }
