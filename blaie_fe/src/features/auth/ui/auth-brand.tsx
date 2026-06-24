@@ -22,7 +22,7 @@ export function AuthBrandMark({ compact = false }: { compact?: boolean }) {
         height={28}
         className={compact ? "size-6" : "size-7"}
       />
-      <span className="text-[19px] font-semibold tracking-[-0.03em] text-ivory-text">
+      <span className="font-display-sm text-[22px] font-normal tracking-tight">
         Blaie
       </span>
     </Link>
@@ -43,15 +43,9 @@ export function AuthBrandPanel() {
       </div>
 
       <div className="relative z-10 my-auto max-w-[34rem] py-16">
-        <p className="mb-5 font-mono text-[11px] font-medium tracking-[0.18em] text-dust-purple uppercase">
-          Your quiet command center
-        </p>
         <h2 className="font-anthropic-serif max-w-[32rem] text-[clamp(2.75rem,4.5vw,4.85rem)] leading-[0.98] font-[330] tracking-[-0.055em] text-ivory-text">
           Clear the noise. Keep what matters.
         </h2>
-        <p className="mt-7 max-w-md text-[15px] leading-7 text-warm-slate">
-          Capture first. Blaie turns loose thoughts into the next clear action.
-        </p>
 
         <div className="mt-12 max-w-[31rem] border-y border-graphite-border py-4">
           <div className="flex items-center gap-4 px-1 pb-4">
@@ -64,7 +58,7 @@ export function AuthBrandPanel() {
             <span className="size-1.5 shrink-0 rounded-full bg-dust-purple shadow-[0_0_16px_rgba(180,173,251,0.4)]" />
           </div>
 
-          <div className="ml-4 h-5 border-l border-dashed border-graphite-border/60" />
+          <div className="ml-4 mb-4 h-5 border-l border-dashed border-graphite-border/60" />
 
           <div className="space-y-2 pt-1">
             {organizedItems.map((item) => (
@@ -72,7 +66,7 @@ export function AuthBrandPanel() {
                 key={item.label}
                 className="flex items-center gap-4 rounded-lg border border-graphite-border bg-charcoal-surface px-4 py-3.5"
               >
-                <span className="font-mono text-[9px] tracking-[0.14em] text-dust-purple">
+                <span className="font-mono text-[9px] tracking-[0.14em] text-black">
                   {item.label}
                 </span>
                 <span className="h-4 w-px bg-graphite-border" />
@@ -84,10 +78,6 @@ export function AuthBrandPanel() {
           </div>
         </div>
       </div>
-
-      <p className="relative z-10 text-xs tracking-wide text-stone-gray">
-        Capture everything. Organize automatically.
-      </p>
     </aside>
   );
 }

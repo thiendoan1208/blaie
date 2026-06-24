@@ -1,20 +1,25 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { defaultAuthenticatedRoute } from "@/shared/routes/route-paths";
 import { loginSchema, type LoginInput } from "../model/auth.schema";
 import { applyFormError, toLoginFormError } from "../model/auth-errors";
 import { useLoginMutation } from "../model/auth.mutations";
 import { AuthField } from "./auth-field";
+import { AuthFormErrorAlert } from "./auth-form-error-alert";
 import { AuthHeading } from "./auth-heading";
 import { PasswordField } from "./password-field";
 
 export function LoginForm() {
   const router = useRouter();
   const mutation = useLoginMutation();
+  const [rootErrorMessage, setRootErrorMessage] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -26,36 +31,39 @@ export function LoginForm() {
     mode: "onSubmit",
     reValidateMode: "onChange",
   });
+
   async function onSubmit(input: LoginInput) {
     clearErrors();
+    setRootErrorMessage(null);
     try {
-      const user = await mutation.mutateAsync(input);
-      console.log("login success", user);
+      await mutation.mutateAsync(input);
       router.push(defaultAuthenticatedRoute);
       router.refresh();
     } catch (error) {
-      applyFormError(setError, toLoginFormError(error));
+      const formError = toLoginFormError(error);
+      applyFormError(setError, formError);
+      if (formError.generalError) {
+        setRootErrorMessage(formError.generalError);
+        toast.error(formError.generalError);
+      }
     }
   }
 
   return (
     <>
-      <AuthHeading
-        eyebrow="Sign in"
-        title="Welcome back."
-        description="Pick up where you left off and get back to what matters."
-      />
+      <AuthHeading eyebrow="Sign in" title="Welcome back." description="" />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-        {errors.root?.message ? (
-          <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {errors.root.message}
-          </p>
+        {rootErrorMessage || errors.root?.message ? (
+          <AuthFormErrorAlert
+            message={rootErrorMessage ?? errors.root?.message ?? ""}
+          />
         ) : null}
         <AuthField
           id="login-identifier"
           label="Username or email"
           type="text"
+          disabled={mutation.isPending}
           autoComplete="username"
           maxLength={255}
           required
@@ -66,6 +74,7 @@ export function LoginForm() {
         />
         <PasswordField
           id="login-password"
+          disabled={mutation.isPending}
           autoComplete="current-password"
           error={errors.password?.message}
           {...register("password")}
@@ -76,7 +85,14 @@ export function LoginForm() {
           disabled={mutation.isPending}
           className="mt-2 h-12 w-full text-[14px] font-semibold transition-[background-color,transform] active:scale-[0.99]"
         >
-          {mutation.isPending ? "Signing in..." : "Sign in"}
+          {mutation.isPending ? (
+            <>
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              Signing in...
+            </>
+          ) : (
+            "Sign in"
+          )}
         </Button>
       </form>
     </>

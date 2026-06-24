@@ -3,7 +3,7 @@ import { isAppError } from "@/shared/api/errors/app-error";
 
 type FieldErrorMap<TFields extends string> = Partial<Record<TFields, string>>;
 
-type AuthFormError<TFields extends string> = {
+export type AuthFormError<TFields extends string> = {
   fieldErrors: FieldErrorMap<TFields>;
   generalError?: string;
 };

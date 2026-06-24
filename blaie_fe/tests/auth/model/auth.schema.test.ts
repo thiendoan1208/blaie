@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loginSchema, passwordSchema, registerSchema } from "./auth.schema";
+import { loginSchema, passwordSchema, registerSchema } from "@/features/auth/model/auth.schema";
 
 describe("passwordSchema", () => {
   it("trims and accepts passwords at both length boundaries", () => {
@@ -18,30 +18,38 @@ describe("passwordSchema", () => {
   });
 });
 
-describe("auth schemas", () => {
+describe("loginSchema", () => {
   it("normalizes login input", () => {
     expect(
       loginSchema.parse({ identifier: "  User@Example.com ", password: " Password1! " }),
     ).toEqual({ identifier: "User@Example.com", password: "Password1!" });
   });
 
+  it("rejects empty values and overly long identifiers", () => {
+    expect(loginSchema.safeParse({ identifier: "", password: "Password1!" }).success).toBe(false);
+    expect(loginSchema.safeParse({ identifier: "user@example.com", password: "   " }).success).toBe(false);
+    expect(loginSchema.safeParse({ identifier: "a".repeat(256), password: "Password1!" }).success).toBe(false);
+  });
+});
+
+describe("registerSchema", () => {
   it("accepts a Unicode display name and trims registration input", () => {
     expect(
       registerSchema.parse({
-        displayName: " Nguyễn Văn An ",
+        displayName: " Nguyen Van An ",
         username: " thien.doan ",
         email: " thien@example.com ",
         password: " Password1! ",
       }),
     ).toEqual({
-      displayName: "Nguyễn Văn An",
+      displayName: "Nguyen Van An",
       username: "thien.doan",
       email: "thien@example.com",
       password: "Password1!",
     });
   });
 
-  it("rejects display names over 32 characters or with unsupported symbols", () => {
+  it("rejects invalid display names", () => {
     const base = {
       username: "valid.user",
       email: "valid@example.com",
@@ -49,6 +57,18 @@ describe("auth schemas", () => {
     };
 
     expect(registerSchema.safeParse({ ...base, displayName: "A".repeat(33) }).success).toBe(false);
-    expect(registerSchema.safeParse({ ...base, displayName: "Blaie 🚀" }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...base, displayName: "Blaie!" }).success).toBe(false);
+  });
+
+  it("rejects invalid usernames and emails", () => {
+    const base = {
+      displayName: "Blaie User",
+      password: "Password1!",
+    };
+
+    expect(registerSchema.safeParse({ ...base, username: "ab", email: "valid@example.com" }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...base, username: "a".repeat(33), email: "valid@example.com" }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...base, username: "bad name", email: "valid@example.com" }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...base, username: "valid.user", email: "invalid-email" }).success).toBe(false);
   });
 });

@@ -27,7 +27,7 @@ export const AuthField = forwardRef<HTMLInputElement, AuthFieldProps>(function A
           aria-describedby={descriptionId}
           aria-invalid={error ? true : undefined}
           className={cn(
-            "auth-input h-12 w-full rounded-lg border border-graphite-border bg-charcoal-surface px-4 text-[15px] text-ivory-text outline-none transition-[border-color,background-color] placeholder:text-stone-gray hover:border-cool-stone focus:border-ivory-text focus:bg-charcoal-surface aria-invalid:border-destructive",
+            "auth-input h-12 w-full rounded-lg border border-graphite-border bg-charcoal-surface px-4 text-[15px] text-ivory-text outline-none transition-[border-color,background-color,box-shadow] placeholder:text-stone-gray hover:border-cool-stone focus:border-dust-purple focus:bg-charcoal-surface focus-visible:ring-2 focus-visible:ring-dust-purple/30 disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-destructive aria-invalid:focus:border-destructive aria-invalid:focus-visible:ring-destructive/20",
             trailing && "pr-16",
             className,
           )}
@@ -40,6 +40,8 @@ export const AuthField = forwardRef<HTMLInputElement, AuthFieldProps>(function A
       {error || hint ? (
         <p
           id={descriptionId}
+          role={error ? "alert" : undefined}
+          aria-live={error ? "polite" : undefined}
           className={cn("text-xs leading-5", error ? "text-destructive" : "text-stone-gray")}
         >
           {error ?? hint}

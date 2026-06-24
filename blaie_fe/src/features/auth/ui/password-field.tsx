@@ -13,7 +13,7 @@ type PasswordFieldProps = Omit<
 
 export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(
   function PasswordField(
-    { id, label = "Password", hint, error, autoComplete, ...props },
+    { id, label = "Password", hint, error, autoComplete, disabled, ...props },
     ref,
   ) {
     const [visible, setVisible] = useState(false);
@@ -29,13 +29,15 @@ export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(
         placeholder="Enter your password"
         hint={hint}
         error={error}
+        disabled={disabled}
         trailing={
           <button
             type="button"
+            disabled={disabled}
             onClick={() => setVisible((current) => !current)}
             aria-label={visible ? "Hide password" : "Show password"}
             aria-pressed={visible}
-            className="rounded-md px-2.5 py-2 text-xs font-medium text-warm-slate transition-colors hover:bg-warm-coal hover:text-ivory-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dust-purple"
+            className="rounded-md px-2.5 py-2 text-xs font-medium text-warm-slate transition-colors hover:bg-warm-coal hover:text-ivory-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dust-purple disabled:pointer-events-none disabled:opacity-50"
           >
             {visible ? "Hide" : "Show"}
           </button>
