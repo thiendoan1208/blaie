@@ -2,17 +2,14 @@ package com.blaie.blaie_be.core.security;
 
 import com.blaie.blaie_be.auth.infrastructure.security.AuthRequestFilter;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService;
+import com.blaie.blaie_be.auth.infrastructure.security.EmailVerificationRequiredFilter;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthProperties;
 import com.blaie.blaie_be.auth.infrastructure.security.BearerTokenResolver;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
-import java.time.Clock;
 import java.util.List;
-import java.util.Optional;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.auditing.DateTimeProvider;
-import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -35,12 +32,12 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableMethodSecurity
-@EnableJpaAuditing(dateTimeProviderRef = "auditingDateTimeProvider")
 public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             AuthRequestFilter authRequestFilter,
+            EmailVerificationRequiredFilter emailVerificationRequiredFilter,
             AppAuthenticationEntryPoint authenticationEntryPoint,
             AppAccessDeniedHandler accessDeniedHandler,
             CookieCsrfTokenRepository csrfTokenRepository,
@@ -62,6 +59,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/csrf",
+                                "/api/v1/auth/email/verify",
                                 "/error"
                         ).permitAll()
                         .anyRequest().authenticated())
@@ -72,22 +70,13 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .addFilterBefore(authRequestFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(emailVerificationRequiredFilter, AuthRequestFilter.class)
                 .build();
     }
 
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    Clock clock() {
-        return Clock.systemUTC();
-    }
-
-    @Bean
-    DateTimeProvider auditingDateTimeProvider(Clock clock) {
-        return () -> Optional.of(clock.instant());
     }
 
     @Bean

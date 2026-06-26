@@ -2,6 +2,8 @@ export const routePaths = {
   home: "/",
   login: "/login",
   register: "/register",
+  verifyEmail: "/verify-email",
+  verifyEmailResult: "/verify-email/result",
   inbox: "/inbox",
   tasks: "/tasks",
   notes: "/notes",

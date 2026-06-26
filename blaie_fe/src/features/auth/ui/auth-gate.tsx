@@ -6,7 +6,7 @@ import { routePaths } from "@/shared/routes/route-paths";
 import { useCurrentUserQuery } from "../model/auth.queries";
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const { isError, isPending } = useCurrentUserQuery();
+  const { data: user, isError, isPending } = useCurrentUserQuery();
 
   useEffect(() => {
     if (!isError) {
@@ -18,7 +18,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
     window.location.assign(loginUrl.toString());
   }, [isError]);
 
-  if (isPending || isError) {
+  useEffect(() => {
+    if (!user || user.emailVerified) {
+      return;
+    }
+
+    window.location.assign(routePaths.verifyEmail);
+  }, [user]);
+
+  if (isPending || isError || (user && !user.emailVerified)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6 text-sm text-muted-foreground">
         Loading...

@@ -4,6 +4,7 @@ export type AuthUser = {
   id: string;
   username: string;
   email: string;
+  emailVerified: boolean;
   displayName: string;
   avatarUrl: string | null;
   createdAt: string;

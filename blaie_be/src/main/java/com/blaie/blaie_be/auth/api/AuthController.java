@@ -6,6 +6,7 @@ import com.blaie.blaie_be.auth.api.response.AuthUserEnvelope;
 import com.blaie.blaie_be.auth.api.response.AuthUserResponse;
 import com.blaie.blaie_be.auth.api.response.CsrfTokenResponse;
 import com.blaie.blaie_be.auth.application.AuthService;
+import com.blaie.blaie_be.auth.application.EmailVerificationService;
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
@@ -13,6 +14,7 @@ import com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService;
 import com.blaie.blaie_be.core.response.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.net.URI;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +22,7 @@ import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,10 +31,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
     private final AuthService authService;
+    private final EmailVerificationService emailVerificationService;
     private final AuthCookieService authCookieService;
 
-    public AuthController(AuthService authService, AuthCookieService authCookieService) {
+    public AuthController(
+            AuthService authService,
+            EmailVerificationService emailVerificationService,
+            AuthCookieService authCookieService
+    ) {
         this.authService = authService;
+        this.emailVerificationService = emailVerificationService;
         this.authCookieService = authCookieService;
     }
 
@@ -67,6 +76,26 @@ public class AuthController {
     @GetMapping("/csrf")
     public ApiResponse<CsrfTokenResponse> csrf(CsrfToken csrfToken) {
         return ApiResponse.of(new CsrfTokenResponse(csrfToken.getToken(), csrfToken.getHeaderName()));
+    }
+
+    @PostMapping("/email/verification")
+    public ResponseEntity<Void> resendEmailVerification() {
+        emailVerificationService.resendVerificationForCurrentUser();
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/email/verify")
+    public ResponseEntity<Void> verifyEmail(@RequestParam("token") String token) {
+        try {
+            emailVerificationService.verifyEmailToken(token);
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(emailVerificationService.verifiedRedirectUrl()))
+                    .build();
+        } catch (RuntimeException exception) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create(emailVerificationService.failedRedirectUrl()))
+                    .build();
+        }
     }
 
     @PostMapping("/refresh")

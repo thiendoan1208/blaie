@@ -39,6 +39,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final String dummyPasswordHash;
     private final AuthTokenService authTokenService;
+    private final EmailVerificationService emailVerificationService;
     private final AuthProperties authProperties;
     private final Clock clock;
 
@@ -48,6 +49,7 @@ public class AuthServiceImpl implements AuthService {
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
             AuthTokenService authTokenService,
+            EmailVerificationService emailVerificationService,
             AuthProperties authProperties,
             Clock clock
     ) {
@@ -57,6 +59,7 @@ public class AuthServiceImpl implements AuthService {
         this.passwordEncoder = passwordEncoder;
         this.dummyPasswordHash = passwordEncoder.encode(DUMMY_PASSWORD);
         this.authTokenService = authTokenService;
+        this.emailVerificationService = emailVerificationService;
         this.authProperties = authProperties;
         this.clock = clock;
     }
@@ -86,6 +89,7 @@ public class AuthServiceImpl implements AuthService {
             authIdentityRepository.saveAndFlush(
                     AuthIdentityEntity.local(user, passwordHash)
             );
+            emailVerificationService.sendInitialVerification(user);
             return issueWebAuth(user, UUID.randomUUID(), userAgent);
         } catch (DataIntegrityViolationException exception) {
             throw AuthPersistenceExceptionTranslator.translateRegistrationDuplicate(exception);
@@ -216,6 +220,7 @@ public class AuthServiceImpl implements AuthService {
                 user.id(),
                 user.username(),
                 user.email(),
+                authIdentityRepository.existsByUser_IdAndEmailVerifiedTrue(user.id()),
                 user.displayName(),
                 user.avatarUrl(),
                 user.createdAt()

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { defaultAuthenticatedRoute } from "@/shared/routes/route-paths";
+import { defaultAuthenticatedRoute, routePaths } from "@/shared/routes/route-paths";
 import { loginSchema, type LoginInput } from "../model/auth.schema";
 import { applyFormError, toLoginFormError } from "../model/auth-errors";
 import { useLoginMutation } from "../model/auth.mutations";
@@ -36,8 +36,8 @@ export function LoginForm() {
     clearErrors();
     setRootErrorMessage(null);
     try {
-      await mutation.mutateAsync(input);
-      router.push(defaultAuthenticatedRoute);
+      const user = await mutation.mutateAsync(input);
+      router.push(user.emailVerified ? defaultAuthenticatedRoute : routePaths.verifyEmail);
       router.refresh();
     } catch (error) {
       const formError = toLoginFormError(error);

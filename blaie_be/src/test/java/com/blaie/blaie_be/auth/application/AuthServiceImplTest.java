@@ -32,6 +32,7 @@ class AuthServiceImplTest {
         RefreshTokenRepository refreshTokenRepository = mock(RefreshTokenRepository.class);
         PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
         AuthTokenService tokenService = mock(AuthTokenService.class);
+        EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
         AuthProperties properties = new AuthProperties();
         when(passwordEncoder.encode("BlaieDummyPasswordThatCannotAuthenticate")).thenReturn("dummy-password-hash");
         when(identityRepository.findAllByProviderAndIdentifier("local", "missing@example.com"))
@@ -43,6 +44,7 @@ class AuthServiceImplTest {
                 refreshTokenRepository,
                 passwordEncoder,
                 tokenService,
+                emailVerificationService,
                 properties,
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
@@ -63,6 +65,7 @@ class AuthServiceImplTest {
         RefreshTokenRepository refreshTokenRepository = mock(RefreshTokenRepository.class);
         PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
         AuthTokenService tokenService = mock(AuthTokenService.class);
+        EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
         RefreshTokenEntity refreshToken = mock(RefreshTokenEntity.class);
         when(passwordEncoder.encode("BlaieDummyPasswordThatCannotAuthenticate")).thenReturn("dummy-password-hash");
         when(tokenService.hashRefreshToken("refresh-token")).thenReturn("refresh-token-hash");
@@ -74,6 +77,7 @@ class AuthServiceImplTest {
                 refreshTokenRepository,
                 passwordEncoder,
                 tokenService,
+                emailVerificationService,
                 new AuthProperties(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );

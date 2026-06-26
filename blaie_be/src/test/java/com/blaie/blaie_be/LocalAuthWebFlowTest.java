@@ -43,7 +43,12 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 @SpringBootTest(properties = {
         "blaie.auth.access-token-secret=test-access-secret-that-is-at-least-32-bytes",
         "blaie.auth.cookie-secure=false",
-        "blaie.security.cors.allowed-origins=http://localhost:3000"
+        "blaie.security.cors.allowed-origins=http://localhost:3000",
+        "blaie.email.provider=log",
+        "blaie.email.from=Blaie <no-reply@test.local>",
+        "blaie.email.web-base-url=http://localhost:3000",
+        "blaie.email.api-base-url=http://localhost:8080/api/v1",
+        "blaie.email.verification-ttl=24h"
 })
 class LocalAuthWebFlowTest {
     private static final String ACCESS_COOKIE = "blaie_at";
@@ -73,6 +78,7 @@ class LocalAuthWebFlowTest {
                 .addFilters(requestContextFilter)
                 .apply(springSecurity())
                 .build();
+        jdbcTemplate.execute("delete from auth_action_tokens");
         jdbcTemplate.execute("delete from refresh_tokens");
         jdbcTemplate.execute("delete from auth_identities");
         jdbcTemplate.execute("delete from users");
@@ -132,6 +138,7 @@ class LocalAuthWebFlowTest {
         String username = uniqueValue("csrf");
         String email = uniqueValue("csrf") + "@example.com";
         registerUser(username, email, "Csrf User", "Password1!");
+        markEmailVerified(username);
         MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
 
@@ -156,6 +163,7 @@ class LocalAuthWebFlowTest {
         String username = uniqueValue("permission");
         String email = uniqueValue("permission") + "@example.com";
         registerUser(username, email, "Permission User", "Password1!");
+        markEmailVerified(username);
         MvcResult loginResult = loginWithIdentifier(username, "Password1!");
 
         mockMvc.perform(get("/api/v1/test/permission")
@@ -194,6 +202,7 @@ class LocalAuthWebFlowTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.user.username").value(username))
                 .andExpect(jsonPath("$.data.user.email").value(email))
+                .andExpect(jsonPath("$.data.user.emailVerified").value(false))
                 .andExpect(jsonPath("$.data.user.displayName").value("Jane Doe"))
                 .andExpect(jsonPath("$.data.user.admin").doesNotExist())
                 .andReturn();
@@ -214,7 +223,27 @@ class LocalAuthWebFlowTest {
                         .cookie(new MockCookie(ACCESS_COOKIE, cookieValue(result, ACCESS_COOKIE))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.user.username").value(username))
-                .andExpect(jsonPath("$.data.user.email").value(email));
+                .andExpect(jsonPath("$.data.user.email").value(email))
+                .andExpect(jsonPath("$.data.user.emailVerified").value(false));
+    }
+
+    @Test
+    void unverifiedUserCannotAccessAppApisButCanReadMe() throws Exception {
+        String username = uniqueValue("unverified");
+        String email = uniqueValue("unverified") + "@example.com";
+        MvcResult registerResult = registerUser(username, email, "Unverified User", "Password1!");
+        String accessToken = cookieValue(registerResult, ACCESS_COOKIE);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .cookie(new MockCookie(ACCESS_COOKIE, accessToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.emailVerified").value(false));
+
+        mockMvc.perform(withCsrf(post("/api/v1/test/write")
+                        .cookie(new MockCookie(ACCESS_COOKIE, accessToken))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("EMAIL_NOT_VERIFIED"))
+                .andExpect(jsonPath("$.message").value("Email not verified"));
     }
 
     @Test
@@ -263,6 +292,7 @@ class LocalAuthWebFlowTest {
         String username = uniqueValue("csrf-case");
         String email = uniqueValue("csrf-case") + "@example.com";
         registerUser(username, email, "Csrf Case User", "Password1!");
+        markEmailVerified(username);
         MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
 
@@ -426,6 +456,16 @@ class LocalAuthWebFlowTest {
                         )))))
                 .andExpect(status().isOk())
                 .andReturn();
+    }
+
+    private void markEmailVerified(String username) {
+        jdbcTemplate.update("""
+                update auth_identities
+                   set email_verified = true
+                  from users
+                 where auth_identities.user_id = users.id
+                   and users.username_normalized = ?
+                """, username.toLowerCase());
     }
 
     private MockHttpServletRequestBuilder withCsrf(MockHttpServletRequestBuilder requestBuilder) throws Exception {

@@ -59,8 +59,16 @@ public class AuthIdentityEntity {
         return identity;
     }
 
+    public void markEmailVerified() {
+        emailVerified = true;
+    }
+
     public UserEntity user() {
         return user;
+    }
+
+    public boolean emailVerified() {
+        return emailVerified;
     }
 
     public String passwordHash() {
