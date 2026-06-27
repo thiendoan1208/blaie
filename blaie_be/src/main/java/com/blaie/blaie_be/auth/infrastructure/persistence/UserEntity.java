@@ -67,6 +67,18 @@ public class UserEntity {
         return user;
     }
 
+    public static UserEntity googleUser(String email, String emailNormalized, String displayName, String avatarUrl) {
+        UserEntity user = new UserEntity();
+        user.id = UUID.randomUUID();
+        user.email = email;
+        user.emailNormalized = emailNormalized;
+        user.displayName = displayName;
+        user.avatarUrl = avatarUrl;
+        user.status = AuthConstants.USER_STATUS_ACTIVE;
+        user.admin = false;
+        return user;
+    }
+
     public UUID id() {
         return id;
     }

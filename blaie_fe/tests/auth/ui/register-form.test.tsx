@@ -41,10 +41,20 @@ describe("RegisterForm", () => {
     expect(screen.getByLabelText("Password")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Show password" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Creating account/i })).toBeDisabled();
+    expect(screen.getByRole("link", { name: /Continue with Google/i })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("renders the Google OAuth start link", () => {
+    render(<RegisterForm />);
+
+    expect(screen.getByRole("link", { name: /Continue with Google/i })).toHaveAttribute(
+      "href",
+      "http://localhost:8080/api/v1/auth/google/start?next=%2Finbox",
+    );
   });
 
   it("submits valid input and redirects to inbox", async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({ id: "user-1" });
+    const mutateAsync = vi.fn().mockResolvedValue({ id: "user-1", emailVerified: true });
     vi.mocked(useRegisterMutation).mockReturnValue({
       isPending: false,
       mutateAsync,

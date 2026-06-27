@@ -12,6 +12,7 @@ public enum ErrorCode {
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Invalid credentials"),
     USERNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "Username already exists"),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email already exists"),
+    GOOGLE_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "Google authentication failed"),
     EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "Email not verified"),
     INVALID_EMAIL_VERIFICATION_TOKEN(HttpStatus.BAD_REQUEST, "Invalid email verification token"),
     SESSION_EXPIRED(HttpStatus.UNAUTHORIZED, "Session expired"),

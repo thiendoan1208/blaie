@@ -14,12 +14,22 @@ import { useLoginMutation } from "../model/auth.mutations";
 import { AuthField } from "./auth-field";
 import { AuthFormErrorAlert } from "./auth-form-error-alert";
 import { AuthHeading } from "./auth-heading";
+import { GoogleAuthButton } from "./google-auth-button";
 import { PasswordField } from "./password-field";
 
-export function LoginForm() {
+type LoginFormProps = {
+  googleAuthFailed?: boolean;
+  nextPath?: string;
+};
+
+export function LoginForm({ googleAuthFailed = false, nextPath = defaultAuthenticatedRoute }: LoginFormProps) {
   const router = useRouter();
   const mutation = useLoginMutation();
   const [rootErrorMessage, setRootErrorMessage] = useState<string | null>(null);
+  const googleErrorMessage =
+    googleAuthFailed
+      ? "Google sign-in could not be completed. Please try again."
+      : null;
   const {
     register,
     handleSubmit,
@@ -53,12 +63,23 @@ export function LoginForm() {
     <>
       <AuthHeading eyebrow="Sign in" title="Welcome back." description="" />
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
-        {rootErrorMessage || errors.root?.message ? (
+      <div className="space-y-5">
+        {rootErrorMessage || errors.root?.message || googleErrorMessage ? (
           <AuthFormErrorAlert
-            message={rootErrorMessage ?? errors.root?.message ?? ""}
+            message={rootErrorMessage ?? errors.root?.message ?? googleErrorMessage ?? ""}
           />
         ) : null}
+
+        <GoogleAuthButton nextPath={nextPath} disabled={mutation.isPending} />
+
+        <div className="flex items-center gap-3 text-xs text-stone-gray">
+          <span className="h-px flex-1 bg-graphite-border" />
+          <span>or</span>
+          <span className="h-px flex-1 bg-graphite-border" />
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
         <AuthField
           id="login-identifier"
           label="Username or email"

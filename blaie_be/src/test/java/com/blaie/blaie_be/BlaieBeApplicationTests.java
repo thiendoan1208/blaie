@@ -11,7 +11,11 @@ import org.springframework.context.annotation.Import;
 		"blaie.email.from=Blaie <no-reply@test.local>",
 		"blaie.email.web-base-url=http://localhost:3000",
 		"blaie.email.api-base-url=http://localhost:8080/api/v1",
-		"blaie.email.verification-ttl=24h"
+		"blaie.email.verification-ttl=24h",
+		"blaie.google.oauth.client-id=test-google-client-id",
+		"blaie.google.oauth.client-secret=test-google-client-secret",
+		"blaie.google.oauth.redirect-uri=http://localhost:8080/api/v1/auth/google/callback",
+		"blaie.google.oauth.web-base-url=http://localhost:3000"
 })
 class BlaieBeApplicationTests {
 

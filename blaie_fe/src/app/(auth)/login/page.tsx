@@ -9,7 +9,15 @@ export const metadata: Metadata = {
   description: "Sign in to your Blaie account.",
 };
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = (await searchParams) ?? {};
+  const error = firstParam(params.error);
+  const nextPath = firstParam(params.next) ?? routePaths.inbox;
+
   return (
     <AuthShell
       footer={
@@ -24,7 +32,11 @@ export default function LoginPage() {
         </p>
       }
     >
-      <LoginForm />
+      <LoginForm googleAuthFailed={error === "google_auth_failed"} nextPath={nextPath} />
     </AuthShell>
   );
+}
+
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
 }

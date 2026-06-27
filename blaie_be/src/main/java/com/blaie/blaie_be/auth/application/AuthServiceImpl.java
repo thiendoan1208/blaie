@@ -2,6 +2,7 @@ package com.blaie.blaie_be.auth.application;
 
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthProfile;
 import com.blaie.blaie_be.auth.application.result.AuthUserResult;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
 import com.blaie.blaie_be.auth.domain.AuthConstants;
@@ -117,6 +118,28 @@ public class AuthServiceImpl implements AuthService {
         return issueWebAuth(user, UUID.randomUUID(), userAgent);
     }
 
+    @Transactional
+    @Override
+    public WebAuthResult loginGoogle(GoogleOAuthProfile profile, String userAgent) {
+        String subject = trim(profile.subject());
+        String email = trim(profile.email());
+        String emailNormalized = normalize(email);
+        if (subject.isBlank() || emailNormalized.isBlank() || !profile.emailVerified()) {
+            throw new AppException(ErrorCode.GOOGLE_AUTH_FAILED);
+        }
+
+        UserEntity user = authIdentityRepository
+                .findByProviderAndProviderSubject(AuthConstants.PROVIDER_GOOGLE, subject)
+                .map(AuthIdentityEntity::user)
+                .orElseGet(() -> linkOrCreateGoogleUser(profile, subject, email, emailNormalized));
+
+        if (!AuthConstants.USER_STATUS_ACTIVE.equals(user.status())) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
+
+        return issueWebAuth(user, UUID.randomUUID(), userAgent);
+    }
+
     @Transactional(noRollbackFor = AppException.class)
     @Override
     public WebAuthResult refreshWeb(String refreshToken, String userAgent) {
@@ -213,6 +236,38 @@ public class AuthServiceImpl implements AuthService {
                 identifierNormalized
         );
         return identities.size() == 1 ? Optional.of(identities.getFirst()) : Optional.empty();
+    }
+
+    private UserEntity linkOrCreateGoogleUser(
+            GoogleOAuthProfile profile,
+            String subject,
+            String email,
+            String emailNormalized
+    ) {
+        UserEntity user = userRepository.findByEmailNormalized(emailNormalized)
+                .orElseGet(() -> userRepository.saveAndFlush(UserEntity.googleUser(
+                        email,
+                        emailNormalized,
+                        displayName(profile, email),
+                        trimToNull(profile.avatarUrl())
+                )));
+        authIdentityRepository.saveAndFlush(AuthIdentityEntity.google(user, subject));
+        return user;
+    }
+
+    private String displayName(GoogleOAuthProfile profile, String email) {
+        String displayName = trim(profile.displayName());
+        if (!displayName.isBlank()) {
+            return displayName.length() > 100 ? displayName.substring(0, 100) : displayName;
+        }
+        int atIndex = email.indexOf('@');
+        String fallback = atIndex > 0 ? email.substring(0, atIndex) : "Blaie User";
+        return fallback.length() > 100 ? fallback.substring(0, 100) : fallback;
+    }
+
+    private String trimToNull(String value) {
+        String trimmed = trim(value);
+        return trimmed.isBlank() ? null : trimmed;
     }
 
     private AuthUserResult toAuthUserResult(UserEntity user) {

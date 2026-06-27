@@ -14,6 +14,7 @@ import { useRegisterMutation } from "../model/auth.mutations";
 import { AuthField } from "./auth-field";
 import { AuthFormErrorAlert } from "./auth-form-error-alert";
 import { AuthHeading } from "./auth-heading";
+import { GoogleAuthButton } from "./google-auth-button";
 import { PasswordField } from "./password-field";
 
 export function RegisterForm() {
@@ -52,6 +53,16 @@ export function RegisterForm() {
   return (
     <>
       <AuthHeading eyebrow="Create account" title="Hello." description="" />
+
+      <div className="mb-5 space-y-5">
+        <GoogleAuthButton nextPath={defaultAuthenticatedRoute} disabled={mutation.isPending} />
+
+        <div className="flex items-center gap-3 text-xs text-stone-gray">
+          <span className="h-px flex-1 bg-graphite-border" />
+          <span>or</span>
+          <span className="h-px flex-1 bg-graphite-border" />
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         {rootErrorMessage || errors.root?.message ? (

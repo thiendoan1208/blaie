@@ -9,7 +9,11 @@ import com.blaie.blaie_be.auth.application.AuthService;
 import com.blaie.blaie_be.auth.application.EmailVerificationService;
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthClientPort;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
+import com.blaie.blaie_be.auth.infrastructure.google.GoogleOAuthProperties;
+import com.blaie.blaie_be.auth.infrastructure.google.GoogleOAuthState;
+import com.blaie.blaie_be.auth.infrastructure.google.GoogleOAuthStateCookieService;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService;
 import com.blaie.blaie_be.core.response.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -33,15 +38,24 @@ public class AuthController {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
     private final AuthCookieService authCookieService;
+    private final GoogleOAuthProperties googleOAuthProperties;
+    private final GoogleOAuthStateCookieService googleOAuthStateCookieService;
+    private final GoogleOAuthClientPort googleOAuthClientPort;
 
     public AuthController(
             AuthService authService,
             EmailVerificationService emailVerificationService,
-            AuthCookieService authCookieService
+            AuthCookieService authCookieService,
+            GoogleOAuthProperties googleOAuthProperties,
+            GoogleOAuthStateCookieService googleOAuthStateCookieService,
+            GoogleOAuthClientPort googleOAuthClientPort
     ) {
         this.authService = authService;
         this.emailVerificationService = emailVerificationService;
         this.authCookieService = authCookieService;
+        this.googleOAuthProperties = googleOAuthProperties;
+        this.googleOAuthStateCookieService = googleOAuthStateCookieService;
+        this.googleOAuthClientPort = googleOAuthClientPort;
     }
 
     @PostMapping("/register")
@@ -94,6 +108,56 @@ public class AuthController {
         } catch (RuntimeException exception) {
             return ResponseEntity.status(HttpStatus.FOUND)
                     .location(URI.create(emailVerificationService.failedRedirectUrl()))
+                    .build();
+        }
+    }
+
+    @GetMapping("/google/start")
+    public ResponseEntity<Void> startGoogleLogin(
+            @RequestParam(name = "next", required = false) String next
+    ) {
+        GoogleOAuthState oauthState = googleOAuthStateCookieService.create(next);
+        URI authorizationUri = UriComponentsBuilder.fromUri(googleOAuthProperties.authorizationUri())
+                .queryParam("client_id", googleOAuthProperties.clientId())
+                .queryParam("redirect_uri", googleOAuthProperties.redirectUri())
+                .queryParam("response_type", "code")
+                .queryParam("scope", "openid email profile")
+                .queryParam("state", oauthState.state())
+                .queryParam("code_challenge", oauthState.codeChallenge())
+                .queryParam("code_challenge_method", "S256")
+                .queryParam("access_type", "online")
+                .queryParam("prompt", "select_account")
+                .build()
+                .toUri();
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.cookie(oauthState).toString())
+                .location(authorizationUri)
+                .build();
+    }
+
+    @GetMapping("/google/callback")
+    public ResponseEntity<Void> completeGoogleLogin(
+            @RequestParam(name = "code", required = false) String code,
+            @RequestParam(name = "state", required = false) String state,
+            @CookieValue(name = GoogleOAuthStateCookieService.COOKIE_NAME, required = false) String stateCookie,
+            HttpServletRequest httpRequest
+    ) {
+        try {
+            GoogleOAuthState oauthState = googleOAuthStateCookieService.require(stateCookie, state);
+            WebAuthResult result = authService.loginGoogle(
+                    googleOAuthClientPort.exchangeCodeForProfile(code, oauthState.codeVerifier(), googleOAuthProperties.redirectUri()),
+                    httpRequest.getHeader(HttpHeaders.USER_AGENT)
+            );
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie().toString())
+                    .header(HttpHeaders.SET_COOKIE, authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl()).toString())
+                    .header(HttpHeaders.SET_COOKIE, authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl()).toString())
+                    .location(URI.create(googleOAuthProperties.webBaseUrl() + oauthState.nextPath()))
+                    .build();
+        } catch (RuntimeException exception) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie().toString())
+                    .location(URI.create(googleOAuthProperties.webBaseUrl() + "/login?error=google_auth_failed"))
                     .build();
         }
     }

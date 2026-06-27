@@ -48,7 +48,11 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
         "blaie.email.from=Blaie <no-reply@test.local>",
         "blaie.email.web-base-url=http://localhost:3000",
         "blaie.email.api-base-url=http://localhost:8080/api/v1",
-        "blaie.email.verification-ttl=24h"
+        "blaie.email.verification-ttl=24h",
+        "blaie.google.oauth.client-id=test-google-client-id",
+        "blaie.google.oauth.client-secret=test-google-client-secret",
+        "blaie.google.oauth.redirect-uri=http://localhost:8080/api/v1/auth/google/callback",
+        "blaie.google.oauth.web-base-url=http://localhost:3000"
 })
 class LocalAuthWebFlowTest {
     private static final String ACCESS_COOKIE = "blaie_at";
@@ -184,6 +188,20 @@ class LocalAuthWebFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:3000"))
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+    }
+
+    @Test
+    void googleStartRedirectsToGoogleAndSetsStateCookie() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/auth/google/start")
+                        .queryParam("next", "/tasks"))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, org.hamcrest.Matchers.containsString("https://accounts.google.com/o/oauth2/v2/auth")))
+                .andExpect(header().string(HttpHeaders.LOCATION, org.hamcrest.Matchers.containsString("client_id=test-google-client-id")))
+                .andExpect(header().string(HttpHeaders.LOCATION, org.hamcrest.Matchers.containsString("redirect_uri=http://localhost:8080/api/v1/auth/google/callback")))
+                .andExpect(header().string(HttpHeaders.LOCATION, org.hamcrest.Matchers.containsString("code_challenge_method=S256")))
+                .andReturn();
+
+        Assertions.assertThat(setCookieHeader(result, "blaie_google_oauth")).contains("HttpOnly");
     }
 
     @Test
