@@ -6,15 +6,15 @@ import { useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { defaultAuthenticatedRoute, routePaths } from "@/shared/routes/route-paths";
-import { useCurrentUserQuery } from "../model/auth.queries";
 import {
   useLogoutMutation,
   useResendEmailVerificationMutation,
 } from "../model/auth.mutations";
+import { useUser } from "../model/user-context";
 
 export function VerifyEmailPanel() {
   const router = useRouter();
-  const { data: user, isError, isPending } = useCurrentUserQuery();
+  const { user, isError, isPending } = useUser();
   const resendMutation = useResendEmailVerificationMutation();
   const logoutMutation = useLogoutMutation();
 
@@ -57,7 +57,7 @@ export function VerifyEmailPanel() {
     }
   }
 
-  if (isPending || isError || user?.emailVerified) {
+  if (isPending || isError || !user || user.emailVerified) {
     return (
       <div className="flex min-h-48 items-center justify-center text-sm text-stone-gray">
         Loading...

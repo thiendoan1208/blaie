@@ -2,11 +2,11 @@
 
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { useUser } from "../model/user-context";
 import { routePaths } from "@/shared/routes/route-paths";
-import { useCurrentUserQuery } from "../model/auth.queries";
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const { data: user, isError, isPending } = useCurrentUserQuery();
+  const { user, isError, isPending } = useUser();
 
   useEffect(() => {
     if (!isError) {

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { ensureCsrfToken } from "@/features/auth/api/csrf";
 import { createQueryClient } from "@/shared/query/query-client";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => createQueryClient());
@@ -18,7 +19,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <TooltipProvider>{children}</TooltipProvider>
       <Toaster position="top-right" richColors />
     </QueryClientProvider>
   );

@@ -109,6 +109,27 @@ describe("tryHandleAuthRefreshError", () => {
     });
   });
 
+  it("clears stale auth cookies when refresh fails", async () => {
+    const { tryHandleAuthRefreshError } = await importAuthRefresh();
+    document.cookie = "XSRF-TOKEN=csrf-token; path=/";
+    const client = createClient();
+    client.post
+      .mockRejectedValueOnce({
+        isAxiosError: true,
+        message: "Refresh failed",
+        response: { status: 401, data: { code: "SESSION_REVOKED", message: "Session revoked" } },
+      })
+      .mockResolvedValueOnce({ data: {}, status: 204 });
+
+    await expect(tryHandleAuthRefreshError(unauthorizedError("/items"), client)).rejects.toMatchObject({
+      code: "SESSION_REVOKED",
+      status: 401,
+    });
+
+    expect(client.post).toHaveBeenNthCalledWith(1, "/auth/refresh", undefined, { skipAuthRefresh: true });
+    expect(client.post).toHaveBeenNthCalledWith(2, "/auth/logout", undefined, { skipAuthRefresh: true });
+  });
+
   it("waits for another tab refresh result before retrying", async () => {
     const { tryHandleAuthRefreshError } = await importAuthRefresh();
     const client = createClient();

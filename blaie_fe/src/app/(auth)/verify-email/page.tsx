@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { UserProvider } from "@/features/auth/model/user-context";
 import { AuthShell } from "@/features/auth/ui/auth-shell";
 import { VerifyEmailPanel } from "@/features/auth/ui/verify-email-panel";
 import { routePaths } from "@/shared/routes/route-paths";
@@ -32,7 +33,9 @@ export default function VerifyEmailPage() {
           </div>
         }
       >
-        <VerifyEmailPanel />
+        <UserProvider>
+          <VerifyEmailPanel />
+        </UserProvider>
       </Suspense>
     </AuthShell>
   );

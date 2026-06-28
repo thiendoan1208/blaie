@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthShell } from "@/features/auth/ui/auth-shell";
 import { LoginForm } from "@/features/auth/ui/login-form";
+import { AuthSessionRedirect } from "@/features/auth/ui/auth-session-redirect";
 import { routePaths } from "@/shared/routes/route-paths";
 
 export const metadata: Metadata = {
@@ -32,6 +33,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </p>
       }
     >
+      <AuthSessionRedirect redirectPath={nextPath} />
       <LoginForm googleAuthFailed={error === "google_auth_failed"} nextPath={nextPath} />
     </AuthShell>
   );

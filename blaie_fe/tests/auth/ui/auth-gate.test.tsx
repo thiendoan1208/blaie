@@ -1,19 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthGate } from "@/features/auth/ui/auth-gate";
-import { useCurrentUserQuery } from "@/features/auth/model/auth.queries";
+import { useUser } from "@/features/auth/model/user-context";
 
-vi.mock("@/features/auth/model/auth.queries", () => ({
-  useCurrentUserQuery: vi.fn(),
+vi.mock("@/features/auth/model/user-context", () => ({
+  useUser: vi.fn(),
 }));
 
 describe("AuthGate", () => {
   beforeEach(() => {
-    vi.mocked(useCurrentUserQuery).mockReset();
+    vi.mocked(useUser).mockReset();
   });
 
   it("shows a loading state while the current user is pending", () => {
-    vi.mocked(useCurrentUserQuery).mockReturnValue({ isPending: true, isError: false } as never);
+    vi.mocked(useUser).mockReturnValue({ isPending: true, isError: false } as never);
 
     render(<AuthGate>Private app</AuthGate>);
 
@@ -22,7 +22,7 @@ describe("AuthGate", () => {
   });
 
   it("renders children when the current user is available", () => {
-    vi.mocked(useCurrentUserQuery).mockReturnValue({ isPending: false, isError: false } as never);
+    vi.mocked(useUser).mockReturnValue({ isPending: false, isError: false } as never);
 
     render(<AuthGate>Private app</AuthGate>);
 

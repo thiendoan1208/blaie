@@ -17,10 +17,11 @@ declare module "axios" {
 
 const AUTH_REFRESH_PATH = "/auth/refresh";
 const AUTH_CSRF_PATH = "/auth/csrf";
+const AUTH_LOGOUT_PATH = "/auth/logout";
 const AUTH_REFRESH_SKIP_PATHS = new Set([
   AUTH_CSRF_PATH,
   "/auth/login",
-  "/auth/logout",
+  AUTH_LOGOUT_PATH,
   "/auth/register",
   AUTH_REFRESH_PATH,
 ]);
@@ -214,6 +215,15 @@ async function postRefreshRequest(client: AxiosInstance) {
   await client.post(AUTH_REFRESH_PATH, undefined, { skipAuthRefresh: true });
 }
 
+async function clearStaleAuthCookies(client: AxiosInstance) {
+  try {
+    await ensureCsrfCookie(client);
+    await client.post(AUTH_LOGOUT_PATH, undefined, { skipAuthRefresh: true });
+  } catch {
+    // Best-effort cleanup only. The original refresh error remains authoritative.
+  }
+}
+
 function refreshAccessToken(client: AxiosInstance) {
   refreshSessionPromise ??= coordinateRefreshAccessToken(client)
     .finally(() => {
@@ -273,6 +283,7 @@ export async function tryHandleAuthRefreshError(
     await refreshAccessToken(client);
     return { handled: true, response: await client(error.config) };
   } catch (refreshError) {
+    await clearStaleAuthCookies(client);
     redirectToLoginIfProtectedRoute();
     return Promise.reject(normalizeError(refreshError));
   }

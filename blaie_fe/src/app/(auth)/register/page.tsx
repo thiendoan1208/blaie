@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthShell } from "@/features/auth/ui/auth-shell";
+import { AuthSessionRedirect } from "@/features/auth/ui/auth-session-redirect";
 import { RegisterForm } from "@/features/auth/ui/register-form";
 import { routePaths } from "@/shared/routes/route-paths";
 
@@ -24,6 +25,7 @@ export default function RegisterPage() {
         </p>
       }
     >
+      <AuthSessionRedirect />
       <RegisterForm />
     </AuthShell>
   );
