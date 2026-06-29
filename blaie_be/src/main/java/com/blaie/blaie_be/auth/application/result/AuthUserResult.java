@@ -8,6 +8,7 @@ public record AuthUserResult(
         String username,
         String email,
         boolean emailVerified,
+        boolean hasPassword,
         String displayName,
         String avatarUrl,
         Instant createdAt

@@ -73,6 +73,10 @@ public class AuthIdentityEntity {
         emailVerified = true;
     }
 
+    public void updatePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
     public UserEntity user() {
         return user;
     }

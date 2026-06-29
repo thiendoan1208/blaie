@@ -27,6 +27,9 @@ public class EmailProperties {
     @NotNull
     private Duration verificationTtl;
 
+    @NotNull
+    private Duration passwordResetTtl = Duration.ofMinutes(15);
+
     private String resendApiKey;
 
     public String provider() {
@@ -69,6 +72,14 @@ public class EmailProperties {
         this.verificationTtl = verificationTtl;
     }
 
+    public Duration passwordResetTtl() {
+        return passwordResetTtl;
+    }
+
+    public void setPasswordResetTtl(Duration passwordResetTtl) {
+        this.passwordResetTtl = passwordResetTtl;
+    }
+
     public String resendApiKey() {
         return resendApiKey;
     }
@@ -80,6 +91,11 @@ public class EmailProperties {
     @AssertTrue(message = "Email verification TTL must be positive")
     public boolean isVerificationTtlValid() {
         return verificationTtl != null && !verificationTtl.isZero() && !verificationTtl.isNegative();
+    }
+
+    @AssertTrue(message = "Password reset TTL must be positive")
+    public boolean isPasswordResetTtlValid() {
+        return passwordResetTtl != null && !passwordResetTtl.isZero() && !passwordResetTtl.isNegative();
     }
 
     @AssertTrue(message = "Resend API key is required when blaie.email.provider=resend")

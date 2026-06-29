@@ -14,6 +14,7 @@ export const routePaths = {
   home: "/",
   login: "/login",
   register: "/register",
+  forgotPassword: "/forgot-password",
   verifyEmail: "/verify-email",
   verifyEmailResult: "/verify-email/result",
   inbox: "/inbox",
@@ -50,6 +51,7 @@ export const defaultAuthenticatedRoute = routePaths.inbox;
 export const authRoutePaths = [
   routePaths.login,
   routePaths.register,
+  routePaths.forgotPassword,
 ] as const;
 
 export const protectedRoutePrefixes = [

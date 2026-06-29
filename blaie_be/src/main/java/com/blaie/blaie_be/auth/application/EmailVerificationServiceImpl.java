@@ -79,16 +79,20 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         if (rawToken == null || rawToken.isBlank()) {
             throw new AppException(ErrorCode.INVALID_EMAIL_VERIFICATION_TOKEN);
         }
+
         Instant now = clock.instant();
         AuthActionTokenEntity token = authActionTokenRepository
                 .findByTokenHashAndType(authTokenService.hashOpaqueToken(rawToken), AuthActionTokenType.EMAIL_VERIFICATION)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_EMAIL_VERIFICATION_TOKEN));
+
         if (!token.isOpen(now)) {
             throw new AppException(ErrorCode.INVALID_EMAIL_VERIFICATION_TOKEN);
         }
+
         AuthIdentityEntity localIdentity = authIdentityRepository
                 .findByUser_IdAndProvider(token.user().id(), AuthConstants.PROVIDER_LOCAL)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_EMAIL_VERIFICATION_TOKEN));
+
         localIdentity.markEmailVerified();
         token.consume(now);
     }

@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -100,6 +101,15 @@ export function LoginForm({ googleAuthFailed = false, nextPath = defaultAuthenti
           error={errors.password?.message}
           {...register("password")}
         />
+
+        <div className="-mt-3 flex justify-end">
+          <Link
+            href={routePaths.forgotPassword}
+            className="text-sm font-medium text-stone-gray transition-colors hover:text-ivory-text focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dust-purple"
+          >
+            Forgot password?
+          </Link>
+        </div>
 
         <Button
           type="submit"

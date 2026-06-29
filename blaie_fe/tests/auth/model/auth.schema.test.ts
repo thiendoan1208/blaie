@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { loginSchema, passwordSchema, registerSchema } from "@/features/auth/model/auth.schema";
+import {
+  loginSchema,
+  passwordResetConfirmSchema,
+  passwordResetRequestSchema,
+  passwordSchema,
+  registerSchema,
+} from "@/features/auth/model/auth.schema";
 
 describe("passwordSchema", () => {
   it("trims and accepts passwords at both length boundaries", () => {
@@ -70,5 +76,39 @@ describe("registerSchema", () => {
     expect(registerSchema.safeParse({ ...base, username: "a".repeat(33), email: "valid@example.com" }).success).toBe(false);
     expect(registerSchema.safeParse({ ...base, username: "bad name", email: "valid@example.com" }).success).toBe(false);
     expect(registerSchema.safeParse({ ...base, username: "valid.user", email: "invalid-email" }).success).toBe(false);
+  });
+});
+
+describe("password reset schemas", () => {
+  it("normalizes request email and accepts valid reset confirmation", () => {
+    expect(passwordResetRequestSchema.parse({ email: " User@Example.com " })).toEqual({
+      email: "User@Example.com",
+    });
+    expect(passwordResetConfirmSchema.parse({
+      email: " User@Example.com ",
+      code: " 123456 ",
+      newPassword: " Password2@ ",
+      confirmPassword: " Password2@ ",
+    })).toEqual({
+      email: "User@Example.com",
+      code: "123456",
+      newPassword: "Password2@",
+      confirmPassword: "Password2@",
+    });
+  });
+
+  it("rejects invalid reset code and mismatched passwords", () => {
+    const base = {
+      email: "user@example.com",
+      newPassword: "Password2@",
+      confirmPassword: "Password2@",
+    };
+
+    expect(passwordResetConfirmSchema.safeParse({ ...base, code: "12345" }).success).toBe(false);
+    expect(passwordResetConfirmSchema.safeParse({
+      ...base,
+      code: "123456",
+      confirmPassword: "Password3@",
+    }).success).toBe(false);
   });
 });

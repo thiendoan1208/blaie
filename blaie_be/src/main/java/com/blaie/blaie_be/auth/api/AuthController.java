@@ -1,14 +1,23 @@
 package com.blaie.blaie_be.auth.api;
 
 import com.blaie.blaie_be.auth.api.request.LoginLocalRequest;
+import com.blaie.blaie_be.auth.api.request.PasswordResetConfirmRequest;
+import com.blaie.blaie_be.auth.api.request.PasswordResetRequest;
 import com.blaie.blaie_be.auth.api.request.RegisterLocalRequest;
+import com.blaie.blaie_be.auth.api.request.UpdatePasswordRequest;
+import com.blaie.blaie_be.auth.api.request.UpdateUsernameRequest;
 import com.blaie.blaie_be.auth.api.response.AuthUserEnvelope;
 import com.blaie.blaie_be.auth.api.response.AuthUserResponse;
 import com.blaie.blaie_be.auth.api.response.CsrfTokenResponse;
 import com.blaie.blaie_be.auth.application.AuthService;
 import com.blaie.blaie_be.auth.application.EmailVerificationService;
+import com.blaie.blaie_be.auth.application.PasswordResetService;
+import com.blaie.blaie_be.auth.application.command.ConfirmPasswordResetCommand;
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
+import com.blaie.blaie_be.auth.application.command.RequestPasswordResetCommand;
+import com.blaie.blaie_be.auth.application.command.UpdatePasswordCommand;
+import com.blaie.blaie_be.auth.application.command.UpdateUsernameCommand;
 import com.blaie.blaie_be.auth.application.port.GoogleOAuthClientPort;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
 import com.blaie.blaie_be.auth.infrastructure.google.GoogleOAuthProperties;
@@ -26,6 +35,7 @@ import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,6 +47,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class AuthController {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
     private final AuthCookieService authCookieService;
     private final GoogleOAuthProperties googleOAuthProperties;
     private final GoogleOAuthStateCookieService googleOAuthStateCookieService;
@@ -45,6 +56,7 @@ public class AuthController {
     public AuthController(
             AuthService authService,
             EmailVerificationService emailVerificationService,
+            PasswordResetService passwordResetService,
             AuthCookieService authCookieService,
             GoogleOAuthProperties googleOAuthProperties,
             GoogleOAuthStateCookieService googleOAuthStateCookieService,
@@ -52,6 +64,7 @@ public class AuthController {
     ) {
         this.authService = authService;
         this.emailVerificationService = emailVerificationService;
+        this.passwordResetService = passwordResetService;
         this.authCookieService = authCookieService;
         this.googleOAuthProperties = googleOAuthProperties;
         this.googleOAuthStateCookieService = googleOAuthStateCookieService;
@@ -87,6 +100,20 @@ public class AuthController {
         return ApiResponse.of(new AuthUserEnvelope(AuthUserResponse.from(authService.currentUser())));
     }
 
+    @PatchMapping("/me/username")
+    public ApiResponse<AuthUserEnvelope> updateUsername(@Valid @RequestBody UpdateUsernameRequest request) {
+        return ApiResponse.of(new AuthUserEnvelope(AuthUserResponse.from(
+                authService.updateUsername(new UpdateUsernameCommand(request.username()))
+        )));
+    }
+
+    @PatchMapping("/me/password")
+    public ApiResponse<AuthUserEnvelope> updatePassword(@Valid @RequestBody UpdatePasswordRequest request) {
+        return ApiResponse.of(new AuthUserEnvelope(AuthUserResponse.from(
+                authService.updatePassword(new UpdatePasswordCommand(request.currentPassword(), request.newPassword()))
+        )));
+    }
+
     @GetMapping("/csrf")
     public ApiResponse<CsrfTokenResponse> csrf(CsrfToken csrfToken) {
         return ApiResponse.of(new CsrfTokenResponse(csrfToken.getToken(), csrfToken.getHeaderName()));
@@ -95,6 +122,22 @@ public class AuthController {
     @PostMapping("/email/verification")
     public ResponseEntity<Void> resendEmailVerification() {
         emailVerificationService.resendVerificationForCurrentUser();
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
+        passwordResetService.requestPasswordReset(new RequestPasswordResetCommand(request.email()));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/password-reset/confirm")
+    public ResponseEntity<Void> confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest request) {
+        passwordResetService.confirmPasswordReset(new ConfirmPasswordResetCommand(
+                request.email(),
+                request.code(),
+                request.newPassword()
+        ));
         return ResponseEntity.noContent().build();
     }
 

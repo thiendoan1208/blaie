@@ -109,6 +109,44 @@ class AuthRequestValidationTest {
                         .isEqualTo("displayName"));
     }
 
+    @Test
+    void passwordResetRequestsTrimAndValidateInput() {
+        PasswordResetRequest request = new PasswordResetRequest(" user@example.com ");
+        PasswordResetConfirmRequest confirm = new PasswordResetConfirmRequest(
+                " user@example.com ",
+                " 123456 ",
+                " Password2@ "
+        );
+
+        Assertions.assertThat(VALIDATOR.validate(request)).isEmpty();
+        Assertions.assertThat(VALIDATOR.validate(confirm)).isEmpty();
+        Assertions.assertThat(request.email()).isEqualTo("user@example.com");
+        Assertions.assertThat(confirm.email()).isEqualTo("user@example.com");
+        Assertions.assertThat(confirm.code()).isEqualTo("123456");
+        Assertions.assertThat(confirm.newPassword()).isEqualTo("Password2@");
+    }
+
+    @Test
+    void passwordResetConfirmRejectsInvalidCodeAndPassword() {
+        PasswordResetConfirmRequest badCode = new PasswordResetConfirmRequest(
+                "user@example.com",
+                "12345",
+                "Password2@"
+        );
+        PasswordResetConfirmRequest badPassword = new PasswordResetConfirmRequest(
+                "user@example.com",
+                "123456",
+                "password"
+        );
+
+        Assertions.assertThat(VALIDATOR.validate(badCode))
+                .anySatisfy(violation -> Assertions.assertThat(violation.getPropertyPath().toString())
+                        .isEqualTo("code"));
+        Assertions.assertThat(VALIDATOR.validate(badPassword))
+                .anySatisfy(violation -> Assertions.assertThat(violation.getPropertyPath().toString())
+                        .isEqualTo("newPassword"));
+    }
+
     private RegisterLocalRequest validRegistration(String displayName) {
         return new RegisterLocalRequest(
                 "valid.user",

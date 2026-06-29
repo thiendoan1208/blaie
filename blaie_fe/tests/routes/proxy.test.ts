@@ -9,7 +9,7 @@ function request(pathname: string, cookie?: string) {
 }
 
 describe("proxy", () => {
-  it.each(["/login", "/register"])("redirects authenticated auth route %s to inbox", (pathname) => {
+  it.each(["/login", "/register", "/forgot-password"])("redirects authenticated auth route %s to inbox", (pathname) => {
     const response = proxy(request(pathname, "blaie_at=access-token"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/inbox");

@@ -110,4 +110,9 @@ public class UserEntity {
     public boolean admin() {
         return admin;
     }
+
+    public void updateUsername(String username, String usernameNormalized) {
+        this.username = username;
+        this.usernameNormalized = usernameNormalized;
+    }
 }

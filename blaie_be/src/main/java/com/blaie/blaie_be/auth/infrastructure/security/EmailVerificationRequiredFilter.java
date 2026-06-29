@@ -24,6 +24,8 @@ public class EmailVerificationRequiredFilter extends OncePerRequestFilter {
             "/api/v1/auth/csrf",
             "/api/v1/auth/email/verification",
             "/api/v1/auth/email/verify",
+            "/api/v1/auth/password-reset/request",
+            "/api/v1/auth/password-reset/confirm",
             "/api/v1/auth/google/start",
             "/api/v1/auth/google/callback"
     );

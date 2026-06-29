@@ -2,6 +2,8 @@ package com.blaie.blaie_be.auth.application;
 
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
+import com.blaie.blaie_be.auth.application.command.UpdatePasswordCommand;
+import com.blaie.blaie_be.auth.application.command.UpdateUsernameCommand;
 import com.blaie.blaie_be.auth.application.port.GoogleOAuthProfile;
 import com.blaie.blaie_be.auth.application.result.AuthUserResult;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
@@ -23,6 +25,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -202,13 +205,62 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(readOnly = true)
     @Override
     public AuthUserResult currentUser() {
-        UUID userId = CurrentUserHolder.current()
-                .map(CurrentUser::userId)
-                .map(this::parseUserId)
-                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
-        return userRepository.findByIdAndStatus(userId, AuthConstants.USER_STATUS_ACTIVE)
-                .map(this::toAuthUserResult)
-                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
+        return toAuthUserResult(requireCurrentActiveUser());
+    }
+
+    @Transactional
+    @Override
+    public AuthUserResult updateUsername(UpdateUsernameCommand command) {
+        UserEntity user = requireCurrentActiveUser();
+        String username = trim(command.username());
+        String usernameNormalized = normalize(username);
+        if (usernameNormalized.isBlank()) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR, "Validation failed", Map.of(
+                    "username", List.of("Username is required")
+            ));
+        }
+        if (usernameNormalized.equals(normalize(user.username()))) {
+            return toAuthUserResult(user);
+        }
+        userRepository.findByUsernameNormalized(usernameNormalized)
+                .filter(existingUser -> !existingUser.id().equals(user.id()))
+                .ifPresent(existingUser -> {
+                    throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
+                });
+        user.updateUsername(username, usernameNormalized);
+        return toAuthUserResult(user);
+    }
+
+    @Transactional
+    @Override
+    public AuthUserResult updatePassword(UpdatePasswordCommand command) {
+        UserEntity user = requireCurrentActiveUser();
+        String newPassword = trim(command.newPassword());
+        Optional<AuthIdentityEntity> localIdentity = authIdentityRepository.findByUser_IdAndProvider(
+                user.id(),
+                AuthConstants.PROVIDER_LOCAL
+        );
+
+        if (localIdentity.isPresent()) {
+            String currentPassword = trim(command.currentPassword());
+            if (currentPassword.isBlank()) {
+                throw new AppException(ErrorCode.VALIDATION_ERROR, "Validation failed", Map.of(
+                        "currentPassword", List.of("Current password is required")
+                ));
+            }
+            AuthIdentityEntity identity = localIdentity.get();
+            if (!passwordEncoder.matches(currentPassword, identity.passwordHash())) {
+                throw new AppException(ErrorCode.INVALID_CREDENTIALS, "Current password is incorrect", Map.of(
+                        "currentPassword", List.of("Current password is incorrect")
+                ));
+            }
+            identity.updatePasswordHash(passwordEncoder.encode(newPassword));
+        } else {
+            authIdentityRepository.save(AuthIdentityEntity.local(user, passwordEncoder.encode(newPassword)));
+        }
+
+        refreshTokenRepository.revokeAllUserTokens(user.id(), "password_changed", clock.instant());
+        return toAuthUserResult(user);
     }
 
     private WebAuthResult issueWebAuth(UserEntity user, UUID tokenFamilyId, String userAgent) {
@@ -276,10 +328,22 @@ public class AuthServiceImpl implements AuthService {
                 user.username(),
                 user.email(),
                 authIdentityRepository.existsByUser_IdAndEmailVerifiedTrue(user.id()),
+                authIdentityRepository.findByUser_IdAndProvider(user.id(), AuthConstants.PROVIDER_LOCAL)
+                        .map(identity -> identity.passwordHash() != null && !identity.passwordHash().isBlank())
+                        .orElse(false),
                 user.displayName(),
                 user.avatarUrl(),
                 user.createdAt()
         );
+    }
+
+    private UserEntity requireCurrentActiveUser() {
+        UUID userId = CurrentUserHolder.current()
+                .map(CurrentUser::userId)
+                .map(this::parseUserId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
+        return userRepository.findByIdAndStatus(userId, AuthConstants.USER_STATUS_ACTIVE)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
     }
 
     private RefreshTokenEntity requireRefreshToken(String refreshToken) {

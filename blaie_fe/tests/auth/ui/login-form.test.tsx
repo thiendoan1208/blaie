@@ -50,6 +50,12 @@ describe("LoginForm", () => {
     expect(screen.getByRole("link", { name: /Continue with Google/i })).toHaveAttribute("aria-disabled", "true");
   });
 
+  it("links to forgot password", () => {
+    render(<LoginForm />);
+
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/forgot-password");
+  });
+
   it("renders the Google OAuth start link with the next path", () => {
     render(<LoginForm nextPath="/tasks" />);
 

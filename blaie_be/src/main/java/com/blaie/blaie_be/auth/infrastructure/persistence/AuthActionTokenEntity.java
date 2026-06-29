@@ -42,6 +42,9 @@ public class AuthActionTokenEntity {
     @Column(name = "revoked_reason", length = 100)
     private String revokedReason;
 
+    @Column(name = "failed_attempt_count", nullable = false)
+    private int failedAttemptCount;
+
     @Column(name = "created_at", nullable = false)
     @CreatedDate
     private Instant createdAt;
@@ -63,13 +66,36 @@ public class AuthActionTokenEntity {
         return consumedAt == null && revokedAt == null && expiresAt.isAfter(now);
     }
 
+    public boolean isExpired(Instant now) {
+        return !expiresAt.isAfter(now);
+    }
+
     public void consume(Instant now) {
         if (consumedAt == null) {
             consumedAt = now;
         }
     }
 
+    public void revoke(String reason, Instant now) {
+        if (revokedAt == null) {
+            revokedAt = now;
+            revokedReason = reason;
+        }
+    }
+
+    public void incrementFailedAttempt() {
+        failedAttemptCount++;
+    }
+
     public UserEntity user() {
         return user;
+    }
+
+    public String tokenHash() {
+        return tokenHash;
+    }
+
+    public int failedAttemptCount() {
+        return failedAttemptCount;
     }
 }
