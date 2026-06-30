@@ -4,10 +4,10 @@ import { WebGLShaderCanvas } from "./WebGLShaderCanvas";
 function BrandBlock() {
   return (
     <div className="z-20 flex flex-col items-center text-center">
-      <h1 className="font-display-lg mb-4 select-none text-8xl leading-none tracking-tighter text-[#141413] md:text-[9.5rem]">
+      <h1 className="font-display-lg mb-4 select-none text-8xl leading-none tracking-tighter text-foreground md:text-[9.5rem]">
         Blaie
       </h1>
-      <p className="font-anthropic-sans mt-2 select-none whitespace-nowrap text-xs uppercase tracking-[0.2em] text-[#73726c] opacity-80 md:text-sm">
+      <p className="font-anthropic-sans mt-2 select-none whitespace-nowrap text-xs uppercase tracking-[0.2em] text-muted-foreground opacity-80 md:text-sm">
         Capture everything. Structure instantly.
       </p>
     </div>

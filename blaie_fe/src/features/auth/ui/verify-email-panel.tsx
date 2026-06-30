@@ -59,7 +59,7 @@ export function VerifyEmailPanel() {
 
   if (isPending || isError || !user || user.emailVerified) {
     return (
-      <div className="flex min-h-48 items-center justify-center text-sm text-stone-gray">
+      <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
         Loading...
       </div>
     );
@@ -68,23 +68,23 @@ export function VerifyEmailPanel() {
   return (
     <div className="space-y-7">
       <div className="space-y-3">
-        <div className="flex size-11 items-center justify-center rounded-lg border border-dust-purple/25 bg-dust-purple/10 text-dust-purple">
+        <div className="flex size-11 items-center justify-center rounded-lg border border-brand-accent/25 bg-brand-accent/10 text-brand-accent">
           <MailCheck className="size-5" aria-hidden="true" />
         </div>
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase text-stone-gray">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">
             Verify email
           </p>
-          <h1 className="text-3xl font-semibold tracking-normal text-ivory-text">
+          <h1 className="text-3xl font-semibold tracking-normal text-foreground">
             Check your email
           </h1>
-          <p className="text-sm leading-6 text-stone-gray">
+          <p className="text-sm leading-6 text-muted-foreground">
             {statusText}
           </p>
         </div>
       </div>
 
-      <div className="rounded-lg border border-graphite-border bg-graphite-panel/60 px-4 py-3 text-sm text-ivory-text">
+      <div className="rounded-lg border border-border bg-muted/60 px-4 py-3 text-sm text-foreground">
         {user.email}
       </div>
 
@@ -107,7 +107,7 @@ export function VerifyEmailPanel() {
           variant="outline"
           disabled={logoutMutation.isPending}
           onClick={logout}
-          className="h-11 border-graphite-border bg-transparent text-ivory-text hover:bg-graphite-panel"
+          className="h-11 border-border bg-transparent text-foreground hover:bg-muted"
         >
           {logoutMutation.isPending ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />

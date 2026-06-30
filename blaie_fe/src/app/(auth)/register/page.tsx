@@ -18,7 +18,7 @@ export default function RegisterPage() {
           Already have an account?{" "}
           <Link
             href={routePaths.login}
-            className="font-semibold text-dust-purple underline-offset-4 transition-colors hover:text-dust-purple/80 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dust-purple"
+            className="font-semibold text-brand-accent underline-offset-4 transition-colors hover:text-brand-accent/80 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Sign in
           </Link>

@@ -195,7 +195,7 @@ export function ForgotPasswordForm() {
             setRootErrorMessage(null);
             setStep("request");
           }}
-          className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-stone-gray transition-colors hover:text-ivory-text focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dust-purple disabled:pointer-events-none disabled:opacity-50"
+          className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
           Use a different email
@@ -249,7 +249,7 @@ export function ForgotPasswordForm() {
 
       <Link
         href={routePaths.login}
-        className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-stone-gray transition-colors hover:text-ivory-text focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dust-purple"
+        className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
         Back to sign in

@@ -73,10 +73,10 @@ export function LoginForm({ googleAuthFailed = false, nextPath = defaultAuthenti
 
         <GoogleAuthButton nextPath={nextPath} disabled={mutation.isPending} />
 
-        <div className="flex items-center gap-3 text-xs text-stone-gray">
-          <span className="h-px flex-1 bg-graphite-border" />
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="h-px flex-1 bg-border" />
           <span>or</span>
-          <span className="h-px flex-1 bg-graphite-border" />
+          <span className="h-px flex-1 bg-border" />
         </div>
       </div>
 
@@ -105,7 +105,7 @@ export function LoginForm({ googleAuthFailed = false, nextPath = defaultAuthenti
         <div className="-mt-3 flex justify-end">
           <Link
             href={routePaths.forgotPassword}
-            className="text-sm font-medium text-stone-gray transition-colors hover:text-ivory-text focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dust-purple"
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Forgot password?
           </Link>

@@ -57,10 +57,10 @@ export function RegisterForm() {
       <div className="mb-5 space-y-5">
         <GoogleAuthButton nextPath={defaultAuthenticatedRoute} disabled={mutation.isPending} />
 
-        <div className="flex items-center gap-3 text-xs text-stone-gray">
-          <span className="h-px flex-1 bg-graphite-border" />
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="h-px flex-1 bg-border" />
           <span>or</span>
-          <span className="h-px flex-1 bg-graphite-border" />
+          <span className="h-px flex-1 bg-border" />
         </div>
       </div>
 

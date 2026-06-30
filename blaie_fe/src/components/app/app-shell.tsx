@@ -12,9 +12,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <div className="flex min-h-screen flex-col bg-obsidian-canvas">
+        <div className="flex min-h-screen flex-col bg-background">
           <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 px-4">
-            <SidebarTrigger className="h-8 w-8 cursor-pointer text-stone-gray transition-colors hover:text-ivory-text" />
+            <SidebarTrigger className="h-8 w-8 cursor-pointer text-muted-foreground transition-colors hover:text-foreground" />
             <span className="ml-auto font-display-sm text-[22px] font-normal tracking-tight">
               Blaie
             </span>

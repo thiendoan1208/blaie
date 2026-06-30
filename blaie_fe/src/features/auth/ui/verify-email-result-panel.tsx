@@ -18,13 +18,13 @@ export function VerifyEmailResultPanel() {
             <CheckCircle2 className="size-5" aria-hidden="true" />
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase text-stone-gray">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">
               Email verified
             </p>
-            <h1 className="text-3xl font-semibold tracking-normal text-ivory-text">
+            <h1 className="text-3xl font-semibold tracking-normal text-foreground">
               You are ready
             </h1>
-            <p className="text-sm leading-6 text-stone-gray">
+            <p className="text-sm leading-6 text-muted-foreground">
               Your email has been verified. You can continue to Blaie now.
             </p>
           </div>
@@ -47,13 +47,13 @@ export function VerifyEmailResultPanel() {
           <AlertTriangle className="size-5" aria-hidden="true" />
         </div>
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase text-stone-gray">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">
             Verification failed
           </p>
-          <h1 className="text-3xl font-semibold tracking-normal text-ivory-text">
+          <h1 className="text-3xl font-semibold tracking-normal text-foreground">
             Link expired
           </h1>
-          <p className="text-sm leading-6 text-stone-gray">
+          <p className="text-sm leading-6 text-muted-foreground">
             This verification link is invalid, expired, or already used. Send a fresh link from the verification screen.
           </p>
         </div>

@@ -13,7 +13,7 @@ export default function VerifyEmailResultPage() {
     <AuthShell footer={<></>}>
       <Suspense
         fallback={
-          <div className="flex min-h-48 items-center justify-center text-sm text-stone-gray">
+          <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
             Loading...
           </div>
         }

@@ -15,13 +15,13 @@ export function GoogleAuthButton({ nextPath, disabled = false }: GoogleAuthButto
       asChild
       variant="outline"
       className={cn(
-        "h-12 w-full border-graphite-border bg-charcoal-surface text-[14px] font-semibold text-ivory-text transition-[background-color,transform] hover:bg-warm-coal active:scale-[0.99]",
+        "h-12 w-full border-border bg-card text-[14px] font-semibold text-foreground transition-[background-color,transform] hover:bg-muted active:scale-[0.99]",
         disabled && "pointer-events-none opacity-50",
       )}
     >
       <a href={googleOAuthStartUrl(nextPath)} aria-disabled={disabled}>
         <span
-          className="flex size-5 items-center justify-center rounded-md border border-graphite-border bg-background font-anthropic-sans text-[13px] font-semibold"
+          className="flex size-5 items-center justify-center rounded-md border border-border bg-background font-anthropic-sans text-[13px] font-semibold"
           aria-hidden="true"
         >
           G
