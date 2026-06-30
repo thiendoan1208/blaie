@@ -262,7 +262,7 @@ public class AuthServiceImpl implements AuthService {
         refreshTokenRepository.revokeAllUserTokens(user.id(), "password_changed", clock.instant());
         return toAuthUserResult(user);
     }
-
+    
     private WebAuthResult issueWebAuth(UserEntity user, UUID tokenFamilyId, String userAgent) {
         String refreshTokenValue = authTokenService.generateRefreshToken();
         RefreshTokenEntity refreshToken = RefreshTokenEntity.webCookie(
