@@ -5,7 +5,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app/app-sidebar";
+import { AppSidebar } from "@/components/app/sidebar/app-sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
