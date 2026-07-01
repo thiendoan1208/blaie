@@ -7,6 +7,8 @@ public record AuthUserResult(
         UUID id,
         String username,
         String email,
+        boolean emailVerified,
+        boolean hasPassword,
         String displayName,
         String avatarUrl,
         Instant createdAt

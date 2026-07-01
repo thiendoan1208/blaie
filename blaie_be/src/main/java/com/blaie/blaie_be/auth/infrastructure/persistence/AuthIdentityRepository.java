@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.auth.infrastructure.persistence;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -21,4 +22,10 @@ public interface AuthIdentityRepository extends JpaRepository<AuthIdentityEntity
             @Param("provider") String provider,
             @Param("identifier") String identifier
     );
+
+    Optional<AuthIdentityEntity> findByUser_IdAndProvider(UUID userId, String provider);
+
+    Optional<AuthIdentityEntity> findByProviderAndProviderSubject(String provider, String providerSubject);
+
+    boolean existsByUser_IdAndEmailVerifiedTrue(UUID userId);
 }

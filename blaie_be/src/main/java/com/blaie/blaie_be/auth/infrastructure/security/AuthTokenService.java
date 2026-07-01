@@ -107,17 +107,25 @@ public class AuthTokenService {
     }
 
     public String generateRefreshToken() {
+        return generateOpaqueToken();
+    }
+
+    public String hashRefreshToken(String refreshToken) {
+        return hashOpaqueToken(refreshToken);
+    }
+
+    public String generateOpaqueToken() {
         byte[] tokenBytes = new byte[32];
         SECURE_RANDOM.nextBytes(tokenBytes);
         return base64Url(tokenBytes);
     }
 
-    public String hashRefreshToken(String refreshToken) {
+    public String hashOpaqueToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return base64Url(digest.digest(refreshToken.getBytes(StandardCharsets.UTF_8)));
+            return base64Url(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception exception) {
-            throw new IllegalStateException("Unable to hash refresh token", exception);
+            throw new IllegalStateException("Unable to hash token", exception);
         }
     }
 

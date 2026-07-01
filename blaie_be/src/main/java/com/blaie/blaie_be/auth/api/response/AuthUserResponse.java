@@ -8,6 +8,8 @@ public record AuthUserResponse(
         UUID id,
         String username,
         String email,
+        boolean emailVerified,
+        boolean hasPassword,
         String displayName,
         String avatarUrl,
         Instant createdAt
@@ -17,6 +19,8 @@ public record AuthUserResponse(
                 result.id(),
                 result.username(),
                 result.email(),
+                result.emailVerified(),
+                result.hasPassword(),
                 result.displayName(),
                 result.avatarUrl(),
                 result.createdAt()

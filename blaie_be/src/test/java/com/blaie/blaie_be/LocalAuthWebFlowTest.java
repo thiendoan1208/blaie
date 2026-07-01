@@ -1,7 +1,10 @@
 package com.blaie.blaie_be;
 
 import com.blaie.blaie_be.core.request.RequestContextFilter;
+import com.blaie.blaie_be.auth.domain.AuthActionTokenType;
+import com.blaie.blaie_be.auth.infrastructure.security.AuthTokenService;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
@@ -33,6 +36,7 @@ import org.springframework.web.context.WebApplicationContext;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -43,7 +47,16 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 @SpringBootTest(properties = {
         "blaie.auth.access-token-secret=test-access-secret-that-is-at-least-32-bytes",
         "blaie.auth.cookie-secure=false",
-        "blaie.security.cors.allowed-origins=http://localhost:3000"
+        "blaie.security.cors.allowed-origins=http://localhost:3000",
+        "blaie.email.provider=log",
+        "blaie.email.from=Blaie <no-reply@test.local>",
+        "blaie.email.web-base-url=http://localhost:3000",
+        "blaie.email.api-base-url=http://localhost:8080/api/v1",
+        "blaie.email.verification-ttl=24h",
+        "blaie.google.oauth.client-id=test-google-client-id",
+        "blaie.google.oauth.client-secret=test-google-client-secret",
+        "blaie.google.oauth.redirect-uri=http://localhost:8080/api/v1/auth/google/callback",
+        "blaie.google.oauth.web-base-url=http://localhost:3000"
 })
 class LocalAuthWebFlowTest {
     private static final String ACCESS_COOKIE = "blaie_at";
@@ -67,12 +80,16 @@ class LocalAuthWebFlowTest {
     @Autowired
     private Clock clock;
 
+    @Autowired
+    private AuthTokenService authTokenService;
+
     @BeforeEach
     void cleanDatabase() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .addFilters(requestContextFilter)
                 .apply(springSecurity())
                 .build();
+        jdbcTemplate.execute("delete from auth_action_tokens");
         jdbcTemplate.execute("delete from refresh_tokens");
         jdbcTemplate.execute("delete from auth_identities");
         jdbcTemplate.execute("delete from users");
@@ -132,6 +149,7 @@ class LocalAuthWebFlowTest {
         String username = uniqueValue("csrf");
         String email = uniqueValue("csrf") + "@example.com";
         registerUser(username, email, "Csrf User", "Password1!");
+        markEmailVerified(username);
         MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
 
@@ -156,6 +174,7 @@ class LocalAuthWebFlowTest {
         String username = uniqueValue("permission");
         String email = uniqueValue("permission") + "@example.com";
         registerUser(username, email, "Permission User", "Password1!");
+        markEmailVerified(username);
         MvcResult loginResult = loginWithIdentifier(username, "Password1!");
 
         mockMvc.perform(get("/api/v1/test/permission")
@@ -179,6 +198,20 @@ class LocalAuthWebFlowTest {
     }
 
     @Test
+    void googleStartRedirectsToGoogleAndSetsStateCookie() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/auth/google/start")
+                        .queryParam("next", "/tasks"))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, org.hamcrest.Matchers.containsString("https://accounts.google.com/o/oauth2/v2/auth")))
+                .andExpect(header().string(HttpHeaders.LOCATION, org.hamcrest.Matchers.containsString("client_id=test-google-client-id")))
+                .andExpect(header().string(HttpHeaders.LOCATION, org.hamcrest.Matchers.containsString("redirect_uri=http://localhost:8080/api/v1/auth/google/callback")))
+                .andExpect(header().string(HttpHeaders.LOCATION, org.hamcrest.Matchers.containsString("code_challenge_method=S256")))
+                .andReturn();
+
+        Assertions.assertThat(setCookieHeader(result, "blaie_google_oauth")).contains("HttpOnly");
+    }
+
+    @Test
     void registerLocalCreatesAccountAndSetsCookies() throws Exception {
         String username = uniqueValue("jane");
         String email = uniqueValue("jane") + "@example.com";
@@ -194,6 +227,8 @@ class LocalAuthWebFlowTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.user.username").value(username))
                 .andExpect(jsonPath("$.data.user.email").value(email))
+                .andExpect(jsonPath("$.data.user.emailVerified").value(false))
+                .andExpect(jsonPath("$.data.user.hasPassword").value(true))
                 .andExpect(jsonPath("$.data.user.displayName").value("Jane Doe"))
                 .andExpect(jsonPath("$.data.user.admin").doesNotExist())
                 .andReturn();
@@ -214,7 +249,123 @@ class LocalAuthWebFlowTest {
                         .cookie(new MockCookie(ACCESS_COOKIE, cookieValue(result, ACCESS_COOKIE))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.user.username").value(username))
-                .andExpect(jsonPath("$.data.user.email").value(email));
+                .andExpect(jsonPath("$.data.user.email").value(email))
+                .andExpect(jsonPath("$.data.user.emailVerified").value(false))
+                .andExpect(jsonPath("$.data.user.hasPassword").value(true));
+    }
+
+    @Test
+    void accountSettingsUpdateUsernameAndPassword() throws Exception {
+        String username = uniqueValue("settings");
+        String newUsername = uniqueValue("settings-new");
+        String email = uniqueValue("settings") + "@example.com";
+        MvcResult registerResult = registerUser(username, email, "Settings User", "Password1!");
+        markEmailVerified(username);
+        String accessToken = cookieValue(registerResult, ACCESS_COOKIE);
+        String refreshToken = cookieValue(registerResult, REFRESH_COOKIE);
+
+        mockMvc.perform(withCsrf(patch("/api/v1/auth/me/username")
+                        .cookie(new MockCookie(ACCESS_COOKIE, accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("username", newUsername)))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.username").value(newUsername))
+                .andExpect(jsonPath("$.data.user.email").value(email))
+                .andExpect(jsonPath("$.data.user.hasPassword").value(true));
+
+        mockMvc.perform(withCsrf(patch("/api/v1/auth/me/password")
+                        .cookie(new MockCookie(ACCESS_COOKIE, accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "currentPassword", "Password1!",
+                                "newPassword", "Password2@"
+                        )))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.username").value(newUsername))
+                .andExpect(jsonPath("$.data.user.hasPassword").value(true));
+
+        mockMvc.perform(withCsrf(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "identifier", newUsername,
+                                "password", "Password1!"
+                        )))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+
+        mockMvc.perform(withCsrf(post("/api/v1/auth/refresh")
+                        .cookie(new MockCookie(REFRESH_COOKIE, refreshToken))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REVOKED"));
+
+        loginWithIdentifier(newUsername, "Password2@");
+    }
+
+    @Test
+    void passwordResetChangesPasswordAndRevokesActiveRefreshTokens() throws Exception {
+        String username = uniqueValue("reset");
+        String email = uniqueValue("reset") + "@example.com";
+        MvcResult registerResult = registerUser(username, email, "Reset User", "Password1!");
+        String oldRefreshToken = cookieValue(registerResult, REFRESH_COOKIE);
+        UUID userId = jdbcTemplate.queryForObject(
+                "select id from users where username_normalized = ?",
+                UUID.class,
+                username.toLowerCase()
+        );
+        String resetCode = "123456";
+        jdbcTemplate.update(
+                "insert into auth_action_tokens (id, user_id, type, token_hash, expires_at) values (?, ?, ?, ?, ?)",
+                UUID.randomUUID(),
+                userId,
+                AuthActionTokenType.PASSWORD_RESET,
+                authTokenService.hashOpaqueToken(userId + ":" + AuthActionTokenType.PASSWORD_RESET + ":" + resetCode),
+                Timestamp.from(clock.instant().plusSeconds(900))
+        );
+
+        mockMvc.perform(withCsrf(post("/api/v1/auth/password-reset/confirm")
+                        .cookie(new MockCookie(REFRESH_COOKIE, oldRefreshToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "email", email,
+                                "code", resetCode,
+                                "newPassword", "Password2@"
+                        )))))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(withCsrf(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "identifier", email,
+                                "password", "Password1!"
+                        )))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+
+        loginWithIdentifier(email, "Password2@");
+
+        mockMvc.perform(withCsrf(post("/api/v1/auth/refresh")
+                        .cookie(new MockCookie(REFRESH_COOKIE, oldRefreshToken))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REVOKED"));
+    }
+
+    @Test
+    void unverifiedUserCannotAccessAppApisButCanReadMe() throws Exception {
+        String username = uniqueValue("unverified");
+        String email = uniqueValue("unverified") + "@example.com";
+        MvcResult registerResult = registerUser(username, email, "Unverified User", "Password1!");
+        String accessToken = cookieValue(registerResult, ACCESS_COOKIE);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .cookie(new MockCookie(ACCESS_COOKIE, accessToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.emailVerified").value(false));
+
+        mockMvc.perform(withCsrf(post("/api/v1/test/write")
+                        .cookie(new MockCookie(ACCESS_COOKIE, accessToken))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("EMAIL_NOT_VERIFIED"))
+                .andExpect(jsonPath("$.message").value("Email not verified"));
     }
 
     @Test
@@ -263,6 +414,7 @@ class LocalAuthWebFlowTest {
         String username = uniqueValue("csrf-case");
         String email = uniqueValue("csrf-case") + "@example.com";
         registerUser(username, email, "Csrf Case User", "Password1!");
+        markEmailVerified(username);
         MvcResult loginResult = loginWithIdentifier(username, "Password1!");
         String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
 
@@ -426,6 +578,16 @@ class LocalAuthWebFlowTest {
                         )))))
                 .andExpect(status().isOk())
                 .andReturn();
+    }
+
+    private void markEmailVerified(String username) {
+        jdbcTemplate.update("""
+                update auth_identities
+                   set email_verified = true
+                  from users
+                 where auth_identities.user_id = users.id
+                   and users.username_normalized = ?
+                """, username.toLowerCase());
     }
 
     private MockHttpServletRequestBuilder withCsrf(MockHttpServletRequestBuilder requestBuilder) throws Exception {

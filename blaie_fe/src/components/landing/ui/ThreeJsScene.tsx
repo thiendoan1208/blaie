@@ -24,6 +24,42 @@ interface Pulse {
 }
 
 const STRUCTURED_KINDS = ["document", "calendar", "chart", "network", "alert", "timeline"];
+const NO_EMISSIVE = 0;
+
+function cssVariableColor(name: string, fallback: number) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  const color = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  if (!color.startsWith("#")) {
+    return fallback;
+  }
+
+  const hex = color.slice(1);
+  const normalized =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((part) => part + part)
+          .join("")
+      : hex;
+  const parsed = Number.parseInt(normalized, 16);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function sceneColors() {
+  return {
+    foreground: cssVariableColor("--foreground", 1315859),
+    surface: cssVariableColor("--card", 16777215),
+    subtle: cssVariableColor("--muted", 15789870),
+    accent: cssVariableColor("--brand-accent", 14473469),
+    muted: cssVariableColor("--muted-foreground", 7565932),
+    border: cssVariableColor("--border", 14605521),
+  };
+}
 
 export function ThreeJsScene() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -44,9 +80,10 @@ export function ThreeJsScene() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xe5e5e0);
+    const initialColors = sceneColors();
+    const ambientLight = new THREE.AmbientLight(initialColors.border);
     scene.add(ambientLight);
-    const pointLight = new THREE.PointLight(0xffffff, 1.2, 100);
+    const pointLight = new THREE.PointLight(initialColors.surface, 1.2, 100);
     pointLight.position.set(0, 0, 5);
     scene.add(pointLight);
 
@@ -107,7 +144,7 @@ export function ThreeJsScene() {
       rotY = 0,
       rotZ = 0,
       opacity = 1,
-      emissive = 0x000000,
+      emissive = NO_EMISSIVE,
       emissiveIntensity = 0
     ) {
       const mesh = new THREE.Mesh(
@@ -134,7 +171,7 @@ export function ThreeJsScene() {
       rotY = 0,
       rotZ = 0,
       opacity = 1,
-      emissive = 0x000000,
+      emissive = NO_EMISSIVE,
       emissiveIntensity = 0
     ) {
       const mesh = new THREE.Mesh(
@@ -157,7 +194,7 @@ export function ThreeJsScene() {
       y = 0,
       z = 0,
       opacity = 1,
-      emissive = 0x000000,
+      emissive = NO_EMISSIVE,
       emissiveIntensity = 0
     ) {
       const mesh = new THREE.Mesh(
@@ -171,14 +208,16 @@ export function ThreeJsScene() {
 
     function makeStructuredArtifact(kind: string) {
       const group = new THREE.Group();
-      const accent = 0x1f1e1d; // Charcoal (Ink text/headers)
-      const cyan = 0xdcd8fd;   // Dusty Purple (Accent highlights)
-      const pale = 0xb7b7b5;   // Cool Stone (Dividers/secondary text)
-      const gold = 0xf0eee6;   // Warm Parchment (Selected indicators)
-      const red = 0x9c9a92;    // Pewter (Muted elements)
+      const colors = sceneColors();
+      const accent = colors.foreground;
+      const cyan = colors.accent;
+      const pale = colors.border;
+      const gold = colors.subtle;
+      const red = colors.muted;
+      const surface = colors.surface;
 
       if (kind === "document") {
-        addBox(group, 1.0, 1.28, 0.12, 0xffffff, 0, 0, 0, 0, 0, 0, 0.96, 0x000000, 0);
+        addBox(group, 1.0, 1.28, 0.12, surface, 0, 0, 0, 0, 0, 0, 0.96, NO_EMISSIVE, 0);
         addBox(group, 1.0, 0.14, 0.08, accent, 0, 0.48, 0.03, 0, 0, 0, 0.95, accent, 0.08);
         addBox(group, 0.78, 0.06, 0.05, cyan, -0.02, 0.18, 0.07, 0, 0, 0, 0.85, cyan, 0.02);
         addBox(group, 0.62, 0.05, 0.05, pale, -0.08, 0.02, 0.07, 0, 0, 0, 0.7, pale, 0.01);
@@ -188,11 +227,11 @@ export function ThreeJsScene() {
         addBox(group, 0.2, 0.2, 0.05, gold, 0.31, -0.2, 0.08, 0, 0, Math.PI / 4, 0.8, gold, 0.08);
         group.scale.setScalar(0.125);
       } else if (kind === "calendar") {
-        addBox(group, 1.0, 1.0, 0.14, 0xffffff, 0, 0, 0, 0, 0, 0, 0.96, 0x000000, 0);
+        addBox(group, 1.0, 1.0, 0.14, surface, 0, 0, 0, 0, 0, 0, 0.96, NO_EMISSIVE, 0);
         addBox(group, 1.0, 0.18, 0.09, accent, 0, 0.42, 0.05, 0, 0, 0, 0.96, accent, 0.1);
         addCylinder(group, 0.05, 0.05, 0.18, 8, cyan, -0.28, 0.52, 0.09, Math.PI / 2, 0, 0, 0.95, cyan, 0.12);
         addCylinder(group, 0.05, 0.05, 0.18, 8, cyan, 0.28, 0.52, 0.09, Math.PI / 2, 0, 0, 0.95, cyan, 0.12);
-        addBox(group, 0.62, 0.62, 0.06, 0xf0eee6, 0, -0.05, 0.09, 0, 0, 0, 0.9, 0x000000, 0);
+        addBox(group, 0.62, 0.62, 0.06, gold, 0, -0.05, 0.09, 0, 0, 0, 0.9, NO_EMISSIVE, 0);
         for (let row = 0; row < 3; row++) {
           for (let col = 0; col < 3; col++) {
             addBox(
@@ -215,7 +254,7 @@ export function ThreeJsScene() {
         }
         group.scale.setScalar(0.13);
       } else if (kind === "chart") {
-        addBox(group, 1.08, 0.9, 0.12, 0xffffff, 0, 0, 0, 0, 0, 0, 0.96, 0x000000, 0);
+        addBox(group, 1.08, 0.9, 0.12, surface, 0, 0, 0, 0, 0, 0, 0.96, NO_EMISSIVE, 0);
         addBox(group, 0.88, 0.04, 0.04, pale, 0, -0.33, 0.09, 0, 0, 0, 0.45, pale, 0.01);
         addBox(group, 0.04, 0.62, 0.04, pale, -0.34, 0, 0.09, 0, 0, 0, 0.45, pale, 0.01);
         addBox(group, 0.12, 0.25, 0.08, cyan, -0.2, -0.08, 0.1, 0, 0, 0, 0.95, cyan, 0.1);
@@ -240,7 +279,7 @@ export function ThreeJsScene() {
         group.scale.setScalar(0.13);
       } else if (kind === "alert") {
         addCylinder(group, 0.16, 0.42, 0.78, 4, red, 0, 0, 0, Math.PI / 2, 0, 0, 0.96, red, 0.12);
-        addBox(group, 0.16, 0.5, 0.08, 0xffffff, 0, 0.02, 0.1, 0, 0, 0.06, 0.95, 0x000000, 0);
+        addBox(group, 0.16, 0.5, 0.08, surface, 0, 0.02, 0.1, 0, 0, 0.06, 0.95, NO_EMISSIVE, 0);
         addSphere(group, 0.07, 14, 14, red, 0, -0.14, 0.12, 0.98, red, 0.14);
         addBox(group, 0.08, 0.34, 0.06, gold, 0, 0.12, 0.12, 0, 0, 0, 0.95, gold, 0.1);
         addBox(group, 0.24, 0.04, 0.04, cyan, 0, -0.02, 0.16, 0, 0, 0, 0.9, cyan, 0.08);
@@ -248,8 +287,8 @@ export function ThreeJsScene() {
       } else {
         // timeline
         addBox(group, 1.06, 0.14, 0.09, accent, 0, 0.25, 0.03, 0, 0, 0, 0.8, accent, 0.06);
-        addBox(group, 1.06, 0.14, 0.09, 0xffffff, 0, 0, 0.03, 0, 0, 0, 0.94, 0x000000, 0);
-        addBox(group, 1.06, 0.14, 0.09, 0xffffff, 0, -0.25, 0.03, 0, 0, 0, 0.94, 0x000000, 0);
+        addBox(group, 1.06, 0.14, 0.09, surface, 0, 0, 0.03, 0, 0, 0, 0.94, NO_EMISSIVE, 0);
+        addBox(group, 1.06, 0.14, 0.09, surface, 0, -0.25, 0.03, 0, 0, 0, 0.94, NO_EMISSIVE, 0);
         addSphere(group, 0.08, 12, 12, cyan, -0.42, 0.25, 0.08, 0.95, cyan, 0.1);
         addSphere(group, 0.08, 12, 12, gold, -0.12, 0.0, 0.08, 0.95, gold, 0.08);
         addSphere(group, 0.08, 12, 12, pale, 0.18, -0.25, 0.08, 0.95, pale, 0.08);
@@ -298,7 +337,7 @@ export function ThreeJsScene() {
       const pulseMesh = new THREE.Mesh(
         new THREE.SphereGeometry(0.12, 16, 16),
         new THREE.MeshBasicMaterial({
-          color: 0xdcd8fd, // Dusty Purple (Sole Chromatic Accent)
+          color: sceneColors().accent,
           transparent: true,
           opacity: 0.85
         })
@@ -309,7 +348,7 @@ export function ThreeJsScene() {
 
     function createFragment(): Fragment {
       const geom = rawGeometries[Math.floor(Math.random() * rawGeometries.length)];
-      const mat = makeMaterial(0x73726c, 0.4, true);
+      const mat = makeMaterial(sceneColors().muted, 0.4, true);
       const rawMesh = new THREE.Mesh(geom, mat);
 
       const root = new THREE.Group();
@@ -378,6 +417,35 @@ export function ThreeJsScene() {
 
     for (let i = 0; i < 12; i++) {
       fragments.push(createFragment());
+    }
+
+    function syncThemeMaterials() {
+      const colors = sceneColors();
+      ambientLight.color.setHex(colors.border);
+      pointLight.color.setHex(colors.surface);
+      fragments.forEach((fragment) => {
+        if (fragment.rawMesh.material instanceof THREE.MeshPhongMaterial) {
+          fragment.rawMesh.material.color.setHex(colors.muted);
+        }
+        const structured = rebuildStructuredArtifact(fragment, fragment.structuredKind);
+        if (fragment.phase !== "raw") {
+          structured.visible = true;
+          structured.scale.setScalar(
+            fragment.phase === "morph" ? 0.12 + 0.88 * fragment.morph : 1,
+          );
+          structured.traverse((node) => {
+            if (node instanceof THREE.Mesh && node.material instanceof THREE.Material) {
+              node.material.opacity =
+                fragment.phase === "morph" ? 0.95 * fragment.morph : 0.95;
+            }
+          });
+        }
+      });
+      pulses.forEach((pulse) => {
+        if (pulse.mesh.material instanceof THREE.MeshBasicMaterial) {
+          pulse.mesh.material.color.setHex(colors.accent);
+        }
+      });
     }
 
     function updatePulses() {
@@ -487,6 +555,11 @@ export function ThreeJsScene() {
       updateViewport();
     });
     resizeObserver.observe(container);
+    const themeObserver = new MutationObserver(syncThemeMaterials);
+    themeObserver.observe(document.documentElement, {
+      attributeFilter: ["class"],
+      attributes: true,
+    });
 
     updateViewport();
     animate();
@@ -494,6 +567,7 @@ export function ThreeJsScene() {
     return () => {
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
+      themeObserver.disconnect();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }

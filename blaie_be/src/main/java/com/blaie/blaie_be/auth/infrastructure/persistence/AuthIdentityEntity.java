@@ -59,8 +59,38 @@ public class AuthIdentityEntity {
         return identity;
     }
 
+    public static AuthIdentityEntity google(UserEntity user, String providerSubject) {
+        AuthIdentityEntity identity = new AuthIdentityEntity();
+        identity.id = UUID.randomUUID();
+        identity.user = user;
+        identity.provider = AuthConstants.PROVIDER_GOOGLE;
+        identity.providerSubject = providerSubject;
+        identity.emailVerified = true;
+        return identity;
+    }
+
+    public void markEmailVerified() {
+        emailVerified = true;
+    }
+
+    public void updatePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
     public UserEntity user() {
         return user;
+    }
+
+    public String provider() {
+        return provider;
+    }
+
+    public String providerSubject() {
+        return providerSubject;
+    }
+
+    public boolean emailVerified() {
+        return emailVerified;
     }
 
     public String passwordHash() {

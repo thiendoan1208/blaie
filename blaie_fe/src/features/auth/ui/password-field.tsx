@@ -1,46 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import { AuthField } from "./auth-field";
 
-type PasswordFieldProps = {
-  id: string;
+type PasswordFieldProps = Omit<
+  React.ComponentPropsWithoutRef<typeof AuthField>,
+  "type" | "trailing" | "label"
+> & {
   label?: string;
-  hint?: string;
   autoComplete: "current-password" | "new-password";
 };
 
-export function PasswordField({
-  id,
-  label = "Password",
-  hint,
-  autoComplete,
-}: PasswordFieldProps) {
-  const [visible, setVisible] = useState(false);
+export const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(
+  function PasswordField(
+    { id, label = "Password", hint, error, autoComplete, disabled, ...props },
+    ref,
+  ) {
+    const [visible, setVisible] = useState(false);
 
-  return (
-    <AuthField
-      id={id}
-      name="password"
-      label={label}
-      type={visible ? "text" : "password"}
-      autoComplete={autoComplete}
-      minLength={8}
-      maxLength={16}
-      required
-      placeholder="Enter your password"
-      hint={hint}
-      trailing={
-        <button
-          type="button"
-          onClick={() => setVisible((current) => !current)}
-          aria-label={visible ? "Hide password" : "Show password"}
-          aria-pressed={visible}
-          className="rounded-md px-2.5 py-2 text-xs font-medium text-warm-slate transition-colors hover:bg-warm-coal hover:text-ivory-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dust-purple"
-        >
-          {visible ? "Hide" : "Show"}
-        </button>
-      }
-    />
-  );
-}
+    return (
+      <AuthField
+        id={id}
+        ref={ref}
+        name="password"
+        label={label}
+        type={visible ? "text" : "password"}
+        autoComplete={autoComplete}
+        placeholder="Enter your password"
+        hint={hint}
+        error={error}
+        disabled={disabled}
+        trailing={
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setVisible((current) => !current)}
+            aria-label={visible ? "Hide password" : "Show password"}
+            aria-pressed={visible}
+            className="rounded-md px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+          >
+            {visible ? "Hide" : "Show"}
+          </button>
+        }
+        {...props}
+      />
+    );
+  }
+);
+
+PasswordField.displayName = "PasswordField";

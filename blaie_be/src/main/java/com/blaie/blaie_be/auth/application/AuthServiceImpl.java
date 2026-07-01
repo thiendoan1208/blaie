@@ -2,6 +2,9 @@ package com.blaie.blaie_be.auth.application;
 
 import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
+import com.blaie.blaie_be.auth.application.command.UpdatePasswordCommand;
+import com.blaie.blaie_be.auth.application.command.UpdateUsernameCommand;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthProfile;
 import com.blaie.blaie_be.auth.application.result.AuthUserResult;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
 import com.blaie.blaie_be.auth.domain.AuthConstants;
@@ -22,6 +25,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,6 +43,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final String dummyPasswordHash;
     private final AuthTokenService authTokenService;
+    private final EmailVerificationService emailVerificationService;
     private final AuthProperties authProperties;
     private final Clock clock;
 
@@ -48,6 +53,7 @@ public class AuthServiceImpl implements AuthService {
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
             AuthTokenService authTokenService,
+            EmailVerificationService emailVerificationService,
             AuthProperties authProperties,
             Clock clock
     ) {
@@ -57,6 +63,7 @@ public class AuthServiceImpl implements AuthService {
         this.passwordEncoder = passwordEncoder;
         this.dummyPasswordHash = passwordEncoder.encode(DUMMY_PASSWORD);
         this.authTokenService = authTokenService;
+        this.emailVerificationService = emailVerificationService;
         this.authProperties = authProperties;
         this.clock = clock;
     }
@@ -86,6 +93,7 @@ public class AuthServiceImpl implements AuthService {
             authIdentityRepository.saveAndFlush(
                     AuthIdentityEntity.local(user, passwordHash)
             );
+            emailVerificationService.sendInitialVerification(user);
             return issueWebAuth(user, UUID.randomUUID(), userAgent);
         } catch (DataIntegrityViolationException exception) {
             throw AuthPersistenceExceptionTranslator.translateRegistrationDuplicate(exception);
@@ -110,6 +118,28 @@ public class AuthServiceImpl implements AuthService {
             throw new AppException(ErrorCode.FORBIDDEN);
         }
         
+        return issueWebAuth(user, UUID.randomUUID(), userAgent);
+    }
+
+    @Transactional
+    @Override
+    public WebAuthResult loginGoogle(GoogleOAuthProfile profile, String userAgent) {
+        String subject = trim(profile.subject());
+        String email = trim(profile.email());
+        String emailNormalized = normalize(email);
+        if (subject.isBlank() || emailNormalized.isBlank() || !profile.emailVerified()) {
+            throw new AppException(ErrorCode.GOOGLE_AUTH_FAILED);
+        }
+
+        UserEntity user = authIdentityRepository
+                .findByProviderAndProviderSubject(AuthConstants.PROVIDER_GOOGLE, subject)
+                .map(AuthIdentityEntity::user)
+                .orElseGet(() -> linkOrCreateGoogleUser(profile, subject, email, emailNormalized));
+
+        if (!AuthConstants.USER_STATUS_ACTIVE.equals(user.status())) {
+            throw new AppException(ErrorCode.FORBIDDEN);
+        }
+
         return issueWebAuth(user, UUID.randomUUID(), userAgent);
     }
 
@@ -175,15 +205,64 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(readOnly = true)
     @Override
     public AuthUserResult currentUser() {
-        UUID userId = CurrentUserHolder.current()
-                .map(CurrentUser::userId)
-                .map(this::parseUserId)
-                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
-        return userRepository.findByIdAndStatus(userId, AuthConstants.USER_STATUS_ACTIVE)
-                .map(this::toAuthUserResult)
-                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
+        return toAuthUserResult(requireCurrentActiveUser());
     }
 
+    @Transactional
+    @Override
+    public AuthUserResult updateUsername(UpdateUsernameCommand command) {
+        UserEntity user = requireCurrentActiveUser();
+        String username = trim(command.username());
+        String usernameNormalized = normalize(username);
+        if (usernameNormalized.isBlank()) {
+            throw new AppException(ErrorCode.VALIDATION_ERROR, "Validation failed", Map.of(
+                    "username", List.of("Username is required")
+            ));
+        }
+        if (usernameNormalized.equals(normalize(user.username()))) {
+            return toAuthUserResult(user);
+        }
+        userRepository.findByUsernameNormalized(usernameNormalized)
+                .filter(existingUser -> !existingUser.id().equals(user.id()))
+                .ifPresent(existingUser -> {
+                    throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
+                });
+        user.updateUsername(username, usernameNormalized);
+        return toAuthUserResult(user);
+    }
+
+    @Transactional
+    @Override
+    public AuthUserResult updatePassword(UpdatePasswordCommand command) {
+        UserEntity user = requireCurrentActiveUser();
+        String newPassword = trim(command.newPassword());
+        Optional<AuthIdentityEntity> localIdentity = authIdentityRepository.findByUser_IdAndProvider(
+                user.id(),
+                AuthConstants.PROVIDER_LOCAL
+        );
+
+        if (localIdentity.isPresent()) {
+            String currentPassword = trim(command.currentPassword());
+            if (currentPassword.isBlank()) {
+                throw new AppException(ErrorCode.VALIDATION_ERROR, "Validation failed", Map.of(
+                        "currentPassword", List.of("Current password is required")
+                ));
+            }
+            AuthIdentityEntity identity = localIdentity.get();
+            if (!passwordEncoder.matches(currentPassword, identity.passwordHash())) {
+                throw new AppException(ErrorCode.INVALID_CREDENTIALS, "Current password is incorrect", Map.of(
+                        "currentPassword", List.of("Current password is incorrect")
+                ));
+            }
+            identity.updatePasswordHash(passwordEncoder.encode(newPassword));
+        } else {
+            authIdentityRepository.save(AuthIdentityEntity.local(user, passwordEncoder.encode(newPassword)));
+        }
+
+        refreshTokenRepository.revokeAllUserTokens(user.id(), "password_changed", clock.instant());
+        return toAuthUserResult(user);
+    }
+    
     private WebAuthResult issueWebAuth(UserEntity user, UUID tokenFamilyId, String userAgent) {
         String refreshTokenValue = authTokenService.generateRefreshToken();
         RefreshTokenEntity refreshToken = RefreshTokenEntity.webCookie(
@@ -211,15 +290,60 @@ public class AuthServiceImpl implements AuthService {
         return identities.size() == 1 ? Optional.of(identities.getFirst()) : Optional.empty();
     }
 
+    private UserEntity linkOrCreateGoogleUser(
+            GoogleOAuthProfile profile,
+            String subject,
+            String email,
+            String emailNormalized
+    ) {
+        UserEntity user = userRepository.findByEmailNormalized(emailNormalized)
+                .orElseGet(() -> userRepository.saveAndFlush(UserEntity.googleUser(
+                        email,
+                        emailNormalized,
+                        displayName(profile, email),
+                        trimToNull(profile.avatarUrl())
+                )));
+        authIdentityRepository.saveAndFlush(AuthIdentityEntity.google(user, subject));
+        return user;
+    }
+
+    private String displayName(GoogleOAuthProfile profile, String email) {
+        String displayName = trim(profile.displayName());
+        if (!displayName.isBlank()) {
+            return displayName.length() > 100 ? displayName.substring(0, 100) : displayName;
+        }
+        int atIndex = email.indexOf('@');
+        String fallback = atIndex > 0 ? email.substring(0, atIndex) : "Blaie User";
+        return fallback.length() > 100 ? fallback.substring(0, 100) : fallback;
+    }
+
+    private String trimToNull(String value) {
+        String trimmed = trim(value);
+        return trimmed.isBlank() ? null : trimmed;
+    }
+
     private AuthUserResult toAuthUserResult(UserEntity user) {
         return new AuthUserResult(
                 user.id(),
                 user.username(),
                 user.email(),
+                authIdentityRepository.existsByUser_IdAndEmailVerifiedTrue(user.id()),
+                authIdentityRepository.findByUser_IdAndProvider(user.id(), AuthConstants.PROVIDER_LOCAL)
+                        .map(identity -> identity.passwordHash() != null && !identity.passwordHash().isBlank())
+                        .orElse(false),
                 user.displayName(),
                 user.avatarUrl(),
                 user.createdAt()
         );
+    }
+
+    private UserEntity requireCurrentActiveUser() {
+        UUID userId = CurrentUserHolder.current()
+                .map(CurrentUser::userId)
+                .map(this::parseUserId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
+        return userRepository.findByIdAndStatus(userId, AuthConstants.USER_STATUS_ACTIVE)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
     }
 
     private RefreshTokenEntity requireRefreshToken(String refreshToken) {

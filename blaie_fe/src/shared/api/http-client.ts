@@ -1,6 +1,8 @@
 import axios from "axios";
-import { normalizeError } from "./normalize-error";
-import { createRequestId } from "./request-id";
+import { handleHttpError } from "./errors/http-error-handler";
+import { normalizeError } from "./errors/normalize-error";
+import { attachCsrfHeader } from "./interceptors/csrf-header";
+import { attachRequestIdHeader } from "./interceptors/request-id-header";
 
 export const httpClient = axios.create({
   baseURL:
@@ -11,11 +13,9 @@ export const httpClient = axios.create({
 
 httpClient.interceptors.request.use(
   (config) => {
-    const requestId = createRequestId();
     config.headers = config.headers ?? {};
-    Object.assign(config.headers, {
-      "X-Request-ID": requestId,
-    });
+    attachRequestIdHeader(config);
+    attachCsrfHeader(config);
 
     return config;
   },
@@ -24,5 +24,5 @@ httpClient.interceptors.request.use(
 
 httpClient.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(normalizeError(error)),
+  (error) => handleHttpError(error, httpClient),
 );

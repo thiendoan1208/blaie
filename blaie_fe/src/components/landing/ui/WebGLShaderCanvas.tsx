@@ -16,6 +16,8 @@ precision highp float;
 varying vec2 v_texCoord;
 uniform float u_time;
 uniform vec2 u_resolution;
+uniform vec3 u_core_color;
+uniform vec3 u_stream_color;
 
 float noise(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -59,8 +61,8 @@ void main() {
     float core = 0.02 / (dist + 0.01);
     float stream = exp(-15.0 * abs(uv.y - 0.5)) * smoothstep(0.0, 0.8, uv.x) * n;
 
-    vec3 color = vec3(0.8, 0.9, 1.0) * core;
-    color += vec3(0.4, 0.6, 1.0) * stream * 0.5;
+    vec3 color = u_core_color * core;
+    color += u_stream_color * stream * 0.5;
     color *= (1.0 - dist * 1.5);
 
     gl_FragColor = vec4(color, color.r * 0.8);
@@ -73,6 +75,51 @@ function createShader(gl: WebGLRenderingContext, type: number, src: string): Web
   gl.shaderSource(shader, src);
   gl.compileShader(shader);
   return shader;
+}
+
+function cssColorToRgb(value: string, fallback: [number, number, number]) {
+  const color = value.trim();
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    const normalized =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((part) => part + part)
+            .join("")
+        : hex;
+    const parsed = Number.parseInt(normalized, 16);
+    if (!Number.isNaN(parsed)) {
+      return [
+        ((parsed >> 16) & 255) / 255,
+        ((parsed >> 8) & 255) / 255,
+        (parsed & 255) / 255,
+      ] as const;
+    }
+  }
+
+  const rgbMatch = color.match(/rgba?\(([^)]+)\)/);
+  if (rgbMatch) {
+    const [red, green, blue] = rgbMatch[1]
+      .split(/[,\s/]+/)
+      .map((part) => Number.parseFloat(part))
+      .filter((part) => !Number.isNaN(part));
+    if (red !== undefined && green !== undefined && blue !== undefined) {
+      return [red / 255, green / 255, blue / 255] as const;
+    }
+  }
+
+  return fallback;
+}
+
+function themeColor(name: string, fallback: [number, number, number]) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+  return cssColorToRgb(
+    getComputedStyle(document.documentElement).getPropertyValue(name),
+    fallback,
+  );
 }
 
 export function WebGLShaderCanvas() {
@@ -127,6 +174,8 @@ export function WebGLShaderCanvas() {
     const uTime = gl.getUniformLocation(prog, "u_time");
     const uRes = gl.getUniformLocation(prog, "u_resolution");
     const uMouse = gl.getUniformLocation(prog, "u_mouse");
+    const uCoreColor = gl.getUniformLocation(prog, "u_core_color");
+    const uStreamColor = gl.getUniformLocation(prog, "u_stream_color");
 
     const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
     const onMouseMove = (e: MouseEvent) => {
@@ -145,6 +194,18 @@ export function WebGLShaderCanvas() {
       if (uTime) gl.uniform1f(uTime, t * 0.001);
       if (uRes) gl.uniform2f(uRes, canvas.width, canvas.height);
       if (uMouse) gl.uniform2f(uMouse, mouse.x, mouse.y);
+      if (uCoreColor) {
+        gl.uniform3fv(
+          uCoreColor,
+          themeColor("--brand-accent", [0.86, 0.85, 0.99]),
+        );
+      }
+      if (uStreamColor) {
+        gl.uniform3fv(
+          uStreamColor,
+          themeColor("--ring", [0.72, 0.68, 1]),
+        );
+      }
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       rafId = requestAnimationFrame(render);
     };
