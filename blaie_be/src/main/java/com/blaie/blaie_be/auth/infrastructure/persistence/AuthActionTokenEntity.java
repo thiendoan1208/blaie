@@ -98,4 +98,8 @@ public class AuthActionTokenEntity {
     public int failedAttemptCount() {
         return failedAttemptCount;
     }
+
+    public Instant createdAt() {
+        return createdAt;
+    }
 }

@@ -39,6 +39,16 @@ public interface AuthActionTokenRepository extends JpaRepository<AuthActionToken
 
     boolean existsByTokenHash(String tokenHash);
 
+    Optional<AuthActionTokenEntity> findTopByUser_IdAndTypeOrderByCreatedAtDesc(UUID userId, String type);
+
+    Optional<AuthActionTokenEntity> findFirstByUser_IdAndTypeAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+            UUID userId,
+            String type,
+            Instant createdAt
+    );
+
+    long countByUser_IdAndTypeAndCreatedAtGreaterThanEqual(UUID userId, String type, Instant createdAt);
+
     @Modifying
     @Query("""
             update AuthActionTokenEntity token

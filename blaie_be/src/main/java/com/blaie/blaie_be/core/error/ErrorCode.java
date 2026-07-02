@@ -18,6 +18,8 @@ public enum ErrorCode {
     PASSWORD_RESET_INVALID_CODE(HttpStatus.BAD_REQUEST, "Invalid password reset code"),
     PASSWORD_RESET_EXPIRED(HttpStatus.BAD_REQUEST, "Password reset code expired"),
     PASSWORD_RESET_TOO_MANY_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "Too many password reset attempts"),
+    RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many requests"),
+    EMAIL_VERIFICATION_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many email verification requests"),
     SESSION_EXPIRED(HttpStatus.UNAUTHORIZED, "Session expired"),
     SESSION_REVOKED(HttpStatus.UNAUTHORIZED, "Session revoked"),
     TENANT_FORBIDDEN(HttpStatus.FORBIDDEN, "Tenant forbidden"),

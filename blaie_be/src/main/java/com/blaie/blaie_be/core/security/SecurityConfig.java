@@ -5,6 +5,7 @@ import com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService;
 import com.blaie.blaie_be.auth.infrastructure.security.EmailVerificationRequiredFilter;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthProperties;
 import com.blaie.blaie_be.auth.infrastructure.security.BearerTokenResolver;
+import com.blaie.blaie_be.core.ratelimit.filter.RateLimitFilter;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
@@ -37,6 +38,7 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             AuthRequestFilter authRequestFilter,
+            RateLimitFilter rateLimitFilter,
             EmailVerificationRequiredFilter emailVerificationRequiredFilter,
             AppAuthenticationEntryPoint authenticationEntryPoint,
             AppAccessDeniedHandler accessDeniedHandler,
@@ -74,7 +76,8 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .addFilterBefore(authRequestFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(emailVerificationRequiredFilter, AuthRequestFilter.class)
+                .addFilterAfter(rateLimitFilter, AuthRequestFilter.class)
+                .addFilterAfter(emailVerificationRequiredFilter, RateLimitFilter.class)
                 .build();
     }
 
@@ -104,7 +107,7 @@ public class SecurityConfig {
                 "X-XSRF-TOKEN",
                 "X-Request-ID"
         ));
-        configuration.setExposedHeaders(List.of("X-Request-ID"));
+        configuration.setExposedHeaders(List.of("X-Request-ID", "Retry-After"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 

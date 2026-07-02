@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.auth.infrastructure.email;
 
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
@@ -29,6 +30,15 @@ public class EmailProperties {
 
     @NotNull
     private Duration passwordResetTtl = Duration.ofMinutes(15);
+
+    @NotNull
+    private Duration verificationResendCooldown = Duration.ofSeconds(60);
+
+    @NotNull
+    private Duration verificationResendQuotaWindow = Duration.ofHours(24);
+
+    @Min(1)
+    private long verificationResendQuotaLimit = 5;
 
     private String resendApiKey;
 
@@ -80,6 +90,30 @@ public class EmailProperties {
         this.passwordResetTtl = passwordResetTtl;
     }
 
+    public Duration verificationResendCooldown() {
+        return verificationResendCooldown;
+    }
+
+    public void setVerificationResendCooldown(Duration verificationResendCooldown) {
+        this.verificationResendCooldown = verificationResendCooldown;
+    }
+
+    public Duration verificationResendQuotaWindow() {
+        return verificationResendQuotaWindow;
+    }
+
+    public void setVerificationResendQuotaWindow(Duration verificationResendQuotaWindow) {
+        this.verificationResendQuotaWindow = verificationResendQuotaWindow;
+    }
+
+    public long verificationResendQuotaLimit() {
+        return verificationResendQuotaLimit;
+    }
+
+    public void setVerificationResendQuotaLimit(long verificationResendQuotaLimit) {
+        this.verificationResendQuotaLimit = verificationResendQuotaLimit;
+    }
+
     public String resendApiKey() {
         return resendApiKey;
     }
@@ -96,6 +130,20 @@ public class EmailProperties {
     @AssertTrue(message = "Password reset TTL must be positive")
     public boolean isPasswordResetTtlValid() {
         return passwordResetTtl != null && !passwordResetTtl.isZero() && !passwordResetTtl.isNegative();
+    }
+
+    @AssertTrue(message = "Email verification resend cooldown must be positive")
+    public boolean isVerificationResendCooldownValid() {
+        return verificationResendCooldown != null
+                && !verificationResendCooldown.isZero()
+                && !verificationResendCooldown.isNegative();
+    }
+
+    @AssertTrue(message = "Email verification resend quota window must be positive")
+    public boolean isVerificationResendQuotaWindowValid() {
+        return verificationResendQuotaWindow != null
+                && !verificationResendQuotaWindow.isZero()
+                && !verificationResendQuotaWindow.isNegative();
     }
 
     @AssertTrue(message = "Resend API key is required when blaie.email.provider=resend")

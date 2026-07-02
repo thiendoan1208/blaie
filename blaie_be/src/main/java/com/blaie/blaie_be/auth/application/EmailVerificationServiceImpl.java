@@ -14,11 +14,13 @@ import com.blaie.blaie_be.auth.infrastructure.persistence.UserRepository;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthTokenService;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
+import com.blaie.blaie_be.core.error.RateLimitedException;
 import com.blaie.blaie_be.core.security.CurrentUser;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -70,6 +72,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         if (authIdentityRepository.existsByUser_IdAndEmailVerifiedTrue(user.id())) {
             return;
         }
+        enforceResendLimit(user);
         createAndSendVerification(user, true);
     }
 
@@ -125,6 +128,44 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
                 now.plus(emailProperties.verificationTtl())
         ));
         emailSender.send(verificationEmail(user, rawToken));
+    }
+
+    private void enforceResendLimit(UserEntity user) {
+        Instant now = clock.instant();
+        Duration quotaWindow = emailProperties.verificationResendQuotaWindow();
+        Instant windowStart = now.minus(quotaWindow);
+        long recentSendCount = authActionTokenRepository.countByUser_IdAndTypeAndCreatedAtGreaterThanEqual(
+                user.id(),
+                AuthActionTokenType.EMAIL_VERIFICATION,
+                windowStart
+        );
+        if (recentSendCount >= emailProperties.verificationResendQuotaLimit()) {
+            Duration retryAfter = authActionTokenRepository
+                    .findFirstByUser_IdAndTypeAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+                            user.id(),
+                            AuthActionTokenType.EMAIL_VERIFICATION,
+                            windowStart
+                    )
+                    .map(token -> Duration.between(now, token.createdAt().plus(quotaWindow)))
+                    .orElse(quotaWindow);
+            throw new RateLimitedException(
+                    ErrorCode.EMAIL_VERIFICATION_RATE_LIMITED,
+                    "Email verification resend limit reached. Please try again later.",
+                    retryAfter
+            );
+        }
+
+        Duration cooldown = emailProperties.verificationResendCooldown();
+        authActionTokenRepository.findTopByUser_IdAndTypeOrderByCreatedAtDesc(user.id(), AuthActionTokenType.EMAIL_VERIFICATION)
+                .map(AuthActionTokenEntity::createdAt)
+                .filter(createdAt -> createdAt.plus(cooldown).isAfter(now))
+                .ifPresent(createdAt -> {
+                    throw new RateLimitedException(
+                            ErrorCode.EMAIL_VERIFICATION_RATE_LIMITED,
+                            "Please wait before requesting another verification email.",
+                            Duration.between(now, createdAt.plus(cooldown))
+                    );
+                });
     }
 
     private EmailMessage verificationEmail(UserEntity user, String rawToken) {
