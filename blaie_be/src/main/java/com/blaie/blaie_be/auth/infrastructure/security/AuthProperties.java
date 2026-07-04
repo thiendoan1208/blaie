@@ -1,5 +1,6 @@
 package com.blaie.blaie_be.auth.infrastructure.security;
 
+import com.blaie.blaie_be.auth.application.port.AuthTokenSettingsPort;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -14,7 +15,7 @@ import org.springframework.validation.annotation.Validated;
 @Component
 @Validated
 @ConfigurationProperties(prefix = "blaie.auth")
-public class AuthProperties {
+public class AuthProperties implements AuthTokenSettingsPort {
     private static final java.util.regex.Pattern KEY_ID_PATTERN =
             java.util.regex.Pattern.compile("[A-Za-z0-9._-]{1,64}");
 

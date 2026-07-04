@@ -7,6 +7,7 @@ import com.blaie.blaie_be.core.request.RequestContextFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -20,6 +21,15 @@ public class SecurityErrorResponseWriter {
     }
 
     public void write(HttpServletResponse response, ErrorCode errorCode) throws IOException {
+        write(response, errorCode, errorCode.defaultMessage(), Map.of());
+    }
+
+    public void write(
+            HttpServletResponse response,
+            ErrorCode errorCode,
+            String message,
+            Map<String, String> headers
+    ) throws IOException {
         String requestId = RequestContextHolder.currentRequestId().orElse(null);
         response.setStatus(errorCode.status().value());
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -27,9 +37,10 @@ public class SecurityErrorResponseWriter {
         if (requestId != null) {
             response.setHeader(RequestContextFilter.REQUEST_ID_HEADER, requestId);
         }
+        headers.forEach(response::setHeader);
         objectMapper.writeValue(
                 response.getOutputStream(),
-                ApiErrorResponse.of(errorCode, errorCode.defaultMessage(), null, requestId)
+                ApiErrorResponse.of(errorCode, message, null, requestId)
         );
     }
 }

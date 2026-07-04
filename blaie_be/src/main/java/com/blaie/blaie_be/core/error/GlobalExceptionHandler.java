@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ApiErrorResponse> handleAppException(AppException exception) {
         return buildResponse(exception.errorCode(), exception.getMessage(), exception.fieldErrors());
+    }
+
+    @ExceptionHandler(RateLimitedException.class)
+    public ResponseEntity<ApiErrorResponse> handleRateLimitedException(RateLimitedException exception) {
+        return buildResponse(
+                exception.errorCode(),
+                exception.getMessage(),
+                exception.fieldErrors(),
+                Map.of("Retry-After", String.valueOf(retryAfterSeconds(exception.retryAfter())))
+        );
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -78,6 +89,15 @@ public class GlobalExceptionHandler {
             String message,
             Map<String, List<String>> errors
     ) {
+        return buildResponse(errorCode, message, errors, Map.of());
+    }
+
+    private ResponseEntity<ApiErrorResponse> buildResponse(
+            ErrorCode errorCode,
+            String message,
+            Map<String, List<String>> errors,
+            Map<String, String> headers
+    ) {
         String requestId = RequestContextHolder.currentRequestId().orElse(null);
         if (errorCode.status().is5xxServerError()) {
             log.error("requestId={} status={} message={}", requestId, errorCode.status(), message);
@@ -85,8 +105,15 @@ public class GlobalExceptionHandler {
             log.warn("requestId={} status={} message={}", requestId, errorCode.status(), message);
         }
         ApiErrorResponse body = ApiErrorResponse.of(errorCode, message, errors, requestId);
-        return ResponseEntity.status(errorCode.status())
-                .header("X-Request-ID", requestId == null ? "" : requestId)
-                .body(body);
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(errorCode.status())
+                .header("X-Request-ID", requestId == null ? "" : requestId);
+        headers.forEach(response::header);
+        return response.body(body);
+    }
+
+    private long retryAfterSeconds(java.time.Duration retryAfter) {
+        return Optional.ofNullable(retryAfter)
+                .map(duration -> Math.max(1L, (long) Math.ceil(duration.toMillis() / 1000.0d)))
+                .orElse(1L);
     }
 }

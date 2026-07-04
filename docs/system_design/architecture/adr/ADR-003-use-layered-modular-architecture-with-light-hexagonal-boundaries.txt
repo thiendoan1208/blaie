@@ -388,6 +388,224 @@ Chỗ có thể dùng layered đơn giản:
 - Basic lookup.
 - Simple tag management.
 
+## Enforced Backend Boundary Rules
+
+Sau khi backend bắt đầu có auth, rate-limit, email verification, password reset và OAuth,
+ADR này được siết lại bằng ArchUnit để convention không chỉ phụ thuộc vào code review.
+
+Rule chính:
+
+- `domain` phải độc lập với adapter/API/framework:
+  - không phụ thuộc `api`.
+  - không phụ thuộc `infrastructure`.
+  - không phụ thuộc JPA/Spring Data/Spring Web.
+- `application` không biết implementation adapter:
+  - không import `infrastructure`.
+  - không import JPA entity/repository.
+  - không import Spring Data/Spring Security/Spring Web.
+  - application service chỉ dùng command/result/port/domain/core primitive.
+- `application.port` là contract sạch:
+  - port không phụ thuộc `infrastructure`.
+  - port dùng interface/DTO view nhẹ, ví dụ `AuthUserView`, `AuthTokenPort`,
+    `EmailSettingsPort`.
+- `api` không phụ thuộc implementation infrastructure nội bộ:
+  - controller không inject trực tiếp service infra như cookie service/OAuth state service.
+  - controller gọi application service hoặc application port.
+- `infrastructure` không phụ thuộc `api`:
+  - adapter có thể implement application port.
+  - adapter có thể dùng JPA, Redis, SDK, Spring Security, email provider.
+  - adapter không import controller/request/response DTO.
+- `core` không phụ thuộc business module:
+  - `core` không import `auth`, `authz`, `capture`, `inbox`, ...
+  - `core` chỉ chứa primitive dùng chung.
+- `core.ratelimit` không phụ thuộc auth implementation:
+  - rate-limit generic không import `AuthCookieService` hoặc auth infrastructure.
+  - nếu cần tên cookie hoặc primitive chung, đưa vào core-level constant/config.
+
+Dependency direction mong muốn:
+
+```text
+api -> application -> domain / application.port
+infrastructure -> application.port + domain
+feature module -> core primitive
+core -> no business module
+```
+
+Các rule này được enforce bằng `ArchitectureRulesTest`. Khi có import sai hướng, test
+phải fail sớm.
+
+## Security Boundary After Auth Refactor
+
+Security được chia làm hai phần rõ hơn.
+
+`core.security` chỉ giữ primitive dùng chung:
+
+- `SecurityCorsProperties`: cấu hình CORS chung.
+- `SecurityErrorResponseWriter`: writer JSON lỗi security dùng chung.
+- `AppAuthenticationEntryPoint`: xử lý lỗi unauthenticated, thường là `401`.
+- `AppAccessDeniedHandler`: xử lý lỗi forbidden, thường là `403`.
+- `CurrentUser`: model current user tối giản.
+- `CurrentUserHolder`: holder current user trong request.
+- `AuthCookieNames`: tên cookie auth dùng chung khi code core/rate-limit cần đọc cookie
+  name mà không import auth implementation.
+
+`auth.infrastructure.security` giữ implementation thật của auth/security runtime:
+
+- `SecurityConfig`: Spring Security filter chain, CSRF, CORS, permit/authenticated paths,
+  password encoder.
+- `AuthProperties`: config auth như token TTL, cookie flags, secrets.
+- `AuthProductionSecurityValidator`: validate config bảo mật khi chạy production.
+- `AuthTokenService`: issue/parse/hash token, implement `AuthTokenPort`.
+- `AuthCookieService`: build access/refresh cookie, implement `WebAuthCookiePort`.
+- `AuthRequestFilter`: đọc Bearer/cookie access token, parse token, load user, set
+  `CurrentUser`.
+- `EmailVerificationRequiredFilter`: chặn request cần verified email nếu user chưa verify.
+- `BearerTokenResolver`: parse `Authorization: Bearer ...`.
+- `AccessTokenClaims`: claims sau khi parse access token.
+- `PasswordHasherAdapter`: adapter bọc Spring `PasswordEncoder`, implement
+  `PasswordHasherPort`.
+
+Lý do `SecurityConfig` nằm trong `auth.infrastructure.security`:
+
+- `SecurityConfig` không phải shared core primitive.
+- Nó wire các filter/properties cụ thể của auth.
+- Nó biết các path auth public như login/register/refresh/google/password reset.
+- Nếu để trong `core.security`, dependency sẽ bị ngược thành `core -> auth.infrastructure`.
+- Đặt trong infrastructure giúp composition root biết các mảnh cần ghép, còn `core` vẫn
+  không biết module nghiệp vụ nào đang dùng nó.
+
+Việc move này không đổi runtime behavior:
+
+- URL API không đổi.
+- Filter order không đổi.
+- CSRF/CORS config không đổi.
+- Cookie name/flag behavior không đổi.
+- Login/register/refresh/logout/OAuth/password reset/email verification không đổi.
+- Spring vẫn scan được vì package mới vẫn nằm dưới root app package.
+
+## How Future Features Use Auth And Security
+
+Feature mới như `inbox`, `capture`, `ai-processing`, `billing`, `admin` dùng kết quả của
+auth, không dùng implementation của auth.
+
+Feature application/service được phép dùng:
+
+```java
+import com.blaie.blaie_be.core.security.CurrentUser;
+import com.blaie.blaie_be.core.security.CurrentUserHolder;
+import com.blaie.blaie_be.authz.application.AuthorizationService;
+import com.blaie.blaie_be.authz.domain.PermissionAction;
+```
+
+Feature không nên import:
+
+```java
+com.blaie.blaie_be.auth.infrastructure.security.AuthTokenService
+com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService
+com.blaie.blaie_be.auth.infrastructure.security.AuthRequestFilter
+com.blaie.blaie_be.auth.infrastructure.security.SecurityConfig
+com.blaie.blaie_be.auth.infrastructure.persistence.UserEntity
+```
+
+Flow mong muốn:
+
+```text
+Request
+  -> SecurityConfig/filter chain
+  -> AuthRequestFilter authenticates user
+  -> CurrentUserHolder is set
+  -> Feature controller
+  -> Feature application service
+  -> CurrentUserHolder + AuthorizationService
+  -> Feature repository/adapter
+```
+
+Auth/security chỉ trả lời các câu hỏi cấp request:
+
+- Request này là ai?
+- Token/cookie hợp lệ không?
+- User còn active không?
+- User đã verify email chưa nếu endpoint yêu cầu?
+- Current user context là gì?
+
+Feature module tự xử lý business authorization của mình:
+
+- ownership.
+- object-level permission.
+- plan/quota/cost rule.
+- capture/inbox/AI-specific business rule.
+
+Ví dụ:
+
+- `InboxService` check ownership và quyền đọc/sửa item qua `AuthorizationService`.
+- `CaptureService` check quyền tạo capture, quota upload/process và ownership.
+- `AI processing` gọi AI provider qua port/adapter riêng, không gọi trực tiếp SDK từ
+  application service.
+
+`SecurityConfig` chỉ xử lý route/filter-level concern:
+
+- endpoint public mới thì thêm permit rule.
+- endpoint authenticated bình thường đi theo `.anyRequest().authenticated()`.
+- endpoint cần skip email verification thì thêm vào email-verification path policy.
+
+Không đưa rule nghiệp vụ của feature vào `AuthRequestFilter` hoặc `SecurityConfig`.
+
+## Rate Limit Boundary
+
+Rate-limit generic nằm trong `core.ratelimit`, nhưng không được biết implementation auth.
+
+Rule:
+
+- HTTP rate-limit filter xử lý request-level abuse chung.
+- Business guard nằm trong application service nếu rule gắn với nghiệp vụ cụ thể.
+- Không lưu identifier raw như email nếu không cần; dùng normalized hash.
+- Endpoint cost cao như upload/AI processing cần policy riêng theo user/IP/plan/quota.
+
+Ví dụ tương lai:
+
+- `capture-upload`: limit theo user id + IP.
+- `ai-process`: limit theo user id + plan/quota/cost.
+- `inbox-read`: limit rộng hơn, chủ yếu chống spam.
+- `admin`: limit theo admin user + IP.
+
+Nếu policy resolver phình to, tách thành registry hoặc resolver theo module để tránh một
+class biết toàn bộ feature.
+
+## Verification Expectations For Large Refactors
+
+Refactor kiến trúc lớn không thể chắc chắn tuyệt đối chỉ bằng tự động test. Tuy nhiên,
+backend phải giảm rủi ro theo nhiều lớp:
+
+- compile/test-compile sạch.
+- ArchUnit pass để xác nhận boundary.
+- unit test application pass.
+- Spring context test pass để xác nhận bean wiring.
+- integration/web flow test pass qua HTTP layer, security filter, cookies, CSRF, DB,
+  Redis/Testcontainers và migration.
+- Flyway migration chạy sạch trên database test.
+- full suite pass trước khi xem refactor là an toàn để manual QA.
+
+Manual QA vẫn cần cho các flow có browser/FE/provider thật:
+
+- register.
+- login đúng/sai và rate-limit.
+- refresh session sau reload.
+- logout.
+- password reset.
+- Google OAuth thật trên browser.
+- CSRF từ frontend.
+- email verification resend cooldown/quota.
+- cookie flags trong browser devtools.
+
+Khi refactor boundary, cố giữ nguyên behavior surface:
+
+- không đổi endpoint URL.
+- không đổi filter order nếu không có lý do rõ.
+- không đổi response body/error contract.
+- không đổi cookie name.
+- không đổi migration đã publish.
+- ưu tiên đổi dependency direction hơn là đổi behavior nghiệp vụ.
+
 ## Consequences
 
 Ưu điểm:

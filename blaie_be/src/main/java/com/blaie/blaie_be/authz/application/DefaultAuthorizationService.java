@@ -28,7 +28,7 @@ public class DefaultAuthorizationService implements AuthorizationService {
     @Override
     public boolean can(PermissionAction action) {
         CurrentUser currentUser = CurrentUserHolder.current().orElse(null);
-        return currentUser != null && currentUser.hasPermission(action);
+        return currentUser != null && currentUser.hasPermission(action.key());
     }
 
     @Override
@@ -49,7 +49,7 @@ public class DefaultAuthorizationService implements AuthorizationService {
                 return true;
             }
         }
-        return currentUser.hasPermission(action);
+        return currentUser.hasPermission(action.key());
     }
 
     private AppException unauthorizedOrForbidden() {

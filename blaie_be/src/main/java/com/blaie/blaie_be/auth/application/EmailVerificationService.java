@@ -1,9 +1,9 @@
 package com.blaie.blaie_be.auth.application;
 
-import com.blaie.blaie_be.auth.infrastructure.persistence.UserEntity;
+import java.util.UUID;
 
 public interface EmailVerificationService {
-    void sendInitialVerification(UserEntity user);
+    void sendInitialVerification(UUID userId);
 
     void resendVerificationForCurrentUser();
 

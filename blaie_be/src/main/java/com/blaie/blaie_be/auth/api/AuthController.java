@@ -19,12 +19,13 @@ import com.blaie.blaie_be.auth.application.command.RequestPasswordResetCommand;
 import com.blaie.blaie_be.auth.application.command.UpdatePasswordCommand;
 import com.blaie.blaie_be.auth.application.command.UpdateUsernameCommand;
 import com.blaie.blaie_be.auth.application.port.GoogleOAuthClientPort;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthSettingsPort;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthStateData;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthStatePort;
+import com.blaie.blaie_be.auth.application.port.WebAuthCookiePort;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
-import com.blaie.blaie_be.auth.infrastructure.google.GoogleOAuthProperties;
-import com.blaie.blaie_be.auth.infrastructure.google.GoogleOAuthState;
-import com.blaie.blaie_be.auth.infrastructure.google.GoogleOAuthStateCookieService;
-import com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService;
 import com.blaie.blaie_be.core.response.ApiResponse;
+import com.blaie.blaie_be.core.security.AuthCookieNames;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -48,25 +49,25 @@ public class AuthController {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
     private final PasswordResetService passwordResetService;
-    private final AuthCookieService authCookieService;
-    private final GoogleOAuthProperties googleOAuthProperties;
-    private final GoogleOAuthStateCookieService googleOAuthStateCookieService;
+    private final WebAuthCookiePort authCookieService;
+    private final GoogleOAuthSettingsPort googleOAuthSettings;
+    private final GoogleOAuthStatePort googleOAuthStateCookieService;
     private final GoogleOAuthClientPort googleOAuthClientPort;
 
     public AuthController(
             AuthService authService,
             EmailVerificationService emailVerificationService,
             PasswordResetService passwordResetService,
-            AuthCookieService authCookieService,
-            GoogleOAuthProperties googleOAuthProperties,
-            GoogleOAuthStateCookieService googleOAuthStateCookieService,
+            WebAuthCookiePort authCookieService,
+            GoogleOAuthSettingsPort googleOAuthSettings,
+            GoogleOAuthStatePort googleOAuthStateCookieService,
             GoogleOAuthClientPort googleOAuthClientPort
     ) {
         this.authService = authService;
         this.emailVerificationService = emailVerificationService;
         this.passwordResetService = passwordResetService;
         this.authCookieService = authCookieService;
-        this.googleOAuthProperties = googleOAuthProperties;
+        this.googleOAuthSettings = googleOAuthSettings;
         this.googleOAuthStateCookieService = googleOAuthStateCookieService;
         this.googleOAuthClientPort = googleOAuthClientPort;
     }
@@ -159,10 +160,10 @@ public class AuthController {
     public ResponseEntity<Void> startGoogleLogin(
             @RequestParam(name = "next", required = false) String next
     ) {
-        GoogleOAuthState oauthState = googleOAuthStateCookieService.create(next);
-        URI authorizationUri = UriComponentsBuilder.fromUri(googleOAuthProperties.authorizationUri())
-                .queryParam("client_id", googleOAuthProperties.clientId())
-                .queryParam("redirect_uri", googleOAuthProperties.redirectUri())
+        GoogleOAuthStateData oauthState = googleOAuthStateCookieService.create(next);
+        URI authorizationUri = UriComponentsBuilder.fromUri(googleOAuthSettings.authorizationUri())
+                .queryParam("client_id", googleOAuthSettings.clientId())
+                .queryParam("redirect_uri", googleOAuthSettings.redirectUri())
                 .queryParam("response_type", "code")
                 .queryParam("scope", "openid email profile")
                 .queryParam("state", oauthState.state())
@@ -173,7 +174,7 @@ public class AuthController {
                 .build()
                 .toUri();
         return ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.cookie(oauthState).toString())
+                .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.cookie(oauthState))
                 .location(authorizationUri)
                 .build();
     }
@@ -182,32 +183,32 @@ public class AuthController {
     public ResponseEntity<Void> completeGoogleLogin(
             @RequestParam(name = "code", required = false) String code,
             @RequestParam(name = "state", required = false) String state,
-            @CookieValue(name = GoogleOAuthStateCookieService.COOKIE_NAME, required = false) String stateCookie,
+            @CookieValue(name = GoogleOAuthStatePort.COOKIE_NAME, required = false) String stateCookie,
             HttpServletRequest httpRequest
     ) {
         try {
-            GoogleOAuthState oauthState = googleOAuthStateCookieService.require(stateCookie, state);
+            GoogleOAuthStateData oauthState = googleOAuthStateCookieService.require(stateCookie, state);
             WebAuthResult result = authService.loginGoogle(
-                    googleOAuthClientPort.exchangeCodeForProfile(code, oauthState.codeVerifier(), googleOAuthProperties.redirectUri()),
+                    googleOAuthClientPort.exchangeCodeForProfile(code, oauthState.codeVerifier(), googleOAuthSettings.redirectUri()),
                     httpRequest.getHeader(HttpHeaders.USER_AGENT)
             );
             return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie().toString())
-                    .header(HttpHeaders.SET_COOKIE, authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl()).toString())
-                    .header(HttpHeaders.SET_COOKIE, authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl()).toString())
-                    .location(URI.create(googleOAuthProperties.webBaseUrl() + oauthState.nextPath()))
+                    .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie())
+                    .header(HttpHeaders.SET_COOKIE, authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl()))
+                    .header(HttpHeaders.SET_COOKIE, authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl()))
+                    .location(URI.create(googleOAuthSettings.webBaseUrl() + oauthState.nextPath()))
                     .build();
         } catch (RuntimeException exception) {
             return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie().toString())
-                    .location(URI.create(googleOAuthProperties.webBaseUrl() + "/login?error=google_auth_failed"))
+                    .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie())
+                    .location(URI.create(googleOAuthSettings.webBaseUrl() + "/login?error=google_auth_failed"))
                     .build();
         }
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<AuthUserEnvelope>> refresh(
-            @CookieValue(name = AuthCookieService.REFRESH_COOKIE_NAME, required = false) String refreshToken,
+            @CookieValue(name = AuthCookieNames.REFRESH_COOKIE_NAME, required = false) String refreshToken,
             HttpServletRequest httpRequest
     ) {
         WebAuthResult result = authService.refreshWeb(refreshToken, httpRequest.getHeader(HttpHeaders.USER_AGENT));
@@ -216,19 +217,19 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
-            @CookieValue(name = AuthCookieService.REFRESH_COOKIE_NAME, required = false) String refreshToken
+            @CookieValue(name = AuthCookieNames.REFRESH_COOKIE_NAME, required = false) String refreshToken
     ) {
         authService.logoutWeb(refreshToken);
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, authCookieService.clearAccessCookie().toString())
-                .header(HttpHeaders.SET_COOKIE, authCookieService.clearRefreshCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, authCookieService.clearAccessCookie())
+                .header(HttpHeaders.SET_COOKIE, authCookieService.clearRefreshCookie())
                 .build();
     }
 
     private ResponseEntity<ApiResponse<AuthUserEnvelope>> authResponse(WebAuthResult result, HttpStatus status) {
         return ResponseEntity.status(status)
-                .header(HttpHeaders.SET_COOKIE, authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl()).toString())
-                .header(HttpHeaders.SET_COOKIE, authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl()).toString())
+                .header(HttpHeaders.SET_COOKIE, authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl()))
+                .header(HttpHeaders.SET_COOKIE, authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl()))
                 .body(ApiResponse.of(new AuthUserEnvelope(AuthUserResponse.from(result.user()))));
     }
 }

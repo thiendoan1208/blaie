@@ -103,8 +103,16 @@ public class RefreshTokenEntity {
         return user;
     }
 
+    public String tokenHash() {
+        return tokenHash;
+    }
+
     public UUID tokenFamilyId() {
         return tokenFamilyId;
+    }
+
+    public Instant expiresAt() {
+        return expiresAt;
     }
 
     private static String blankToNull(String value) {

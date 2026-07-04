@@ -1,5 +1,7 @@
 package com.blaie.blaie_be.auth.infrastructure.google;
 
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthStateData;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthStatePort;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthProperties;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
@@ -16,9 +18,7 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 
 @Service
-public class GoogleOAuthStateCookieService {
-    public static final String COOKIE_NAME = "blaie_google_oauth";
-
+public class GoogleOAuthStateCookieService implements GoogleOAuthStatePort {
     private static final String COOKIE_PATH = "/api/v1/auth/google";
     private static final String DEFAULT_NEXT_PATH = "/inbox";
     private static final int RANDOM_BYTES = 32;
@@ -40,15 +40,17 @@ public class GoogleOAuthStateCookieService {
         this.clock = clock;
     }
 
-    public GoogleOAuthState create(String requestedNextPath) {
+    @Override
+    public GoogleOAuthStateData create(String requestedNextPath) {
         String state = randomToken();
         String codeVerifier = randomToken();
         String codeChallenge = codeChallenge(codeVerifier);
         String nextPath = sanitizeNextPath(requestedNextPath);
-        return new GoogleOAuthState(state, codeVerifier, codeChallenge, nextPath);
+        return new GoogleOAuthStateData(state, codeVerifier, codeChallenge, nextPath);
     }
 
-    public ResponseCookie cookie(GoogleOAuthState state) {
+    @Override
+    public String cookie(GoogleOAuthStateData state) {
         Instant expiresAt = clock.instant().plus(googleOAuthProperties.stateTtl());
         String payload = String.join("\n",
                 state.state(),
@@ -63,10 +65,12 @@ public class GoogleOAuthStateCookieService {
                 .sameSite(authProperties.cookieSameSite())
                 .path(COOKIE_PATH)
                 .maxAge(googleOAuthProperties.stateTtl())
-                .build();
+                .build()
+                .toString();
     }
 
-    public GoogleOAuthState require(String cookieValue, String stateParameter) {
+    @Override
+    public GoogleOAuthStateData require(String cookieValue, String stateParameter) {
         if (cookieValue == null || cookieValue.isBlank() || stateParameter == null || stateParameter.isBlank()) {
             throw new AppException(ErrorCode.GOOGLE_AUTH_FAILED);
         }
@@ -86,17 +90,19 @@ public class GoogleOAuthStateCookieService {
         if (!state.equals(stateParameter) || !expiresAt.isAfter(clock.instant())) {
             throw new AppException(ErrorCode.GOOGLE_AUTH_FAILED);
         }
-        return new GoogleOAuthState(state, codeVerifier, codeChallenge(codeVerifier), sanitizeNextPath(nextPath));
+        return new GoogleOAuthStateData(state, codeVerifier, codeChallenge(codeVerifier), sanitizeNextPath(nextPath));
     }
 
-    public ResponseCookie clearCookie() {
+    @Override
+    public String clearCookie() {
         return ResponseCookie.from(COOKIE_NAME, "")
                 .httpOnly(true)
                 .secure(authProperties.cookieSecure())
                 .sameSite(authProperties.cookieSameSite())
                 .path(COOKIE_PATH)
                 .maxAge(Duration.ZERO)
-                .build();
+                .build()
+                .toString();
     }
 
     private String randomToken() {

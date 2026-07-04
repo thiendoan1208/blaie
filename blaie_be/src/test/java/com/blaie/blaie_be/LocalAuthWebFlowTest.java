@@ -255,6 +255,53 @@ class LocalAuthWebFlowTest {
     }
 
     @Test
+    void loginRateLimitReturnsTooManyRequestsAfterRepeatedFailures() throws Exception {
+        String username = uniqueValue("login-limit");
+        String email = uniqueValue("login-limit") + "@example.com";
+        registerUser(username, email, "Login Limit User", "Password1!");
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            mockMvc.perform(withCsrf(post("/api/v1/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json(Map.of(
+                                    "identifier", username,
+                                    "password", "WrongPassword1!"
+                            )))))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+        }
+
+        mockMvc.perform(withCsrf(post("/api/v1/auth/login")
+                        .header(REQUEST_ID_HEADER, "request-login-rate-limited")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "identifier", username,
+                                "password", "WrongPassword1!"
+                        )))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string(REQUEST_ID_HEADER, "request-login-rate-limited"))
+                .andExpect(header().string("Retry-After", org.hamcrest.Matchers.matchesPattern("[1-9][0-9]*")))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"))
+                .andExpect(jsonPath("$.requestId").value("request-login-rate-limited"));
+    }
+
+    @Test
+    void emailVerificationResendCooldownReturnsTooManyRequests() throws Exception {
+        String username = uniqueValue("verify-limit");
+        String email = uniqueValue("verify-limit") + "@example.com";
+        MvcResult registerResult = registerUser(username, email, "Verify Limit User", "Password1!");
+        String accessToken = cookieValue(registerResult, ACCESS_COOKIE);
+
+        mockMvc.perform(withCsrf(post("/api/v1/auth/email/verification")
+                        .cookie(new MockCookie(ACCESS_COOKIE, accessToken))
+                        .header(REQUEST_ID_HEADER, "request-email-verification-rate-limited")))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", org.hamcrest.Matchers.matchesPattern("[1-9][0-9]*")))
+                .andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_RATE_LIMITED"))
+                .andExpect(jsonPath("$.requestId").value("request-email-verification-rate-limited"));
+    }
+
+    @Test
     void accountSettingsUpdateUsernameAndPassword() throws Exception {
         String username = uniqueValue("settings");
         String newUsername = uniqueValue("settings-new");

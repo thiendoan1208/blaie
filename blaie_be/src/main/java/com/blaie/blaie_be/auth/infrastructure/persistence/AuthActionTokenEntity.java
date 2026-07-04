@@ -91,11 +91,31 @@ public class AuthActionTokenEntity {
         return user;
     }
 
+    public UUID id() {
+        return id;
+    }
+
     public String tokenHash() {
         return tokenHash;
     }
 
+    public Instant expiresAt() {
+        return expiresAt;
+    }
+
+    public Instant consumedAt() {
+        return consumedAt;
+    }
+
+    public Instant revokedAt() {
+        return revokedAt;
+    }
+
     public int failedAttemptCount() {
         return failedAttemptCount;
+    }
+
+    public Instant createdAt() {
+        return createdAt;
     }
 }
