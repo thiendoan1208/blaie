@@ -14,7 +14,7 @@ The project is structured following the **C4 Software Architecture Model**, divi
                                +-------------------+
                                    |           |
                Captures voice/img  |           | Renders interactive
-               saves in <2s        v           v 3D Knowledge Graph
+               saves in <2s        v           v 
            +-------------------------+       +-------------------------+
            |   React Native Client   |       |   Next.js 16 Client     |
            +-------------------------+       +-------------------------+
