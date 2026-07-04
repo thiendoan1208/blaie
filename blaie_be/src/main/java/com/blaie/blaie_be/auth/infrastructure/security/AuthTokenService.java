@@ -1,5 +1,6 @@
 package com.blaie.blaie_be.auth.infrastructure.security;
 
+import com.blaie.blaie_be.auth.application.port.AuthTokenPort;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.security.MessageDigest;
@@ -16,7 +17,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
-public class AuthTokenService {
+public class AuthTokenService implements AuthTokenPort {
     private static final int MAX_ACCESS_TOKEN_LENGTH = 4096;
     private static final long ALLOWED_CLOCK_SKEW_SECONDS = 30;
     private static final Base64.Encoder BASE64_URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
@@ -33,6 +34,7 @@ public class AuthTokenService {
         this.objectMapper = objectMapper;
     }
 
+    @Override
     public String issueAccessToken(UUID userId) {
         Instant now = clock.instant();
         Instant expiresAt = now.plus(authProperties.accessTokenTtl());
@@ -106,20 +108,24 @@ public class AuthTokenService {
         }
     }
 
+    @Override
     public String generateRefreshToken() {
         return generateOpaqueToken();
     }
 
+    @Override
     public String hashRefreshToken(String refreshToken) {
         return hashOpaqueToken(refreshToken);
     }
 
+    @Override
     public String generateOpaqueToken() {
         byte[] tokenBytes = new byte[32];
         SECURE_RANDOM.nextBytes(tokenBytes);
         return base64Url(tokenBytes);
     }
 
+    @Override
     public String hashOpaqueToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

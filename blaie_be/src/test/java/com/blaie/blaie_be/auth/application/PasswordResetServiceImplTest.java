@@ -2,19 +2,19 @@ package com.blaie.blaie_be.auth.application;
 
 import com.blaie.blaie_be.auth.application.command.ConfirmPasswordResetCommand;
 import com.blaie.blaie_be.auth.application.command.RequestPasswordResetCommand;
+import com.blaie.blaie_be.auth.application.port.AuthActionTokenStorePort;
+import com.blaie.blaie_be.auth.application.port.AuthActionTokenView;
+import com.blaie.blaie_be.auth.application.port.AuthIdentityStorePort;
+import com.blaie.blaie_be.auth.application.port.AuthTokenPort;
+import com.blaie.blaie_be.auth.application.port.AuthUserStorePort;
+import com.blaie.blaie_be.auth.application.port.AuthUserView;
 import com.blaie.blaie_be.auth.application.port.EmailMessage;
 import com.blaie.blaie_be.auth.application.port.EmailSenderPort;
+import com.blaie.blaie_be.auth.application.port.EmailSettingsPort;
+import com.blaie.blaie_be.auth.application.port.PasswordHasherPort;
+import com.blaie.blaie_be.auth.application.port.RefreshTokenStorePort;
 import com.blaie.blaie_be.auth.domain.AuthActionTokenType;
 import com.blaie.blaie_be.auth.domain.AuthConstants;
-import com.blaie.blaie_be.auth.infrastructure.email.EmailProperties;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthActionTokenEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthActionTokenRepository;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthIdentityEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthIdentityRepository;
-import com.blaie.blaie_be.auth.infrastructure.persistence.RefreshTokenRepository;
-import com.blaie.blaie_be.auth.infrastructure.persistence.UserEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.UserRepository;
-import com.blaie.blaie_be.auth.infrastructure.security.AuthTokenService;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import java.time.Clock;
@@ -22,10 +22,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.UUID;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -38,20 +38,14 @@ class PasswordResetServiceImplTest {
     @Test
     void requestPasswordResetSendsSixDigitCodeWithoutLeakingMissingEmail() {
         Fixture fixture = new Fixture();
-        UserEntity user = UserEntity.localUser(
-                "mira",
-                "mira",
-                "mira@example.com",
-                "mira@example.com",
-                "Mira Stone"
-        );
-        when(fixture.userRepository.findByEmailNormalized("mira@example.com")).thenReturn(Optional.of(user));
-        when(fixture.authTokenService.hashOpaqueToken(anyString())).thenAnswer(invocation -> "hash-" + invocation.getArgument(0));
-        when(fixture.authActionTokenRepository.existsByTokenHash(anyString())).thenReturn(false);
+        AuthUserView user = user("mira", "mira@example.com");
+        when(fixture.userStore.findByEmailNormalized("mira@example.com")).thenReturn(Optional.of(user));
+        when(fixture.authToken.hashOpaqueToken(anyString())).thenAnswer(invocation -> "hash-" + invocation.getArgument(0));
+        when(fixture.actionTokenStore.existsByTokenHash(anyString())).thenReturn(false);
 
         fixture.service.requestPasswordReset(new RequestPasswordResetCommand(" Mira@Example.com "));
 
-        verify(fixture.authActionTokenRepository).revokeOpenTokens(
+        verify(fixture.actionTokenStore).revokeOpenTokens(
                 user.id(),
                 AuthActionTokenType.PASSWORD_RESET,
                 "replaced",
@@ -68,35 +62,17 @@ class PasswordResetServiceImplTest {
     @Test
     void confirmPasswordResetUpdatesPasswordAndRevokesRefreshTokens() {
         Fixture fixture = new Fixture();
-        UserEntity user = UserEntity.localUser(
-                "mira",
-                "mira",
-                "mira@example.com",
-                "mira@example.com",
-                "Mira Stone"
-        );
-        AuthIdentityEntity identity = AuthIdentityEntity.local(user, "old-password-hash");
-        AuthActionTokenEntity token = AuthActionTokenEntity.create(
-                user,
-                AuthActionTokenType.PASSWORD_RESET,
-                "reset-code-hash",
-                NOW.plus(Duration.ofMinutes(15))
-        );
-        when(fixture.userRepository.findByEmailNormalized("mira@example.com")).thenReturn(Optional.of(user));
-        when(fixture.authActionTokenRepository
-                .findLatestPendingForUpdate(
-                        user.id(),
-                        AuthActionTokenType.PASSWORD_RESET
-                ))
+        AuthUserView user = user("mira", "mira@example.com");
+        AuthActionTokenView token = token(user.id(), "reset-code-hash", NOW.plus(Duration.ofMinutes(15)), 0);
+        when(fixture.userStore.findByEmailNormalized("mira@example.com")).thenReturn(Optional.of(user));
+        when(fixture.actionTokenStore.findLatestPendingForUpdate(user.id(), AuthActionTokenType.PASSWORD_RESET))
                 .thenReturn(Optional.of(token));
-        when(fixture.authTokenService.hashOpaqueToken("%s:%s:%s".formatted(
+        when(fixture.authToken.hashOpaqueToken("%s:%s:%s".formatted(
                 user.id(),
                 AuthActionTokenType.PASSWORD_RESET,
                 "123456"
         ))).thenReturn("reset-code-hash");
-        when(fixture.passwordEncoder.encode("Password2@")).thenReturn("new-password-hash");
-        when(fixture.authIdentityRepository.findByUser_IdAndProvider(user.id(), AuthConstants.PROVIDER_LOCAL))
-                .thenReturn(Optional.of(identity));
+        when(fixture.passwordHasher.encode("Password2@")).thenReturn("new-password-hash");
 
         fixture.service.confirmPasswordReset(new ConfirmPasswordResetCommand(
                 "mira@example.com",
@@ -104,9 +80,10 @@ class PasswordResetServiceImplTest {
                 "Password2@"
         ));
 
-        Assertions.assertThat(identity.passwordHash()).isEqualTo("new-password-hash");
-        verify(fixture.refreshTokenRepository).revokeAllUserTokens(user.id(), "password_reset", NOW);
-        verify(fixture.authActionTokenRepository).revokeOpenTokens(
+        verify(fixture.identityStore).updateLocalPasswordHash(user.id(), "new-password-hash");
+        verify(fixture.refreshTokenStore).revokeAllUserTokens(user.id(), "password_reset", NOW);
+        verify(fixture.actionTokenStore).consumeToken(token.id(), NOW);
+        verify(fixture.actionTokenStore).revokeOpenTokens(
                 user.id(),
                 AuthActionTokenType.PASSWORD_RESET,
                 "consumed",
@@ -117,33 +94,17 @@ class PasswordResetServiceImplTest {
     @Test
     void confirmPasswordResetCreatesLocalIdentityForGoogleOnlyUser() {
         Fixture fixture = new Fixture();
-        UserEntity user = UserEntity.googleUser(
-                "google@example.com",
-                "google@example.com",
-                "Google User",
-                null
-        );
-        AuthActionTokenEntity token = AuthActionTokenEntity.create(
-                user,
-                AuthActionTokenType.PASSWORD_RESET,
-                "reset-code-hash",
-                NOW.plus(Duration.ofMinutes(15))
-        );
-        when(fixture.userRepository.findByEmailNormalized("google@example.com")).thenReturn(Optional.of(user));
-        when(fixture.authActionTokenRepository
-                .findLatestPendingForUpdate(
-                        user.id(),
-                        AuthActionTokenType.PASSWORD_RESET
-                ))
+        AuthUserView user = user(null, "google@example.com");
+        AuthActionTokenView token = token(user.id(), "reset-code-hash", NOW.plus(Duration.ofMinutes(15)), 0);
+        when(fixture.userStore.findByEmailNormalized("google@example.com")).thenReturn(Optional.of(user));
+        when(fixture.actionTokenStore.findLatestPendingForUpdate(user.id(), AuthActionTokenType.PASSWORD_RESET))
                 .thenReturn(Optional.of(token));
-        when(fixture.authTokenService.hashOpaqueToken("%s:%s:%s".formatted(
+        when(fixture.authToken.hashOpaqueToken("%s:%s:%s".formatted(
                 user.id(),
                 AuthActionTokenType.PASSWORD_RESET,
                 "123456"
         ))).thenReturn("reset-code-hash");
-        when(fixture.passwordEncoder.encode("Password2@")).thenReturn("new-password-hash");
-        when(fixture.authIdentityRepository.findByUser_IdAndProvider(user.id(), AuthConstants.PROVIDER_LOCAL))
-                .thenReturn(Optional.empty());
+        when(fixture.passwordHasher.encode("Password2@")).thenReturn("new-password-hash");
 
         fixture.service.confirmPasswordReset(new ConfirmPasswordResetCommand(
                 "google@example.com",
@@ -151,35 +112,17 @@ class PasswordResetServiceImplTest {
                 "Password2@"
         ));
 
-        ArgumentCaptor<AuthIdentityEntity> identityCaptor = ArgumentCaptor.forClass(AuthIdentityEntity.class);
-        verify(fixture.authIdentityRepository).save(identityCaptor.capture());
-        Assertions.assertThat(identityCaptor.getValue().provider()).isEqualTo(AuthConstants.PROVIDER_LOCAL);
-        Assertions.assertThat(identityCaptor.getValue().passwordHash()).isEqualTo("new-password-hash");
-        verify(fixture.refreshTokenRepository).revokeAllUserTokens(user.id(), "password_reset", NOW);
+        verify(fixture.identityStore).updateLocalPasswordHash(user.id(), "new-password-hash");
+        verify(fixture.refreshTokenStore).revokeAllUserTokens(user.id(), "password_reset", NOW);
     }
 
     @Test
     void confirmPasswordResetRejectsExpiredOrWrongCodes() {
         Fixture fixture = new Fixture();
-        UserEntity user = UserEntity.localUser(
-                "mira",
-                "mira",
-                "mira@example.com",
-                "mira@example.com",
-                "Mira Stone"
-        );
-        AuthActionTokenEntity expiredToken = AuthActionTokenEntity.create(
-                user,
-                AuthActionTokenType.PASSWORD_RESET,
-                "reset-code-hash",
-                NOW.minusSeconds(1)
-        );
-        when(fixture.userRepository.findByEmailNormalized("mira@example.com")).thenReturn(Optional.of(user));
-        when(fixture.authActionTokenRepository
-                .findLatestPendingForUpdate(
-                        user.id(),
-                        AuthActionTokenType.PASSWORD_RESET
-                ))
+        AuthUserView user = user("mira", "mira@example.com");
+        AuthActionTokenView expiredToken = token(user.id(), "reset-code-hash", NOW.minusSeconds(1), 0);
+        when(fixture.userStore.findByEmailNormalized("mira@example.com")).thenReturn(Optional.of(user));
+        when(fixture.actionTokenStore.findLatestPendingForUpdate(user.id(), AuthActionTokenType.PASSWORD_RESET))
                 .thenReturn(Optional.of(expiredToken));
 
         Assertions.assertThatThrownBy(() -> fixture.service.confirmPasswordReset(new ConfirmPasswordResetCommand(
@@ -190,19 +133,10 @@ class PasswordResetServiceImplTest {
                 .isInstanceOfSatisfying(AppException.class, exception ->
                         Assertions.assertThat(exception.errorCode()).isEqualTo(ErrorCode.PASSWORD_RESET_EXPIRED));
 
-        AuthActionTokenEntity token = AuthActionTokenEntity.create(
-                user,
-                AuthActionTokenType.PASSWORD_RESET,
-                "reset-code-hash",
-                NOW.plus(Duration.ofMinutes(15))
-        );
-        when(fixture.authActionTokenRepository
-                .findLatestPendingForUpdate(
-                        user.id(),
-                        AuthActionTokenType.PASSWORD_RESET
-                ))
+        AuthActionTokenView token = token(user.id(), "reset-code-hash", NOW.plus(Duration.ofMinutes(15)), 0);
+        when(fixture.actionTokenStore.findLatestPendingForUpdate(user.id(), AuthActionTokenType.PASSWORD_RESET))
                 .thenReturn(Optional.of(token));
-        when(fixture.authTokenService.hashOpaqueToken(anyString())).thenReturn("different-hash");
+        when(fixture.authToken.hashOpaqueToken(anyString())).thenReturn("different-hash");
 
         Assertions.assertThatThrownBy(() -> fixture.service.confirmPasswordReset(new ConfirmPasswordResetCommand(
                         "mira@example.com",
@@ -211,31 +145,57 @@ class PasswordResetServiceImplTest {
                 )))
                 .isInstanceOfSatisfying(AppException.class, exception ->
                         Assertions.assertThat(exception.errorCode()).isEqualTo(ErrorCode.PASSWORD_RESET_INVALID_CODE));
-        Assertions.assertThat(token.failedAttemptCount()).isEqualTo(1);
+        verify(fixture.actionTokenStore).incrementFailedAttempt(token.id());
+    }
+
+    private static AuthUserView user(String username, String email) {
+        return new AuthUserView(
+                UUID.randomUUID(),
+                username,
+                email,
+                AuthConstants.USER_STATUS_ACTIVE,
+                false,
+                username == null ? "Google User" : username,
+                null,
+                NOW
+        );
+    }
+
+    private static AuthActionTokenView token(UUID userId, String hash, Instant expiresAt, int failedAttempts) {
+        return new AuthActionTokenView(
+                UUID.randomUUID(),
+                userId,
+                hash,
+                expiresAt,
+                null,
+                null,
+                failedAttempts,
+                NOW
+        );
     }
 
     private static class Fixture {
-        private final UserRepository userRepository = mock(UserRepository.class);
-        private final AuthIdentityRepository authIdentityRepository = mock(AuthIdentityRepository.class);
-        private final AuthActionTokenRepository authActionTokenRepository = mock(AuthActionTokenRepository.class);
-        private final RefreshTokenRepository refreshTokenRepository = mock(RefreshTokenRepository.class);
-        private final AuthTokenService authTokenService = mock(AuthTokenService.class);
-        private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+        private final AuthUserStorePort userStore = mock(AuthUserStorePort.class);
+        private final AuthIdentityStorePort identityStore = mock(AuthIdentityStorePort.class);
+        private final AuthActionTokenStorePort actionTokenStore = mock(AuthActionTokenStorePort.class);
+        private final RefreshTokenStorePort refreshTokenStore = mock(RefreshTokenStorePort.class);
+        private final AuthTokenPort authToken = mock(AuthTokenPort.class);
+        private final PasswordHasherPort passwordHasher = mock(PasswordHasherPort.class);
         private final EmailSenderPort emailSender = mock(EmailSenderPort.class);
-        private final EmailProperties emailProperties = mock(EmailProperties.class);
+        private final EmailSettingsPort emailSettings = mock(EmailSettingsPort.class);
         private final PasswordResetServiceImpl service;
 
         private Fixture() {
-            when(emailProperties.passwordResetTtl()).thenReturn(Duration.ofMinutes(15));
+            when(emailSettings.passwordResetTtl()).thenReturn(Duration.ofMinutes(15));
             service = new PasswordResetServiceImpl(
-                    userRepository,
-                    authIdentityRepository,
-                    authActionTokenRepository,
-                    refreshTokenRepository,
-                    authTokenService,
-                    passwordEncoder,
+                    userStore,
+                    identityStore,
+                    actionTokenStore,
+                    refreshTokenStore,
+                    authToken,
+                    passwordHasher,
                     emailSender,
-                    emailProperties,
+                    emailSettings,
                     Clock.fixed(NOW, ZoneOffset.UTC)
             );
         }

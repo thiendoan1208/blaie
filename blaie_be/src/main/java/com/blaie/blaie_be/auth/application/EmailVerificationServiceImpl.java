@@ -1,17 +1,15 @@
 package com.blaie.blaie_be.auth.application;
 
 import com.blaie.blaie_be.auth.application.port.EmailMessage;
+import com.blaie.blaie_be.auth.application.port.AuthActionTokenStorePort;
+import com.blaie.blaie_be.auth.application.port.AuthActionTokenView;
 import com.blaie.blaie_be.auth.application.port.EmailSenderPort;
+import com.blaie.blaie_be.auth.application.port.EmailSettingsPort;
+import com.blaie.blaie_be.auth.application.port.AuthIdentityStorePort;
+import com.blaie.blaie_be.auth.application.port.AuthTokenPort;
+import com.blaie.blaie_be.auth.application.port.AuthUserStorePort;
+import com.blaie.blaie_be.auth.application.port.AuthUserView;
 import com.blaie.blaie_be.auth.domain.AuthActionTokenType;
-import com.blaie.blaie_be.auth.domain.AuthConstants;
-import com.blaie.blaie_be.auth.infrastructure.email.EmailProperties;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthActionTokenEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthActionTokenRepository;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthIdentityEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthIdentityRepository;
-import com.blaie.blaie_be.auth.infrastructure.persistence.UserEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.UserRepository;
-import com.blaie.blaie_be.auth.infrastructure.security.AuthTokenService;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.error.RateLimitedException;
@@ -28,35 +26,37 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class EmailVerificationServiceImpl implements EmailVerificationService {
-    private final UserRepository userRepository;
-    private final AuthIdentityRepository authIdentityRepository;
-    private final AuthActionTokenRepository authActionTokenRepository;
-    private final AuthTokenService authTokenService;
+    private final AuthUserStorePort userStore;
+    private final AuthIdentityStorePort identityStore;
+    private final AuthActionTokenStorePort actionTokenStore;
+    private final AuthTokenPort authToken;
     private final EmailSenderPort emailSender;
-    private final EmailProperties emailProperties;
+    private final EmailSettingsPort emailSettings;
     private final Clock clock;
 
     public EmailVerificationServiceImpl(
-            UserRepository userRepository,
-            AuthIdentityRepository authIdentityRepository,
-            AuthActionTokenRepository authActionTokenRepository,
-            AuthTokenService authTokenService,
+            AuthUserStorePort userStore,
+            AuthIdentityStorePort identityStore,
+            AuthActionTokenStorePort actionTokenStore,
+            AuthTokenPort authToken,
             EmailSenderPort emailSender,
-            EmailProperties emailProperties,
+            EmailSettingsPort emailSettings,
             Clock clock
     ) {
-        this.userRepository = userRepository;
-        this.authIdentityRepository = authIdentityRepository;
-        this.authActionTokenRepository = authActionTokenRepository;
-        this.authTokenService = authTokenService;
+        this.userStore = userStore;
+        this.identityStore = identityStore;
+        this.actionTokenStore = actionTokenStore;
+        this.authToken = authToken;
         this.emailSender = emailSender;
-        this.emailProperties = emailProperties;
+        this.emailSettings = emailSettings;
         this.clock = clock;
     }
 
     @Transactional
     @Override
-    public void sendInitialVerification(UserEntity user) {
+    public void sendInitialVerification(UUID userId) {
+        AuthUserView user = userStore.findActiveById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
         createAndSendVerification(user, false);
     }
 
@@ -67,9 +67,9 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
                 .map(CurrentUser::userId)
                 .map(this::parseUserId)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
-        UserEntity user = userRepository.findByIdAndStatus(userId, AuthConstants.USER_STATUS_ACTIVE)
+        AuthUserView user = userStore.findActiveById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
-        if (authIdentityRepository.existsByUser_IdAndEmailVerifiedTrue(user.id())) {
+        if (identityStore.existsVerifiedEmail(user.id())) {
             return;
         }
         enforceResendLimit(user);
@@ -84,69 +84,65 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         }
 
         Instant now = clock.instant();
-        AuthActionTokenEntity token = authActionTokenRepository
-                .findByTokenHashAndType(authTokenService.hashOpaqueToken(rawToken), AuthActionTokenType.EMAIL_VERIFICATION)
+        AuthActionTokenView token = actionTokenStore
+                .findByTokenHashAndType(authToken.hashOpaqueToken(rawToken), AuthActionTokenType.EMAIL_VERIFICATION)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_EMAIL_VERIFICATION_TOKEN));
 
         if (!token.isOpen(now)) {
             throw new AppException(ErrorCode.INVALID_EMAIL_VERIFICATION_TOKEN);
         }
 
-        AuthIdentityEntity localIdentity = authIdentityRepository
-                .findByUser_IdAndProvider(token.user().id(), AuthConstants.PROVIDER_LOCAL)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_EMAIL_VERIFICATION_TOKEN));
-
-        localIdentity.markEmailVerified();
-        token.consume(now);
+        identityStore.markLocalEmailVerified(token.userId());
+        actionTokenStore.consumeToken(token.id(), now);
     }
 
     @Override
     public String verifiedRedirectUrl() {
-        return emailProperties.webBaseUrl() + "/verify-email/result?emailVerified=1";
+        return emailSettings.webBaseUrl() + "/verify-email/result?emailVerified=1";
     }
 
     @Override
     public String failedRedirectUrl() {
-        return emailProperties.webBaseUrl() + "/verify-email/result?emailVerified=0";
+        return emailSettings.webBaseUrl() + "/verify-email/result?emailVerified=0";
     }
 
-    private void createAndSendVerification(UserEntity user, boolean revokePrevious) {
+    private void createAndSendVerification(AuthUserView user, boolean revokePrevious) {
         Instant now = clock.instant();
         if (revokePrevious) {
-            authActionTokenRepository.revokeOpenTokens(
+            actionTokenStore.revokeOpenTokens(
                     user.id(),
                     AuthActionTokenType.EMAIL_VERIFICATION,
                     "replaced",
                     now
             );
         }
-        String rawToken = authTokenService.generateOpaqueToken();
-        authActionTokenRepository.save(AuthActionTokenEntity.create(
-                user,
+        String rawToken = authToken.generateOpaqueToken();
+        actionTokenStore.createToken(
+                user.id(),
                 AuthActionTokenType.EMAIL_VERIFICATION,
-                authTokenService.hashOpaqueToken(rawToken),
-                now.plus(emailProperties.verificationTtl())
-        ));
+                authToken.hashOpaqueToken(rawToken),
+                now.plus(emailSettings.verificationTtl())
+        );
         emailSender.send(verificationEmail(user, rawToken));
     }
 
-    private void enforceResendLimit(UserEntity user) {
+    private void enforceResendLimit(AuthUserView user) {
         Instant now = clock.instant();
-        Duration quotaWindow = emailProperties.verificationResendQuotaWindow();
+        Duration quotaWindow = emailSettings.verificationResendQuotaWindow();
         Instant windowStart = now.minus(quotaWindow);
-        long recentSendCount = authActionTokenRepository.countByUser_IdAndTypeAndCreatedAtGreaterThanEqual(
+        long recentSendCount = actionTokenStore.countByUserIdAndTypeSince(
                 user.id(),
                 AuthActionTokenType.EMAIL_VERIFICATION,
                 windowStart
         );
-        if (recentSendCount >= emailProperties.verificationResendQuotaLimit()) {
-            Duration retryAfter = authActionTokenRepository
-                    .findFirstByUser_IdAndTypeAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+        if (recentSendCount >= emailSettings.verificationResendQuotaLimit()) {
+            Duration retryAfter = actionTokenStore
+                    .findFirstCreatedAtByUserIdAndTypeSince(
                             user.id(),
                             AuthActionTokenType.EMAIL_VERIFICATION,
                             windowStart
                     )
-                    .map(token -> Duration.between(now, token.createdAt().plus(quotaWindow)))
+                    .map(createdAt -> Duration.between(now, createdAt.plus(quotaWindow)))
                     .orElse(quotaWindow);
             throw new RateLimitedException(
                     ErrorCode.EMAIL_VERIFICATION_RATE_LIMITED,
@@ -155,9 +151,8 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
             );
         }
 
-        Duration cooldown = emailProperties.verificationResendCooldown();
-        authActionTokenRepository.findTopByUser_IdAndTypeOrderByCreatedAtDesc(user.id(), AuthActionTokenType.EMAIL_VERIFICATION)
-                .map(AuthActionTokenEntity::createdAt)
+        Duration cooldown = emailSettings.verificationResendCooldown();
+        actionTokenStore.findLatestCreatedAtByUserIdAndType(user.id(), AuthActionTokenType.EMAIL_VERIFICATION)
                 .filter(createdAt -> createdAt.plus(cooldown).isAfter(now))
                 .ifPresent(createdAt -> {
                     throw new RateLimitedException(
@@ -168,8 +163,8 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
                 });
     }
 
-    private EmailMessage verificationEmail(UserEntity user, String rawToken) {
-        String verifyUrl = emailProperties.apiBaseUrl()
+    private EmailMessage verificationEmail(AuthUserView user, String rawToken) {
+        String verifyUrl = emailSettings.apiBaseUrl()
                 + "/auth/email/verify?token="
                 + URLEncoder.encode(rawToken, StandardCharsets.UTF_8);
         String subject = "Verify your Blaie email";

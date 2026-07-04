@@ -1,11 +1,10 @@
-package com.blaie.blaie_be.core.security;
+package com.blaie.blaie_be.auth.infrastructure.security;
 
-import com.blaie.blaie_be.auth.infrastructure.security.AuthRequestFilter;
-import com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService;
-import com.blaie.blaie_be.auth.infrastructure.security.EmailVerificationRequiredFilter;
-import com.blaie.blaie_be.auth.infrastructure.security.AuthProperties;
-import com.blaie.blaie_be.auth.infrastructure.security.BearerTokenResolver;
 import com.blaie.blaie_be.core.ratelimit.filter.RateLimitFilter;
+import com.blaie.blaie_be.core.security.AppAccessDeniedHandler;
+import com.blaie.blaie_be.core.security.AppAuthenticationEntryPoint;
+import com.blaie.blaie_be.core.security.AuthCookieNames;
+import com.blaie.blaie_be.core.security.SecurityCorsProperties;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
@@ -17,10 +16,10 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -139,8 +138,8 @@ public class SecurityConfig {
             return false;
         }
         for (Cookie cookie : request.getCookies()) {
-            if (AuthCookieService.ACCESS_COOKIE_NAME.equals(cookie.getName())
-                    || AuthCookieService.REFRESH_COOKIE_NAME.equals(cookie.getName())) {
+            if (AuthCookieNames.ACCESS_COOKIE_NAME.equals(cookie.getName())
+                    || AuthCookieNames.REFRESH_COOKIE_NAME.equals(cookie.getName())) {
                 return true;
             }
         }

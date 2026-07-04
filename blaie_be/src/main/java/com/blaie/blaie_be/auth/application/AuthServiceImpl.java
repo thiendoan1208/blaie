@@ -4,19 +4,19 @@ import com.blaie.blaie_be.auth.application.command.LoginLocalCommand;
 import com.blaie.blaie_be.auth.application.command.RegisterLocalCommand;
 import com.blaie.blaie_be.auth.application.command.UpdatePasswordCommand;
 import com.blaie.blaie_be.auth.application.command.UpdateUsernameCommand;
+import com.blaie.blaie_be.auth.application.port.AuthIdentityStorePort;
+import com.blaie.blaie_be.auth.application.port.AuthIdentityView;
+import com.blaie.blaie_be.auth.application.port.AuthTokenPort;
+import com.blaie.blaie_be.auth.application.port.AuthTokenSettingsPort;
+import com.blaie.blaie_be.auth.application.port.AuthUserStorePort;
+import com.blaie.blaie_be.auth.application.port.AuthUserView;
 import com.blaie.blaie_be.auth.application.port.GoogleOAuthProfile;
+import com.blaie.blaie_be.auth.application.port.PasswordHasherPort;
+import com.blaie.blaie_be.auth.application.port.RefreshTokenStorePort;
+import com.blaie.blaie_be.auth.application.port.RefreshTokenView;
 import com.blaie.blaie_be.auth.application.result.AuthUserResult;
 import com.blaie.blaie_be.auth.application.result.WebAuthResult;
 import com.blaie.blaie_be.auth.domain.AuthConstants;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthIdentityEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthIdentityRepository;
-import com.blaie.blaie_be.auth.infrastructure.persistence.AuthPersistenceExceptionTranslator;
-import com.blaie.blaie_be.auth.infrastructure.persistence.RefreshTokenEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.RefreshTokenRepository;
-import com.blaie.blaie_be.auth.infrastructure.persistence.UserEntity;
-import com.blaie.blaie_be.auth.infrastructure.persistence.UserRepository;
-import com.blaie.blaie_be.auth.infrastructure.security.AuthProperties;
-import com.blaie.blaie_be.auth.infrastructure.security.AuthTokenService;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.security.CurrentUser;
@@ -28,8 +28,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,34 +35,34 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthServiceImpl implements AuthService {
     private static final String DUMMY_PASSWORD = "BlaieDummyPasswordThatCannotAuthenticate";
 
-    private final UserRepository userRepository;
-    private final AuthIdentityRepository authIdentityRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final AuthUserStorePort userStore;
+    private final AuthIdentityStorePort identityStore;
+    private final RefreshTokenStorePort refreshTokenStore;
+    private final PasswordHasherPort passwordHasher;
     private final String dummyPasswordHash;
-    private final AuthTokenService authTokenService;
+    private final AuthTokenPort authToken;
     private final EmailVerificationService emailVerificationService;
-    private final AuthProperties authProperties;
+    private final AuthTokenSettingsPort authSettings;
     private final Clock clock;
 
     public AuthServiceImpl(
-            UserRepository userRepository,
-            AuthIdentityRepository authIdentityRepository,
-            RefreshTokenRepository refreshTokenRepository,
-            PasswordEncoder passwordEncoder,
-            AuthTokenService authTokenService,
+            AuthUserStorePort userStore,
+            AuthIdentityStorePort identityStore,
+            RefreshTokenStorePort refreshTokenStore,
+            PasswordHasherPort passwordHasher,
+            AuthTokenPort authToken,
             EmailVerificationService emailVerificationService,
-            AuthProperties authProperties,
+            AuthTokenSettingsPort authSettings,
             Clock clock
     ) {
-        this.userRepository = userRepository;
-        this.authIdentityRepository = authIdentityRepository;
-        this.refreshTokenRepository = refreshTokenRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.dummyPasswordHash = passwordEncoder.encode(DUMMY_PASSWORD);
-        this.authTokenService = authTokenService;
+        this.userStore = userStore;
+        this.identityStore = identityStore;
+        this.refreshTokenStore = refreshTokenStore;
+        this.passwordHasher = passwordHasher;
+        this.dummyPasswordHash = passwordHasher.encode(DUMMY_PASSWORD);
+        this.authToken = authToken;
         this.emailVerificationService = emailVerificationService;
-        this.authProperties = authProperties;
+        this.authSettings = authSettings;
         this.clock = clock;
     }
 
@@ -78,41 +76,32 @@ public class AuthServiceImpl implements AuthService {
         String usernameNormalized = normalize(username);
         String emailNormalized = normalize(email);
 
-        if (userRepository.existsByUsernameNormalized(usernameNormalized)) {
+        if (userStore.existsByUsernameNormalized(usernameNormalized)) {
             throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
         }
-        if (userRepository.existsByEmailNormalized(emailNormalized)) {
+        if (userStore.existsByEmailNormalized(emailNormalized)) {
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
-        try {
-            UserEntity user = userRepository.saveAndFlush(
-                    UserEntity.localUser(username, usernameNormalized, email, emailNormalized, displayName)
-            );
-            String passwordHash = passwordEncoder.encode(password);
-            authIdentityRepository.saveAndFlush(
-                    AuthIdentityEntity.local(user, passwordHash)
-            );
-            emailVerificationService.sendInitialVerification(user);
-            return issueWebAuth(user, UUID.randomUUID(), userAgent);
-        } catch (DataIntegrityViolationException exception) {
-            throw AuthPersistenceExceptionTranslator.translateRegistrationDuplicate(exception);
-        }
+        AuthUserView user = userStore.createLocalUser(username, usernameNormalized, email, emailNormalized, displayName);
+        identityStore.createLocalIdentity(user.id(), passwordHasher.encode(password));
+        emailVerificationService.sendInitialVerification(user.id());
+        return issueWebAuth(user, UUID.randomUUID(), userAgent);
     }
 
     @Transactional
     @Override
     public WebAuthResult loginLocal(LoginLocalCommand command, String userAgent) {
         String identifierNormalized = normalize(command.identifier());
-        AuthIdentityEntity identity = findLocalIdentity(identifierNormalized).orElse(null);
+        AuthIdentityView identity = findLocalIdentity(identifierNormalized).orElse(null);
         String passwordHash = identity == null ? dummyPasswordHash : identity.passwordHash();
-        boolean passwordMatches = passwordEncoder.matches(trim(command.password()), passwordHash);
+        boolean passwordMatches = passwordHasher.matches(trim(command.password()), passwordHash);
 
         if (identity == null || !passwordMatches) {
             throw new AppException(ErrorCode.INVALID_CREDENTIALS);
         }
         
-        UserEntity user = identity.user();
+        AuthUserView user = identity.user();
         
         if (!AuthConstants.USER_STATUS_ACTIVE.equals(user.status())) {
             throw new AppException(ErrorCode.FORBIDDEN);
@@ -131,9 +120,8 @@ public class AuthServiceImpl implements AuthService {
             throw new AppException(ErrorCode.GOOGLE_AUTH_FAILED);
         }
 
-        UserEntity user = authIdentityRepository
-                .findByProviderAndProviderSubject(AuthConstants.PROVIDER_GOOGLE, subject)
-                .map(AuthIdentityEntity::user)
+        AuthUserView user = identityStore
+                .findGoogleUserBySubject(subject)
                 .orElseGet(() -> linkOrCreateGoogleUser(profile, subject, email, emailNormalized));
 
         if (!AuthConstants.USER_STATUS_ACTIVE.equals(user.status())) {
@@ -146,39 +134,38 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(noRollbackFor = AppException.class)
     @Override
     public WebAuthResult refreshWeb(String refreshToken, String userAgent) {
-        RefreshTokenEntity currentToken = requireRefreshToken(refreshToken);
+        String currentTokenHash = authToken.hashRefreshToken(refreshToken);
+        RefreshTokenView currentToken = requireRefreshToken(currentTokenHash);
         Instant now = clock.instant();
-        if (currentToken.isRevoked()) {
-            refreshTokenRepository.revokeFamily(currentToken.tokenFamilyId(), "family_breach", now);
+        if (currentToken.revoked()) {
+            refreshTokenStore.revokeFamily(currentToken.tokenFamilyId(), "family_breach", now);
             throw new AppException(ErrorCode.SESSION_REVOKED);
         }
         if (currentToken.isExpired(now)) {
-            currentToken.revoke("expired", null, now);
+            refreshTokenStore.revokeRefreshToken(currentTokenHash, "expired", now);
             throw new AppException(ErrorCode.SESSION_EXPIRED);
         }
 
-        UserEntity user = currentToken.user();
+        AuthUserView user = currentToken.user();
         if (!AuthConstants.USER_STATUS_ACTIVE.equals(user.status())) {
-            refreshTokenRepository.revokeAllUserTokens(user.id(), "user_not_active", now);
+            refreshTokenStore.revokeAllUserTokens(user.id(), "user_not_active", now);
             throw new AppException(ErrorCode.FORBIDDEN);
         }
 
-        String nextRefreshTokenValue = authTokenService.generateRefreshToken();
-        RefreshTokenEntity nextRefreshToken = refreshTokenRepository.save(RefreshTokenEntity.webCookie(
-                user,
-                authTokenService.hashRefreshToken(nextRefreshTokenValue),
-                currentToken.tokenFamilyId(),
-                now.plus(authProperties.refreshTokenTtl()),
-                userAgent
-        ));
-        currentToken.markUsed(now);
-        currentToken.revoke("rotated", nextRefreshToken, now);
+        String nextRefreshTokenValue = authToken.generateRefreshToken();
+        refreshTokenStore.rotateWebRefreshToken(
+                currentTokenHash,
+                authToken.hashRefreshToken(nextRefreshTokenValue),
+                now.plus(authSettings.refreshTokenTtl()),
+                userAgent,
+                now
+        );
         return new WebAuthResult(
                 toAuthUserResult(user),
-                authTokenService.issueAccessToken(user.id()),
-                authProperties.accessTokenTtl(),
+                authToken.issueAccessToken(user.id()),
+                authSettings.accessTokenTtl(),
                 nextRefreshTokenValue,
-                authProperties.refreshTokenTtl()
+                authSettings.refreshTokenTtl()
         );
     }
 
@@ -188,18 +175,12 @@ public class AuthServiceImpl implements AuthService {
         if (refreshToken == null || refreshToken.isBlank()) {
             return;
         }
-        String tokenHash = authTokenService.hashRefreshToken(refreshToken);
-        Optional<RefreshTokenEntity> tokenOpt = refreshTokenRepository.findByTokenHash(tokenHash);
-        if (tokenOpt.isEmpty()) {
+        String tokenHash = authToken.hashRefreshToken(refreshToken);
+        Optional<RefreshTokenView> tokenOpt = refreshTokenStore.findByTokenHash(tokenHash);
+        if (tokenOpt.isEmpty() || tokenOpt.get().revoked()) {
             return;
         }
-        RefreshTokenEntity currentToken = tokenOpt.get();
-        if (currentToken.isRevoked()) {
-            return;
-        }
-        Instant now = clock.instant();
-        currentToken.markUsed(now);
-        currentToken.revoke("logout", null, now);
+        refreshTokenStore.revokeRefreshToken(tokenHash, "logout", clock.instant());
     }
 
     @Transactional(readOnly = true)
@@ -211,7 +192,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     @Override
     public AuthUserResult updateUsername(UpdateUsernameCommand command) {
-        UserEntity user = requireCurrentActiveUser();
+        AuthUserView user = requireCurrentActiveUser();
         String username = trim(command.username());
         String usernameNormalized = normalize(username);
         if (usernameNormalized.isBlank()) {
@@ -222,24 +203,21 @@ public class AuthServiceImpl implements AuthService {
         if (usernameNormalized.equals(normalize(user.username()))) {
             return toAuthUserResult(user);
         }
-        userRepository.findByUsernameNormalized(usernameNormalized)
+        userStore.findByUsernameNormalized(usernameNormalized)
                 .filter(existingUser -> !existingUser.id().equals(user.id()))
                 .ifPresent(existingUser -> {
                     throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
                 });
-        user.updateUsername(username, usernameNormalized);
-        return toAuthUserResult(user);
+        userStore.updateUsername(user.id(), username, usernameNormalized);
+        return toAuthUserResult(requireCurrentActiveUser());
     }
 
     @Transactional
     @Override
     public AuthUserResult updatePassword(UpdatePasswordCommand command) {
-        UserEntity user = requireCurrentActiveUser();
+        AuthUserView user = requireCurrentActiveUser();
         String newPassword = trim(command.newPassword());
-        Optional<AuthIdentityEntity> localIdentity = authIdentityRepository.findByUser_IdAndProvider(
-                user.id(),
-                AuthConstants.PROVIDER_LOCAL
-        );
+        Optional<AuthIdentityView> localIdentity = identityStore.findLocalIdentity(user.id());
 
         if (localIdentity.isPresent()) {
             String currentPassword = trim(command.currentPassword());
@@ -248,62 +226,55 @@ public class AuthServiceImpl implements AuthService {
                         "currentPassword", List.of("Current password is required")
                 ));
             }
-            AuthIdentityEntity identity = localIdentity.get();
-            if (!passwordEncoder.matches(currentPassword, identity.passwordHash())) {
+            AuthIdentityView identity = localIdentity.get();
+            if (!passwordHasher.matches(currentPassword, identity.passwordHash())) {
                 throw new AppException(ErrorCode.INVALID_CREDENTIALS, "Current password is incorrect", Map.of(
                         "currentPassword", List.of("Current password is incorrect")
                 ));
             }
-            identity.updatePasswordHash(passwordEncoder.encode(newPassword));
-        } else {
-            authIdentityRepository.save(AuthIdentityEntity.local(user, passwordEncoder.encode(newPassword)));
         }
+        identityStore.updateLocalPasswordHash(user.id(), passwordHasher.encode(newPassword));
 
-        refreshTokenRepository.revokeAllUserTokens(user.id(), "password_changed", clock.instant());
+        refreshTokenStore.revokeAllUserTokens(user.id(), "password_changed", clock.instant());
         return toAuthUserResult(user);
     }
     
-    private WebAuthResult issueWebAuth(UserEntity user, UUID tokenFamilyId, String userAgent) {
-        String refreshTokenValue = authTokenService.generateRefreshToken();
-        RefreshTokenEntity refreshToken = RefreshTokenEntity.webCookie(
-                user,
-                authTokenService.hashRefreshToken(refreshTokenValue),
+    private WebAuthResult issueWebAuth(AuthUserView user, UUID tokenFamilyId, String userAgent) {
+        String refreshTokenValue = authToken.generateRefreshToken();
+        refreshTokenStore.createWebRefreshToken(
+                user.id(),
+                authToken.hashRefreshToken(refreshTokenValue),
                 tokenFamilyId,
-                clock.instant().plus(authProperties.refreshTokenTtl()),
+                clock.instant().plus(authSettings.refreshTokenTtl()),
                 userAgent
         );
-        refreshTokenRepository.save(refreshToken);
         return new WebAuthResult(
                 toAuthUserResult(user),
-                authTokenService.issueAccessToken(user.id()),
-                authProperties.accessTokenTtl(),
+                authToken.issueAccessToken(user.id()),
+                authSettings.accessTokenTtl(),
                 refreshTokenValue,
-                authProperties.refreshTokenTtl()
+                authSettings.refreshTokenTtl()
         );
     }
 
-    private Optional<AuthIdentityEntity> findLocalIdentity(String identifierNormalized) {
-        List<AuthIdentityEntity> identities = authIdentityRepository.findAllByProviderAndIdentifier(
-                AuthConstants.PROVIDER_LOCAL,
-                identifierNormalized
-        );
-        return identities.size() == 1 ? Optional.of(identities.getFirst()) : Optional.empty();
+    private Optional<AuthIdentityView> findLocalIdentity(String identifierNormalized) {
+        return identityStore.findSingleLocalIdentityByIdentifier(identifierNormalized);
     }
 
-    private UserEntity linkOrCreateGoogleUser(
+    private AuthUserView linkOrCreateGoogleUser(
             GoogleOAuthProfile profile,
             String subject,
             String email,
             String emailNormalized
     ) {
-        UserEntity user = userRepository.findByEmailNormalized(emailNormalized)
-                .orElseGet(() -> userRepository.saveAndFlush(UserEntity.googleUser(
+        AuthUserView user = userStore.findByEmailNormalized(emailNormalized)
+                .orElseGet(() -> userStore.createGoogleUser(
                         email,
                         emailNormalized,
                         displayName(profile, email),
                         trimToNull(profile.avatarUrl())
-                )));
-        authIdentityRepository.saveAndFlush(AuthIdentityEntity.google(user, subject));
+                ));
+        identityStore.createGoogleIdentity(user.id(), subject);
         return user;
     }
 
@@ -322,13 +293,13 @@ public class AuthServiceImpl implements AuthService {
         return trimmed.isBlank() ? null : trimmed;
     }
 
-    private AuthUserResult toAuthUserResult(UserEntity user) {
+    private AuthUserResult toAuthUserResult(AuthUserView user) {
         return new AuthUserResult(
                 user.id(),
                 user.username(),
                 user.email(),
-                authIdentityRepository.existsByUser_IdAndEmailVerifiedTrue(user.id()),
-                authIdentityRepository.findByUser_IdAndProvider(user.id(), AuthConstants.PROVIDER_LOCAL)
+                identityStore.existsVerifiedEmail(user.id()),
+                identityStore.findLocalIdentity(user.id())
                         .map(identity -> identity.passwordHash() != null && !identity.passwordHash().isBlank())
                         .orElse(false),
                 user.displayName(),
@@ -337,20 +308,17 @@ public class AuthServiceImpl implements AuthService {
         );
     }
 
-    private UserEntity requireCurrentActiveUser() {
+    private AuthUserView requireCurrentActiveUser() {
         UUID userId = CurrentUserHolder.current()
                 .map(CurrentUser::userId)
                 .map(this::parseUserId)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
-        return userRepository.findByIdAndStatus(userId, AuthConstants.USER_STATUS_ACTIVE)
+        return userStore.findActiveById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
     }
 
-    private RefreshTokenEntity requireRefreshToken(String refreshToken) {
-        if (refreshToken == null || refreshToken.isBlank()) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-        return refreshTokenRepository.findByTokenHash(authTokenService.hashRefreshToken(refreshToken))
+    private RefreshTokenView requireRefreshToken(String tokenHash) {
+        return refreshTokenStore.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHORIZED));
     }
 

@@ -1,5 +1,6 @@
 package com.blaie.blaie_be.auth.infrastructure.email;
 
+import com.blaie.blaie_be.auth.application.port.EmailSettingsPort;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -12,7 +13,7 @@ import org.springframework.validation.annotation.Validated;
 @Component
 @Validated
 @ConfigurationProperties(prefix = "blaie.email")
-public class EmailProperties {
+public class EmailProperties implements EmailSettingsPort {
     @NotBlank
     private String provider;
 

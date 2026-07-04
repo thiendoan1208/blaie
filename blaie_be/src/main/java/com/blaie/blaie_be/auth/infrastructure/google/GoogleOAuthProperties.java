@@ -1,5 +1,6 @@
 package com.blaie.blaie_be.auth.infrastructure.google;
 
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthSettingsPort;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -12,7 +13,7 @@ import org.springframework.validation.annotation.Validated;
 @Component
 @Validated
 @ConfigurationProperties(prefix = "blaie.google.oauth")
-public class GoogleOAuthProperties {
+public class GoogleOAuthProperties implements GoogleOAuthSettingsPort {
     @NotBlank
     private String clientId;
 

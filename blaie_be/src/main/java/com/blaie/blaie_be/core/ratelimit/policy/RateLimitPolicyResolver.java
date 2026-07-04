@@ -1,11 +1,11 @@
 package com.blaie.blaie_be.core.ratelimit.policy;
 
-import com.blaie.blaie_be.auth.infrastructure.security.AuthCookieService;
 import com.blaie.blaie_be.core.ratelimit.config.RateLimitPolicy;
 import com.blaie.blaie_be.core.ratelimit.config.RateLimitProperties;
 import com.blaie.blaie_be.core.ratelimit.filter.CachedBodyHttpServletRequest;
 import com.blaie.blaie_be.core.ratelimit.support.ClientIpResolver;
 import com.blaie.blaie_be.core.ratelimit.support.SubjectHasher;
+import com.blaie.blaie_be.core.security.AuthCookieNames;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -68,10 +68,10 @@ public class RateLimitPolicyResolver {
             return request("email-verification", properties.emailVerification(), userOrIpSubject(ipSubject));
         }
         if (HttpMethod.POST.matches(method) && "/api/v1/auth/refresh".equals(path)) {
-            return request("auth-refresh", properties.authRefresh(), ipSubject, cookiePart(request, AuthCookieService.REFRESH_COOKIE_NAME));
+            return request("auth-refresh", properties.authRefresh(), ipSubject, cookiePart(request, AuthCookieNames.REFRESH_COOKIE_NAME));
         }
         if (HttpMethod.POST.matches(method) && "/api/v1/auth/logout".equals(path)) {
-            return request("auth-logout", properties.authLogout(), userOrIpSubject(ipSubject), cookiePart(request, AuthCookieService.REFRESH_COOKIE_NAME));
+            return request("auth-logout", properties.authLogout(), userOrIpSubject(ipSubject), cookiePart(request, AuthCookieNames.REFRESH_COOKIE_NAME));
         }
         if (HttpMethod.GET.matches(method) && "/api/v1/auth/csrf".equals(path)) {
             return request("csrf", properties.csrf(), ipSubject);
