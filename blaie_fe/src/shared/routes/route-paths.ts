@@ -2,7 +2,6 @@ import {
   Bell,
   Calendar,
   CheckSquare,
-  FileText,
   Inbox,
   Info,
   Layers,
@@ -19,7 +18,6 @@ export const routePaths = {
   verifyEmailResult: "/verify-email/result",
   inbox: "/inbox",
   tasks: "/tasks",
-  notes: "/notes",
   calendar: "/calendar",
   reminders: "/reminders",
   information: "/information",
@@ -38,11 +36,8 @@ export type AppNavigationItem = {
 export const appNavigationItems: AppNavigationItem[] = [
   { label: "Inbox", href: routePaths.inbox, icon: Inbox },
   { label: "Tasks", href: routePaths.tasks, icon: CheckSquare },
-  { label: "Notes", href: routePaths.notes, icon: FileText },
   { label: "Calendar", href: routePaths.calendar, icon: Calendar },
   { label: "Reminders", href: routePaths.reminders, icon: Bell },
-  { label: "Items", href: routePaths.items, icon: Layers },
-  { label: "Search", href: routePaths.search, icon: Search },
   { label: "Information", href: routePaths.information, icon: Info },
 ];
 
@@ -60,7 +55,6 @@ export const protectedRoutePrefixes = [
   routePaths.inbox,
   routePaths.information,
   routePaths.items,
-  routePaths.notes,
   routePaths.reminders,
   routePaths.search,
   routePaths.tasks,

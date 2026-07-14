@@ -63,7 +63,7 @@ Auth required:
 
 Request body (multipart):
   file   — File ảnh (required). Hỗ trợ: jpg, jpeg, png, webp, heic. Max 10MB.
-  note   — string (optional). Text bổ sung kèm theo ảnh, max 1000 ký tự.
+  description — string (optional). Text bổ sung kèm theo ảnh, max 1000 ký tự.
 
 Response 201:
 {
@@ -71,7 +71,7 @@ Response 201:
     "id": "uuid",
     "userId": "uuid",
     "sourceType": "image",
-    "originalText": "optional note nếu user gửi kèm",
+    "originalText": "optional description nếu user gửi kèm",
     "originalFileUrl": "https://storage.blaie.app/files/uuid/image.jpg",
     "transcriptionText": null,
     "category": null,

@@ -3,7 +3,7 @@ MVP V1
 Product direction:
 
 Xây dựng một app web và mobile giúp người dùng capture mọi thông tin thật nhanh bằng
-text, hình ảnh hoặc giọng nói. Sau đó AI tự phân tích và phân loại thành task, note,
+text, hình ảnh hoặc giọng nói. Sau đó AI tự phân tích và phân loại thành task,
 calendar event, reminder hoặc information item.
 
 Positioning:
@@ -30,7 +30,7 @@ Capture instantly -> Background AI processing -> Review -> Use later.
 V1 ưu tiên 3 nhóm user:
 
 - Sinh viên: ghi nhanh bài tập, deadline, ý tưởng, lịch học, ảnh slide/bảng.
-- Người đi làm: ghi nhanh việc cần làm, meeting note, reminder, thông tin phát sinh.
+- Người đi làm: ghi nhanh việc cần làm, nội dung cuộc họp, reminder, thông tin phát sinh.
 - Freelancer: quản lý việc rời rạc từ nhiều khách hàng, deadline, ý tưởng và lịch hẹn.
 
 Không ưu tiên ở V1:
@@ -54,7 +54,6 @@ Flow chính:
 
 8. AI phân tích nội dung và đề xuất category:
    - Task
-   - Note
    - Calendar event
    - Reminder
    - Information
@@ -70,7 +69,7 @@ Flow chính:
 
 10. User review kết quả, chỉnh sửa nếu cần.
 
-11. Item xuất hiện ở đúng view: Inbox, Tasks, Notes, Calendar, Reminders hoặc Information.
+11. Item xuất hiện ở đúng view: Inbox, Tasks, Calendar, Reminders hoặc Information.
 
 4. Main screens
 
@@ -92,7 +91,7 @@ Must have:
 
 UX principle:
 
-User không cần chọn trước "đây là task hay note". App phải cho phép nhập trước, lưu ngay,
+User không cần chọn trước category. App phải cho phép nhập trước, lưu ngay,
 phân loại sau. Tốc độ capture quan trọng hơn việc hiển thị kết quả AI tức thì.
 
 4.2. Inbox
@@ -153,25 +152,7 @@ Không cần ở V1:
 - Project management.
 - Dependency giữa task.
 
-4.5. Notes view
-
-Hiển thị các item được phân loại là note.
-
-Must have:
-
-- Note list.
-- Search theo title/content.
-- Tag filter cơ bản.
-- Note detail.
-
-Không cần ở V1:
-
-- Backlinks.
-- Graph view.
-- Rich block editor kiểu Notion.
-- Markdown power-user features.
-
-4.6. Calendar view
+4.5. Calendar view
 
 Hiển thị các item được phân loại là calendar event.
 
@@ -189,7 +170,7 @@ Không cần ở V1:
 - Time blocking.
 - Multi-calendar management.
 
-4.7. Reminders view
+4.6. Reminders view
 
 Hiển thị các reminder đã được AI trích xuất hoặc user tạo/chỉnh lại.
 
@@ -200,14 +181,14 @@ Must have:
 - Mark as done.
 - Basic notification nếu khả thi.
 
-V1 note:
+V1 lưu ý:
 
 - Mobile nên ưu tiên local/push notification cho reminder.
 - Web có thể hiển thị reminder trong app trước; browser notification là nice-to-have.
 
-4.8. Information view
+4.7. Information view
 
-Chứa các thông tin không phải task, note dài, event hay reminder rõ ràng.
+Chứa các thông tin không phải task, event hay reminder rõ ràng.
 
 Examples:
 
@@ -236,7 +217,6 @@ AI cần làm 5 việc chính:
 Category definitions:
 
 - Task: có hành động cần làm.
-- Note: ghi chú/ý tưởng/nội dung cần lưu.
 - Calendar event: có sự kiện xảy ra tại một thời điểm cụ thể.
 - Reminder: cần nhắc vào một thời điểm, nhưng không nhất thiết là event dài.
 - Information: thông tin cần lưu lại để tra cứu sau.
@@ -275,7 +255,7 @@ Processing model:
 Web app dùng cho:
 
 - Review và chỉnh sửa item dễ hơn.
-- Xem danh sách task/note/calendar trên màn hình lớn.
+- Xem danh sách task/calendar trên màn hình lớn.
 - Search và quản lý thông tin đã lưu.
 
 Web V1 must have:
@@ -285,7 +265,7 @@ Web V1 must have:
 - Upload image.
 - Upload audio nếu record trực tiếp chưa làm kịp.
 - Inbox.
-- Tasks, Notes, Calendar, Reminders, Information views.
+- Tasks, Calendar, Reminders, Information views.
 - Item detail/edit.
 - Search/filter cơ bản.
 
@@ -333,7 +313,7 @@ CaptureItem:
 - original_text
 - original_file_url
 - transcription_text
-- category: task, note, calendar_event, reminder, information
+- category: task, calendar_event, reminder, information
 - ai_confidence
 - title
 - summary
@@ -392,7 +372,6 @@ ItemTag:
 - Inbox review workflow.
 - Manual edit category/metadata.
 - Task list.
-- Note list.
 - Calendar event list/calendar đơn giản.
 - Reminder list.
 - Information list.
@@ -463,7 +442,7 @@ User không nên bị bắt chờ AI sau mỗi lần nhập. V1 phải lưu inpu
 2. Capture text -> save item immediately.
 3. Background job for AI classify text -> category + title + summary + metadata.
 4. Inbox + review/edit flow.
-5. Tasks/Notes/Reminders/Calendar/Information views.
+5. Tasks/Reminders/Calendar/Information views.
 6. Image upload + OCR/image understanding.
 7. Voice recording/upload + transcription.
 8. Mobile app quick capture.
@@ -481,9 +460,9 @@ User không nên bị bắt chờ AI sau mỗi lần nhập. V1 phải lưu inpu
 
 - Thêm một switch hoặc mode chọn nhanh để user bỏ qua AI trong một số trường hợp.
 - Ví dụ:
-  - Add note now
+  - Add task now
   - Add reminder now
-- Khi dùng simple mode, app tạo note/reminder ngay lập tức theo input của user mà không
+- Khi dùng simple mode, app tạo task/reminder ngay lập tức theo input của user mà không
   cần chờ AI phân tích.
 
 - Offline mode - chỉ add thường 
@@ -542,5 +521,5 @@ Lý do chưa đưa vào V1:
 14. V1 one-line summary
 
 MVP V1 là một AI-powered universal inbox cho web và mobile: người dùng nhập/chụp/ghi âm
-nhanh, app lưu input ngay, AI xử lý ở background và biến thông tin thành task, note,
+nhanh, app lưu input ngay, AI xử lý ở background và biến thông tin thành task,
 reminder, calendar event hoặc information item để user review/dùng sau.

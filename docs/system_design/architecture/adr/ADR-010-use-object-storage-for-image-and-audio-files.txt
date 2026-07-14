@@ -51,7 +51,7 @@ File media trong V1 được chia thành 2 nhóm:
 
 2. Retained attachment
    - File được giữ lại vì còn giá trị với user.
-   - Ví dụ: image/audio liên quan đến note hoặc information item.
+   - Ví dụ: image/audio liên quan đến information item.
    - File có thể hiển thị trong item detail như attachment.
 
 Default retention policy:
@@ -62,7 +62,6 @@ Default retention policy:
   giữ attachment.
 - Calendar event: không giữ image/audio gốc nếu event time/title/content đã rõ, trừ khi
   user chọn giữ attachment.
-- Note: có thể giữ file gốc nếu file là một phần nội dung ghi chú.
 - Information: có thể giữ file gốc nếu file chứa thông tin cần tra cứu lại.
 
 Important:
@@ -90,7 +89,7 @@ Object storage provider sẽ được bọc sau adapter để có thể chọn s
 - Dễ dùng signed URL/presigned URL.
 - Dễ chuyển sang CDN hoặc lifecycle policy sau này.
 - Giảm chi phí và rủi ro privacy bằng cách không giữ raw media không cần thiết.
-- Giữ lại file gốc khi nó thật sự có giá trị cho note/information.
+- Giữ lại file gốc khi nó thật sự có giá trị cho information.
 
 Trade-off:
 
@@ -108,7 +107,7 @@ Mitigation:
 - Lưu metadata trong DB.
 - Lưu transcription/extracted text trước khi cleanup raw file.
 - Chỉ cleanup file khi processing completed và item đã có extracted content đủ dùng.
-- Với note/information, giữ file gốc mặc định nếu file có giá trị như attachment.
+- Với information, giữ file gốc mặc định nếu file có giá trị như attachment.
 - Với task/reminder/calendar event, không giữ file gốc mặc định nếu kết quả AI đã đủ rõ.
 - V1 có thể bắt đầu bằng backend-mediated upload nếu presigned flow làm chậm MVP, nhưng
   architecture vẫn hướng tới object storage.

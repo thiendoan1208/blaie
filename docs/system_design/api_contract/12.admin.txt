@@ -227,7 +227,6 @@ Response 200:
     "last24hCaptures": 148,
     "categoryDistribution": {
       "task": 1420,
-      "note": 980,
       "calendar_event": 430,
       "reminder": 510,
       "information": 450

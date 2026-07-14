@@ -72,7 +72,7 @@ Path params:
 
 Request body (tất cả fields đều optional, chỉ gửi field cần thay đổi):
 {
-  "category": "task | note | calendar_event | reminder | information (optional)",
+  "category": "task | calendar_event | reminder | information (optional)",
   "title": "string (optional, max 500)",
   "summary": "string (optional, max 2000)",
   "content": "string (optional, max 50000)",

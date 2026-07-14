@@ -36,7 +36,7 @@ NFR-PERF-003 - Inbox loading time
 NFR-PERF-004 - List pagination
 
 - Priority: Must have
-- Inbox, Tasks, Notes, Calendar, Reminders and Information views must support pagination
+- Inbox, Tasks, Calendar, Reminders and Information views must support pagination
   or incremental loading when item count grows.
 
 NFR-PERF-005 - Mobile startup experience
@@ -351,7 +351,6 @@ NFR-MAINT-002 - Stable category enum
 - V1 category values should be represented consistently across backend, frontend and
   mobile:
   - task
-  - note
   - calendar_event
   - reminder
   - information
@@ -434,5 +433,4 @@ NFR-COST-004 - Future quota readiness
 - Full billing/subscription reliability requirements.
 - Complex team permission model.
 - Public sharing security model.
-
 

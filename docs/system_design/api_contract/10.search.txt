@@ -18,7 +18,7 @@ Auth required:
 
 Query params:
   q        — string (required, min 1 ký tự). Từ khóa tìm kiếm.
-  category — string (optional). Filter kết quả theo: task | note | calendar_event | reminder | information.
+  category — string (optional). Filter kết quả theo: task | calendar_event | reminder | information.
   cursor   — string (optional).
   limit    — number (optional, default 20, max 50).
 
@@ -50,7 +50,7 @@ Response 200:
     },
     {
       "id": "uuid",
-      "category": "note",
+      "category": "information",
       "sourceType": "text",
       "title": "Cấu trúc báo cáo tháng",
       "summary": "Ghi chú cách trình bày báo cáo hàng tháng",

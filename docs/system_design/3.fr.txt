@@ -10,7 +10,7 @@ Tài liệu này mô tả functional requirements cho MVP V1 dựa trên 3 actor
 
 Mục tiêu của V1 là xây dựng một AI-powered universal inbox cho web và mobile: user có
 thể capture nhanh bằng text, image hoặc voice; app lưu input ngay; AI xử lý ở background;
-sau đó item được phân loại thành task, note, calendar event, reminder hoặc information.
+sau đó item được phân loại thành task, calendar event, reminder hoặc information.
 
 Requirement priority:
 
@@ -21,7 +21,7 @@ Requirement priority:
 1. Actor: User
 
 User là người dùng cuối của web app hoặc mobile app. User có thể capture thông tin, xem
-Inbox, review kết quả AI, chỉnh sửa item và sử dụng các view như Tasks, Notes, Calendar,
+Inbox, review kết quả AI, chỉnh sửa item và sử dụng các view như Tasks, Calendar,
 Reminders, Information.
 
 1.1. Authentication
@@ -151,7 +151,6 @@ FR-U-018 - Edit category
 - Priority: Must have
 - User must be able to change an item's category manually:
   - task
-  - note
   - calendar_event
   - reminder
   - information
@@ -196,23 +195,6 @@ FR-U-024 - Edit task due date and priority
 - Priority: Must have
 - User must be able to update due date and priority for a task.
 
-1.6. Notes
-
-FR-U-025 - View notes
-
-- Priority: Must have
-- User must be able to view all note items.
-
-FR-U-026 - Search notes
-
-- Priority: Must have
-- User must be able to search notes by title or content.
-
-FR-U-027 - Filter notes by tag
-
-- Priority: Should have
-- User should be able to filter notes by tag.
-
 1.7. Calendar events
 
 FR-U-028 - View calendar events
@@ -255,7 +237,7 @@ FR-U-033 - Receive reminder notification
 FR-U-034 - View information items
 
 - Priority: Must have
-- User must be able to view information items that are not clearly task, note, event or
+- User must be able to view information items that are not clearly task, event or
   reminder.
 
 FR-U-035 - Search information items
@@ -281,7 +263,7 @@ FR-U-038 - Simple/manual capture switch
 
 - Priority: Future
 - User may be able to bypass AI for specific quick actions such as:
-  - Add note now
+  - Add task now
   - Add reminder now
 - This feature is planned after V1.
 
@@ -346,7 +328,6 @@ FR-AI-008 - Classify item
 - Priority: Must have
 - AI System must classify each processed item into one primary category:
   - task
-  - note
   - calendar_event
   - reminder
   - information
@@ -514,7 +495,6 @@ FR-X-005 - V1 category set
 - Priority: Must have
 - The system must support exactly these main item categories in V1:
   - task
-  - note
   - calendar_event
   - reminder
   - information
@@ -537,5 +517,4 @@ FR-X-005 - V1 category set
 - Plugin system.
 - Simple/manual capture switch.
 - Guest/no sign-in mode.
-
 

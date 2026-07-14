@@ -7,7 +7,7 @@ Accepted
 ## Context
 
 Blaie MVP V1 cần xây dựng web app, mobile app, backend API, background worker, AI
-processing, file upload, user auth, Inbox, Tasks, Notes, Calendar, Reminders và
+processing, file upload, user auth, Inbox, Tasks, Calendar, Reminders và
 Information views.
 
 Product vẫn đang ở giai đoạn MVP. Team nhỏ, domain boundary chưa đủ ổn định để tách
@@ -29,7 +29,6 @@ module theo business/domain boundary, ví dụ:
 - item
 - inbox
 - task
-- note
 - calendar
 - reminder
 - information

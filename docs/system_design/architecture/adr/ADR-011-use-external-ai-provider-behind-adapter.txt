@@ -30,7 +30,7 @@ Voice:
 
 Ambiguous/low confidence:
   upgrade to OpenAI mini hoặc Claude Sonnet
-Mình chưa muốn dùng DeepSeek làm default dù rất rẻ, vì app này có dữ liệu cá nhân: note, lịch, reminder, ảnh, voice. Có thể để DeepSeek ở nhóm “experimental provider” cho dữ liệu test hoặc non-sensitive sau.
+Mình chưa muốn dùng DeepSeek làm default dù rất rẻ, vì app này có dữ liệu cá nhân: task, lịch, reminder, information, ảnh, voice. Có thể để DeepSeek ở nhóm “experimental provider” cho dữ liệu test hoặc non-sensitive sau.
 
 Timeout ban đầu mình sẽ đặt kiểu này:
 

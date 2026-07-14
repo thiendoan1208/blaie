@@ -11,8 +11,6 @@ public enum PermissionAction {
     ITEM_DELETE("item.delete"),
     TASK_READ("task.read"),
     TASK_UPDATE("task.update"),
-    NOTE_READ("note.read"),
-    NOTE_UPDATE("note.update"),
     CALENDAR_READ("calendar.read"),
     CALENDAR_UPDATE("calendar.update"),
     REMINDER_READ("reminder.read"),

@@ -22,7 +22,7 @@ Diagram
               |                                               |
               | Capture text/image/voice                      |
               | Review and edit processed items               |
-              | Use tasks, notes, reminders, calendar          |
+              | Use tasks, reminders, calendar                 |
               v                                               |
 +-----------------------------------------------------------------------------+
 | Blaie                                                                      |
@@ -31,7 +31,7 @@ Diagram
 | Captures text, image and voice input quickly.                               |
 | Saves input immediately.                                                    |
 | Processes AI classification in the background.                              |
-| Turns input into task, note, calendar event, reminder or information item.  |
+| Turns input into task, calendar event, reminder or information item.        |
 +----------------------------------------------------------------------------+
               |                                               ^
               |                                               |
@@ -75,7 +75,7 @@ User
 - End user of the web app or mobile app.
 - Captures messy inputs quickly.
 - Reviews and edits AI results.
-- Uses Inbox, Tasks, Notes, Calendar, Reminders and Information views.
+- Uses Inbox, Tasks, Calendar, Reminders and Information views.
 
 Admin
 - Operates the system.

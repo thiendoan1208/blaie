@@ -3,7 +3,7 @@ API Contract — 04. Items (chung)
 Base path: /api/v1/items
 
 Endpoint dùng để truy vấn item theo category, phục vụ các view trong sidebar:
-Tasks, Notes, Calendar, Reminders, Information.
+Tasks, Calendar, Reminders, Information.
 Đây là "gateway" chung, view-specific endpoints có ở các file riêng (05–09).
 
 ----------------------------------------------------------------------
@@ -18,7 +18,7 @@ Auth required:
   Mobile: Authorization: Bearer <access_token>
 
 Query params:
-  category — string (optional). Filter theo: task | note | calendar_event | reminder | information.
+  category — string (optional). Filter theo: task | calendar_event | reminder | information.
   cursor   — string (optional). Cursor từ response trước.
   limit    — number (optional, default 20, max 50).
 

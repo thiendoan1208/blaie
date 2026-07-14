@@ -9,8 +9,6 @@ export const permissionActions = [
   "item.delete",
   "task.read",
   "task.update",
-  "note.read",
-  "note.update",
   "calendar.read",
   "calendar.update",
   "reminder.read",

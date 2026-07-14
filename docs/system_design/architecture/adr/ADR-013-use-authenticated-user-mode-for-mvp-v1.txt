@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Blaie stores private user data: notes, tasks, reminders, voice/audio, images, and AI
+Blaie stores private user data: tasks, reminders, voice/audio, images, and AI
 results. V1 must ensure each user only sees their own data. Guest/no-signin mode is a
 future idea, not part of V1.
 

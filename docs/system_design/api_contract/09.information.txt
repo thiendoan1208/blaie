@@ -3,7 +3,7 @@ API Contract — 09. Information
 Base path: /api/v1/information
 
 Hiển thị các item có category = "information".
-Đây là nơi lưu trữ thông tin không thuộc task, note, event hay reminder rõ ràng.
+Đây là nơi lưu trữ thông tin không thuộc task, event hay reminder rõ ràng.
 Ví dụ: mã giảm giá, địa chỉ, link tham khảo, thông tin tài khoản không nhạy cảm.
 Chỉ trả về item chưa bị archive.
 

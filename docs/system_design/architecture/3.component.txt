@@ -88,7 +88,7 @@ Item Management Module
 - Manual user edits must override AI suggestions.
 
 Inbox/View Query Module
-- Provides read models for Inbox, Tasks, Notes, Calendar events, Reminders and
+- Provides read models for Inbox, Tasks, Calendar events, Reminders and
   Information items.
 
 Search & Tag Module
@@ -149,7 +149,7 @@ Object Storage Adapter
 |                                    v                                       |
 | +-------------------+       +-------------------+                          |
 | | AI Provider       | ----> | Classification    |                          |
-| | Adapter           |       | task/note/event   |                          |
+| | Adapter           |       | task/event        |                          |
 | +-------------------+       | reminder/info     |                          |
 |                             +-------------------+                          |
 |                                      |                                     |
@@ -213,7 +213,6 @@ AI Provider Adapter
 Classification Component
 - Classifies item into exactly one V1 category:
   - task
-  - note
   - calendar_event
   - reminder
   - information

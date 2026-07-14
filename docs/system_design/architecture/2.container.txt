@@ -22,7 +22,7 @@ Diagram
 | Web App                   |             | Admin Console             |
 | Browser client            |             | Job/user/system monitor   |
 | Capture, Inbox, review    |             +---------------------------+
-| Tasks, notes, calendar    |                         |
+| Tasks, calendar           |                         |
 +---------------------------+                         |
         |                                             |
         | HTTPS API                                   | HTTPS Admin API
@@ -84,7 +84,7 @@ Web App
 - Browser-based client for desktop/laptop usage.
 - Optimized for review, editing, search and item management.
 - Supports login/signup/logout, text capture, image/audio upload, Inbox, item detail,
-  Tasks, Notes, Calendar, Reminders, Information, search and filters.
+  Tasks, Calendar, Reminders, Information, search and filters.
 
 Mobile App
 - iOS/Android client optimized for quick capture in daily life.

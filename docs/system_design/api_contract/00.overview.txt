@@ -188,7 +188,7 @@ CaptureItem la object cot loi cua toan he thong. Schema nay dung chung o nhieu e
   "originalText": "string | null",
   "originalFileUrl": "string | null",
   "transcriptionText": "string | null",
-  "category": "task | note | calendar_event | reminder | information | null",
+  "category": "task | calendar_event | reminder | information | null",
   "aiConfidence": 0.95,
   "title": "string | null",
   "summary": "string | null",

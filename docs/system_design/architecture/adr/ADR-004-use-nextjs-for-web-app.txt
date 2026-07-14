@@ -20,7 +20,7 @@ Web app sẽ ưu tiên app/dashboard experience:
 - Capture text/image/audio.
 - Inbox.
 - Item detail/edit.
-- Tasks, Notes, Calendar, Reminders, Information views.
+- Tasks, Calendar, Reminders, Information views.
 - Admin console có thể dùng chung Next.js app hoặc tách route riêng.
 
 ### Frontend Error Handling Strategy

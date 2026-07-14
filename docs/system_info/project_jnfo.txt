@@ -27,7 +27,7 @@ Core design idea:
 Inbox-first, capture-first, review-second.
 
 The most important screen is the capture / inbox area.
-Secondary screens are task, note, calendar, reminder, and focus views.
+Secondary screens are task, calendar, reminder, information, and focus views.
 
 Visual direction:
 
@@ -73,9 +73,9 @@ Must feel strongest:
 2. Inbox
 3. Item detail / review
 4. Tasks
-5. Notes
-6. Calendar
-7. Reminders
+5. Calendar
+6. Reminders
+7. Information
 8. Focus screen
 
 
@@ -116,7 +116,7 @@ Use these phrases when collecting design inspiration:
 
 - AI productivity app dark mode
 - minimal inbox UI
-- modern note taking dashboard
+- modern information dashboard
 - focused task manager UI
 - premium productivity interface
 - calm mobile productivity app
