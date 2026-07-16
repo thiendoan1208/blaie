@@ -193,7 +193,7 @@ CaptureItem la object cot loi cua toan he thong. Schema nay dung chung o nhieu e
   "title": "string | null",
   "summary": "string | null",
   "content": "string | null",
-  "processingStatus": "pending | processing | completed | failed",
+  "processingStatus": "processing | completed | failed",
   "reviewStatus": "unreviewed | reviewed",
   "processingError": "string | null",
   "tags": [
@@ -219,4 +219,4 @@ CaptureItem la object cot loi cua toan he thong. Schema nay dung chung o nhieu e
 
 Ghi chu:
 - taskMetadata, reminderMetadata, calendarMetadata chi co gia tri neu category tuong ung.
-- category = null khi item dang trong trang thai pending/processing.
+- category = null khi item dang trong trang thai processing/failed.

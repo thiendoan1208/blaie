@@ -280,7 +280,7 @@ Trong đó:
 - principal: current user/session/roles.
 - action: capture.create, item.read, item.update, admin.job.retry.
 - resource: object thật đã load từ DB nếu cần.
-- context: tenant/workspace/plan/feature flag nếu sau này có.
+- context: plan/feature flag nếu sau này có.
 
 ## Response and DTO boundary
 

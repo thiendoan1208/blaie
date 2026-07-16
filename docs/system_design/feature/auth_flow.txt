@@ -133,7 +133,7 @@ To guarantee consistent error responses, the system translates security-related 
 #### E. [CurrentUser.java] & [CurrentUserHolder.java]
 - **Purpose:** Manages context information for the logged-in user in the current request thread.
 - **Logic:**
-  - `CurrentUser` is a record holding credentials: `userId`, `tenantId`, cờ `admin`, and granted actions.
+  - `CurrentUser` is a record holding credentials: `userId`, cờ `admin`, and granted actions.
   - `CurrentUserHolder` encapsulates a `ThreadLocal<CurrentUser>` reference, allowing downstream service components to access current caller properties statically via `CurrentUserHolder.current()` without needing parameter passing.
 
 ---
@@ -408,14 +408,13 @@ The system enforces a strict boundary between Authentication (AuthN - who you ar
 
 ### 1. Authorization Components
 - **Actions (`PermissionAction`):** Static permission types defined as an enum (e.g. `ITEM_READ`, `ITEM_WRITE`, `CAPTURE_CREATE`, `ADMIN_USER_MANAGE`).
-- **Resource Ownership (`OwnedResource`):** Interface implemented by business entities exposing the owner's user ID (`ownerId`) and client tenant ID (`tenantId`).
+- **Resource Ownership (`OwnedResource`):** Interface implemented by business entities exposing the owner's user ID (`ownerId`).
 
 ### 2. Authorization Rules (`DefaultAuthorizationService`)
 The service evaluates request credentials against target resources:
 - `can(PermissionAction action)`: Verifies if the current user holds the global permission action.
 - `can(PermissionAction action, OwnedResource resource)`: Performs contextual evaluations:
   - If the user has administrator privileges (`admin = true`), access is immediately granted.
-  - If the resource tenant ID does not match the caller's tenant ID, the request is rejected with `403 Forbidden` (multi-tenant isolation).
   - If the caller's user ID matches the resource `ownerId`, access is granted.
   - If the caller is not the owner, checks if the user has been granted specific permissions for the resource.
 

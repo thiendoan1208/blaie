@@ -139,7 +139,7 @@ class AuthServiceImplTest {
         when(fixture.identityStore.existsVerifiedEmail(googleUser.id())).thenReturn(true);
 
         var result = CurrentUserHolder.runAs(
-                new CurrentUser(googleUser.id().toString(), null, false, Set.of()),
+                new CurrentUser(googleUser.id().toString(), false, Set.of()),
                 () -> fixture.service.updatePassword(new UpdatePasswordCommand(null, " Newpass1! "))
         );
 
@@ -168,7 +168,7 @@ class AuthServiceImplTest {
         when(fixture.passwordHasher.encode("Password2@")).thenReturn("new-password-hash");
 
         var result = CurrentUserHolder.runAs(
-                new CurrentUser(user.id().toString(), null, false, Set.of()),
+                new CurrentUser(user.id().toString(), false, Set.of()),
                 () -> fixture.service.updatePassword(new UpdatePasswordCommand(" Password1! ", " Password2@ "))
         );
 

@@ -47,7 +47,7 @@ public class AuthRequestFilter extends OncePerRequestFilter {
     }
 
     private void setCurrentUser(UserEntity user) {
-        CurrentUser currentUser = new CurrentUser(user.id().toString(), null, user.admin(), Set.of());
+        CurrentUser currentUser = new CurrentUser(user.id().toString(), user.admin(), Set.of());
         CurrentUserHolder.set(currentUser);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(currentUser, null, List.of())

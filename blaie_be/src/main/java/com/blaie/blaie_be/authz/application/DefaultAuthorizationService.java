@@ -40,14 +40,8 @@ public class DefaultAuthorizationService implements AuthorizationService {
         if (currentUser.admin()) {
             return true;
         }
-        if (resource != null) {
-            String resourceTenantId = resource.tenantId();
-            if (currentUser.tenantId() != null && resourceTenantId != null && !Objects.equals(currentUser.tenantId(), resourceTenantId)) {
-                return false;
-            }
-            if (Objects.equals(currentUser.userId(), resource.ownerId())) {
-                return true;
-            }
+        if (resource != null && Objects.equals(currentUser.userId(), resource.ownerId())) {
+            return true;
         }
         return currentUser.hasPermission(action.key());
     }

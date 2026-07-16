@@ -22,10 +22,10 @@ public enum ErrorCode {
     EMAIL_VERIFICATION_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many email verification requests"),
     SESSION_EXPIRED(HttpStatus.UNAUTHORIZED, "Session expired"),
     SESSION_REVOKED(HttpStatus.UNAUTHORIZED, "Session revoked"),
-    TENANT_FORBIDDEN(HttpStatus.FORBIDDEN, "Tenant forbidden"),
     OWNER_REQUIRED(HttpStatus.FORBIDDEN, "Owner required"),
-    MEMBERSHIP_REQUIRED(HttpStatus.FORBIDDEN, "Membership required"),
     RESOURCE_NOT_FOUND_OR_FORBIDDEN(HttpStatus.NOT_FOUND, "Resource not found"),
+    CAPTURE_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "Inbox item not found"),
+    AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI classification is temporarily unavailable"),
     SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable"),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 

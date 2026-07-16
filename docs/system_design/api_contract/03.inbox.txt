@@ -1,175 +1,57 @@
-API Contract — 03. Inbox
+API Contract - 03. Inbox (phase 1)
 
 Base path: /api/v1/inbox
 
-Inbox là nơi hiển thị tất cả item đã capture, bao gồm cả item đang xử lý và đã xử lý xong.
-Đây là màn hình trung tâm để user review kết quả AI và chỉnh sửa.
+Inbox hien thi cac record con da duoc AI tach tu raw capture cua chinh nguoi dung dang dang nhap. Tat ca truy van
+bat buoc filter theo user_id tu authentication; admin khong co bypass mac dinh.
 
 ----------------------------------------------------------------------
 
 GET /api/v1/inbox
 
-Mô tả: Lấy danh sách các capture item trong Inbox, sắp xếp mới nhất trước.
-
-Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
+Mo ta: Lay cac Inbox item cua current user, moi nhat truoc. Mot text capture co the tao nhieu item trong list nay.
 
 Query params:
-  cursor           — string (optional). Cursor từ response trước.
-  limit            — number (optional, default 20, max 50).
-  processingStatus — string (optional). Filter theo: pending | processing | completed | failed.
-  reviewStatus     — string (optional). Filter theo: unreviewed | reviewed.
+  cursor - string (optional), cursor opaque tu response truoc.
+  limit  - number (optional, default 20, min 1, max 50).
 
 Response 200:
 {
   "data": [
-    { /* CaptureItem schema — xem 00.overview.txt */ },
-    { ... }
+    {
+      "id": "uuid",
+      "originalText": "Nho goi cho me toi nay",
+      "category": "reminder | null",
+      "processingStatus": "processing | completed | failed",
+      "createdAt": "2026-07-14T10:00:00Z"
+    }
   ],
   "meta": {
-    "nextCursor": "eyJpZCI6IjE1In0",
-    "hasMore": true,
+    "nextCursor": "opaque cursor | null",
+    "hasMore": false,
     "limit": 20
   }
 }
 
 ----------------------------------------------------------------------
 
-GET /api/v1/inbox/items/:id
+GET /api/v1/inbox/items/{itemId}
 
-Mô tả: Lấy chi tiết một item cụ thể trong Inbox.
-
-Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
-
-Path params:
-  id — uuid của item.
+Mo ta: Lay mot Inbox item cua current user.
 
 Response 200:
 {
-  "data": { /* CaptureItem schema đầy đủ */ }
-}
-
-Errors:
-  404  NOT_FOUND      ITEM_NOT_FOUND  — Item không tồn tại hoặc thuộc user khác.
-
-----------------------------------------------------------------------
-
-PATCH /api/v1/inbox/items/:id
-
-Mô tả: Chỉnh sửa item — có thể sửa category, title, content, summary, tags và metadata đặc thù theo category.
-       Đây là single endpoint cho tất cả loại chỉnh sửa. Manual changes sẽ override AI suggestions.
-
-Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
-  Content-Type: application/json
-
-Path params:
-  id — uuid của item.
-
-Request body (tất cả fields đều optional, chỉ gửi field cần thay đổi):
-{
-  "category": "task | calendar_event | reminder | information (optional)",
-  "title": "string (optional, max 500)",
-  "summary": "string (optional, max 2000)",
-  "content": "string (optional, max 50000)",
-  "tagIds": ["uuid", "uuid"],
-  "taskMetadata": {
-    "dueDate": "ISO8601 datetime | null (optional)",
-    "priority": "low | medium | high | null (optional)"
-  },
-  "reminderMetadata": {
-    "reminderTime": "ISO8601 datetime | null (optional)"
-  },
-  "calendarMetadata": {
-    "startTime": "ISO8601 datetime | null (optional)",
-    "endTime": "ISO8601 datetime | null (optional)",
-    "location": "string | null (optional, max 500)"
+  "data": {
+    "id": "uuid",
+    "originalText": "Nho goi cho me toi nay",
+    "category": "reminder | null",
+    "processingStatus": "processing | completed | failed",
+    "createdAt": "2026-07-14T10:00:00Z"
   }
 }
 
-Ghi chú:
-- Chỉ gửi những field thực sự muốn thay đổi (PATCH semantics).
-- Nếu gửi taskMetadata nhưng category không phải "task", server vẫn lưu — frontend tự đảm bảo tính nhất quán.
-- tagIds là danh sách ID của tag muốn gắn (replace toàn bộ, không append).
-
-Response 200:
-{
-  "data": { /* CaptureItem schema đầy đủ, sau khi đã cập nhật */ }
-}
-
 Errors:
-  404  NOT_FOUND        ITEM_NOT_FOUND       — Item không tồn tại.
-  422  VALIDATION_ERROR                      — Giá trị không hợp lệ (ví dụ: category sai enum).
-                        errors: {
-                          "category": ["Giá trị category không hợp lệ"]
-                        }
+  404  CAPTURE_ITEM_NOT_FOUND - item khong ton tai hoac khong thuoc current user.
+  422  VALIDATION_ERROR - cursor hoac limit khong hop le.
 
-----------------------------------------------------------------------
-
-POST /api/v1/inbox/items/:id/confirm
-
-Mô tả: User xác nhận (confirm) kết quả AI của item — đánh dấu reviewStatus = "reviewed".
-
-Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
-
-Path params:
-  id — uuid của item.
-
-Request: Không có body.
-
-Response 200:
-{
-  "data": { /* CaptureItem với reviewStatus: "reviewed" */ }
-}
-
-Errors:
-  404  NOT_FOUND  ITEM_NOT_FOUND    — Item không tồn tại.
-  409  CONFLICT   ITEM_NOT_READY    — Item đang ở trạng thái pending/processing, chưa thể confirm.
-
-----------------------------------------------------------------------
-
-POST /api/v1/inbox/items/:id/retry
-
-Mô tả: Retry AI processing khi item ở trạng thái "failed". Đặt item về "pending" và đẩy lại job vào queue.
-
-Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
-
-Path params:
-  id — uuid của item.
-
-Request: Không có body.
-
-Response 200:
-{
-  "data": { /* CaptureItem với processingStatus: "pending" */ }
-}
-
-Errors:
-  404  NOT_FOUND  ITEM_NOT_FOUND      — Item không tồn tại.
-  409  CONFLICT   RETRY_NOT_ALLOWED   — Item không ở trạng thái "failed", không thể retry.
-
-----------------------------------------------------------------------
-
-DELETE /api/v1/inbox/items/:id
-
-Mô tả: Archive hoặc xóa item. Item sẽ bị ẩn khỏi tất cả view bình thường (soft delete).
-
-Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
-
-Path params:
-  id — uuid của item.
-
-Response 204: No Content.
-
-Errors:
-  404  NOT_FOUND  ITEM_NOT_FOUND  — Item không tồn tại hoặc đã bị xóa trước đó.
+Khong co PATCH, confirm, retry hay DELETE trong phase 1.

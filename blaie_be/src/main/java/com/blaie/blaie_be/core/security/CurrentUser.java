@@ -5,7 +5,6 @@ import java.util.Set;
 
 public record CurrentUser(
         String userId,
-        String tenantId,
         boolean admin,
         Set<String> permissions
 ) {
@@ -16,7 +15,6 @@ public record CurrentUser(
         permissions = permissions == null || permissions.isEmpty()
                 ? Set.of()
                 : Set.copyOf(permissions);
-        tenantId = tenantId == null || tenantId.isBlank() ? null : tenantId;
     }
 
     public boolean hasPermission(String action) {

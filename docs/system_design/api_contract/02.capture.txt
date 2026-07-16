@@ -1,20 +1,42 @@
-﻿API Contract — 02. Capture
+API Contract - 02. Capture (phase 1)
 
 Base path: /api/v1/captures
 
-Đây là nhóm API quan trọng nhất của dự án. Mục tiêu: phản hồi trong < 2 giây.
-API chỉ lưu input ngay lập tức và đẩy job vào queue, KHÔNG chờ AI xử lý xong.
+Scope phase 1 chi ho tro text Inbox. Server luu raw capture, goi DeepSeek dong bo de tach cac y doc lap
+va phan loai tung y. Mot input co the tao nhieu Inbox item. Khong co queue, upload image/audio, OCR hay metadata
+chi tiet trong phase nay.
 
 ----------------------------------------------------------------------
 
 POST /api/v1/captures/text
 
-Mô tả: Gửi nội dung text, tạo item ngay, đưa AI job vào queue xử lý ngầm.
+Mo ta: Luu text cua nguoi dung, tach cac y doc lap va phan loai tung y vao mot trong bon category:
+task | calendar_event | reminder | information.
+
+Quy tac phan biet task va information:
+- information: cau hoi hoac yeu cau AI tim kiem, nghien cuu, giai thich, so sanh, tom tat hay cung cap kien thuc.
+  Trong ngu canh chat, cau menh lenh luoc bo chu ngu nhu "tim hieu ETH la gi" duoc hieu la yeu cau AI.
+- task: hanh dong ma chinh nguoi dung can, du dinh hoac cam ket tu thuc hien.
+
+Vi du:
+- "Tim hieu ETH la gi" -> information.
+- "Tim hieu giup toi ETH la gi" -> information.
+- "Toi can tu tim hieu ETH" -> task.
+- "Nhac toi tim hieu ETH luc 8 gio" -> reminder.
+
+Quy tac active intent:
+- Khong tao item cho hanh dong da bi huy, phu dinh, bo qua, khong con can hoac da hoan thanh.
+- Quyet dinh cuoi cung trong toan bo menh de duoc uu tien. Vi du "dinh chay bo nhung mua nen thoi bo qua"
+  khong tao task chay bo.
+- Cac cau lien ke cung dien dat mot nhu cau duoc gop thanh mot item, khong tao item trung lap.
+- Neu input khong con active intent nao, API van tra 201 completed voi items = []. Raw capture van duoc luu.
 
 Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
-  Content-Type: application/json
+- User phai dang nhap va email da verify.
+- user_id luon lay tu current authenticated user; request body khong co va khong duoc phep gui userId.
+- Khong dung admin bypass cho Inbox ca nhan.
+
+Content-Type: application/json
 
 Request body:
 {
@@ -25,118 +47,32 @@ Response 201:
 {
   "data": {
     "id": "uuid",
-    "userId": "uuid",
-    "sourceType": "text",
-    "originalText": "Họp team lúc 3h chiều mai, cần chuẩn bị báo cáo Q2",
-    "originalFileUrl": null,
-    "transcriptionText": null,
-    "category": null,
-    "aiConfidence": null,
-    "title": null,
-    "summary": null,
-    "content": null,
-    "processingStatus": "pending",
-    "reviewStatus": "unreviewed",
-    "processingError": null,
-    "tags": [],
-    "taskMetadata": null,
-    "reminderMetadata": null,
-    "calendarMetadata": null,
-    "createdAt": "2026-06-14T10:00:00Z",
-    "updatedAt": "2026-06-14T10:00:00Z"
+    "originalText": "Chieu nay hop luc 5h, sau do chay bo va lam bai tap",
+    "processingStatus": "completed",
+    "items": [
+      {
+        "id": "uuid",
+        "originalText": "Chieu nay hop luc 5h",
+        "category": "calendar_event",
+        "processingStatus": "completed",
+        "createdAt": "2026-07-16T10:00:00Z"
+      },
+      {
+        "id": "uuid",
+        "originalText": "Chay bo",
+        "category": "task",
+        "processingStatus": "completed",
+        "createdAt": "2026-07-16T10:00:00Z"
+      }
+    ],
+    "createdAt": "2026-07-14T10:00:00Z"
   }
 }
 
-Errors:
-  422  VALIDATION_ERROR  — text bỏ trống hoặc vượt giới hạn ký tự.
-
-----------------------------------------------------------------------
-
-POST /api/v1/captures/image
-
-Mô tả: Upload ảnh (chụp hoặc từ thư viện), tạo item ngay, AI sẽ chạy OCR/image understanding ngầm.
-
-Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
-  Content-Type: multipart/form-data
-
-Request body (multipart):
-  file   — File ảnh (required). Hỗ trợ: jpg, jpeg, png, webp, heic. Max 10MB.
-  description — string (optional). Text bổ sung kèm theo ảnh, max 1000 ký tự.
-
-Response 201:
-{
-  "data": {
-    "id": "uuid",
-    "userId": "uuid",
-    "sourceType": "image",
-    "originalText": "optional description nếu user gửi kèm",
-    "originalFileUrl": "https://storage.blaie.app/files/uuid/image.jpg",
-    "transcriptionText": null,
-    "category": null,
-    "aiConfidence": null,
-    "title": null,
-    "summary": null,
-    "content": null,
-    "processingStatus": "pending",
-    "reviewStatus": "unreviewed",
-    "processingError": null,
-    "tags": [],
-    "taskMetadata": null,
-    "reminderMetadata": null,
-    "calendarMetadata": null,
-    "createdAt": "2026-06-14T10:00:00Z",
-    "updatedAt": "2026-06-14T10:00:00Z"
-  }
-}
+Neu DeepSeek khong truy cap duoc hoac tra JSON/category khong hop le, item van duoc luu
+voi processingStatus = failed va API tra loi 503. Client co the xem failed fallback item qua Inbox.
 
 Errors:
-  400  BAD_REQUEST          FILE_MISSING         — Không có file trong request.
-  422  VALIDATION_ERROR     FILE_TOO_LARGE        — File vượt quá 10MB.
-  422  VALIDATION_ERROR     UNSUPPORTED_FILE_TYPE — Không phải định dạng ảnh cho phép.
-
-----------------------------------------------------------------------
-
-POST /api/v1/captures/audio
-
-Mô tả: Upload file audio, tạo item ngay, AI sẽ transcribe rồi classify ngầm.
-
-Auth required:
-  Web: HttpOnly auth cookie
-  Mobile: Authorization: Bearer <access_token>
-  Content-Type: multipart/form-data
-
-Request body (multipart):
-  file   — File audio (required). Hỗ trợ: mp3, m4a, wav, ogg, webm. Max 50MB.
-
-Response 201:
-{
-  "data": {
-    "id": "uuid",
-    "userId": "uuid",
-    "sourceType": "audio_upload",
-    "originalText": null,
-    "originalFileUrl": "https://storage.blaie.app/files/uuid/audio.m4a",
-    "transcriptionText": null,
-    "category": null,
-    "aiConfidence": null,
-    "title": null,
-    "summary": null,
-    "content": null,
-    "processingStatus": "pending",
-    "reviewStatus": "unreviewed",
-    "processingError": null,
-    "tags": [],
-    "taskMetadata": null,
-    "reminderMetadata": null,
-    "calendarMetadata": null,
-    "createdAt": "2026-06-14T10:00:00Z",
-    "updatedAt": "2026-06-14T10:00:00Z"
-  }
-}
-
-Errors:
-  400  BAD_REQUEST          FILE_MISSING         — Không có file trong request.
-  422  VALIDATION_ERROR     FILE_TOO_LARGE        — File vượt quá 50MB.
-  422  VALIDATION_ERROR     UNSUPPORTED_FILE_TYPE — Không phải định dạng audio cho phép.
+  403  EMAIL_NOT_VERIFIED
+  422  VALIDATION_ERROR  - text trong hoac vuot 10000 ky tu
+  503  AI_UNAVAILABLE
