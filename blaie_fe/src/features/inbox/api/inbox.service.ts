@@ -12,7 +12,30 @@ export async function createTextCapture(
 ): Promise<TextCapture> {
   const response = await httpClient.post<ApiResponse<TextCapture>>(
     "/captures/text",
-    input,
+    { text: input.text },
+    { headers: { "Idempotency-Key": input.idempotencyKey } },
+  );
+  return response.data.data;
+}
+
+export async function getCapture(captureId: string): Promise<TextCapture> {
+  const response = await httpClient.get<ApiResponse<TextCapture>>(
+    `/captures/${captureId}`,
+  );
+  return response.data.data;
+}
+
+export async function getProcessingCaptures(): Promise<TextCapture[]> {
+  const response = await httpClient.get<ApiResponse<TextCapture[]>>(
+    "/captures",
+    { params: { status: "processing", limit: 20 } },
+  );
+  return response.data.data;
+}
+
+export async function retryCapture(captureId: string): Promise<TextCapture> {
+  const response = await httpClient.post<ApiResponse<TextCapture>>(
+    `/captures/${captureId}/retry`,
   );
   return response.data.data;
 }

@@ -1,18 +1,21 @@
 package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.CaptureItemStorePort;
-import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
-import com.blaie.blaie_be.capture.application.result.CaptureResult;
+import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.application.result.CaptureItemResult;
+import com.blaie.blaie_be.capture.application.result.CaptureResult;
 import com.blaie.blaie_be.capture.application.result.InboxPageResult;
-import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -20,31 +23,55 @@ import org.springframework.stereotype.Service;
 @Service
 public class CaptureServiceImpl implements CaptureService {
     private static final int MAX_LIMIT = 50;
+    private static final int MAX_TEXT_LENGTH = 10_000;
 
     private final CaptureItemStorePort captureItemStore;
-    private final TextClassifierPort textClassifier;
+    private final CaptureWorkflowStorePort workflowStore;
+    private final CaptureProcessingSettingsPort settings;
+    private final Clock clock;
 
-    public CaptureServiceImpl(CaptureItemStorePort captureItemStore, TextClassifierPort textClassifier) {
+    public CaptureServiceImpl(
+            CaptureItemStorePort captureItemStore,
+            CaptureWorkflowStorePort workflowStore,
+            CaptureProcessingSettingsPort settings,
+            Clock clock
+    ) {
         this.captureItemStore = captureItemStore;
-        this.textClassifier = textClassifier;
+        this.workflowStore = workflowStore;
+        this.settings = settings;
+        this.clock = clock;
     }
 
     @Override
-    public CaptureResult captureText(String text) {
+    public CaptureResult captureText(String text, String idempotencyKey) {
         String originalText = requireText(text);
-        UUID userId = currentUserId();
-        CaptureResult processingCapture = captureItemStore.createProcessing(userId, originalText);
+        UUID key = requireIdempotencyKey(idempotencyKey);
+        Instant now = clock.instant();
+        return workflowStore.startTextCapture(
+                currentUserId(),
+                originalText,
+                key,
+                requestHash(originalText),
+                now,
+                now.plus(settings.idempotencyTtl()),
+                settings.maxAttempts()
+        );
+    }
 
-        try {
-            CaptureAnalysis analysis = textClassifier.classify(originalText);
-            return captureItemStore.markCompleted(processingCapture.id(), analysis);
-        } catch (TextClassificationException exception) {
-            captureItemStore.markFailed(processingCapture.id(), exception.failureCode());
-            throw new AppException(ErrorCode.AI_UNAVAILABLE);
-        } catch (RuntimeException exception) {
-            captureItemStore.markFailed(processingCapture.id(), "unexpected_classifier_error");
-            throw new AppException(ErrorCode.AI_UNAVAILABLE);
-        }
+    @Override
+    public CaptureResult capture(UUID captureId) {
+        return workflowStore.findOwned(captureId, currentUserId())
+                .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_NOT_FOUND));
+    }
+
+    @Override
+    public List<CaptureResult> processingCaptures(int limit) {
+        return workflowStore.findOwnedProcessing(currentUserId(), validateLimit(limit));
+    }
+
+    @Override
+    public CaptureResult retry(UUID captureId) {
+        return workflowStore.retryOwned(captureId, currentUserId(), clock.instant());
     }
 
     @Override
@@ -80,7 +107,34 @@ public class CaptureServiceImpl implements CaptureService {
         if (text == null || text.trim().isEmpty()) {
             throw new AppException(ErrorCode.VALIDATION_ERROR, "text is required");
         }
-        return text.trim();
+        String normalized = text.trim();
+        if (normalized.length() > MAX_TEXT_LENGTH) {
+            throw new AppException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "text must not exceed " + MAX_TEXT_LENGTH + " characters"
+            );
+        }
+        return normalized;
+    }
+
+    private UUID requireIdempotencyKey(String value) {
+        if (value == null || value.isBlank()) {
+            throw new AppException(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
+        }
+        try {
+            return UUID.fromString(value.trim());
+        } catch (IllegalArgumentException exception) {
+            throw new AppException(ErrorCode.IDEMPOTENCY_KEY_INVALID);
+        }
+    }
+
+    private String requestHash(String originalText) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(originalText.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     private int validateLimit(int limit) {

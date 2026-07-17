@@ -103,6 +103,7 @@ public class SecurityConfig {
         configuration.setAllowedHeaders(List.of(
                 HttpHeaders.CONTENT_TYPE,
                 HttpHeaders.AUTHORIZATION,
+                "Idempotency-Key",
                 "X-XSRF-TOKEN",
                 "X-Request-ID"
         ));

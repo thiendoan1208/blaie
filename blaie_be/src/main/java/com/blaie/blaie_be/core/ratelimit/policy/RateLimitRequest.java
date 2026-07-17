@@ -6,6 +6,10 @@ import java.util.List;
 public record RateLimitRequest(
         String policyName,
         String subject,
-        List<RateLimitWindow> windows
+        List<RateLimitWindow> windows,
+        Boolean failOpen
 ) {
+    public RateLimitRequest(String policyName, String subject, List<RateLimitWindow> windows) {
+        this(policyName, subject, windows, null);
+    }
 }

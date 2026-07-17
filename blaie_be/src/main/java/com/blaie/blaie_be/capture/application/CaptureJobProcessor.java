@@ -1,0 +1,109 @@
+package com.blaie.blaie_be.capture.application;
+
+import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
+import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
+import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
+import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+@Service
+public class CaptureJobProcessor {
+    private static final Logger log = LoggerFactory.getLogger(CaptureJobProcessor.class);
+    private static final String UNEXPECTED_ERROR = "unexpected_classification_error";
+
+    private final ProcessingJobStorePort jobStore;
+    private final TextClassifierPort classifier;
+    private final CaptureContentPolicy contentPolicy;
+    private final CaptureProcessingSettingsPort settings;
+    private final Clock clock;
+
+    public CaptureJobProcessor(
+            ProcessingJobStorePort jobStore,
+            TextClassifierPort classifier,
+            CaptureContentPolicy contentPolicy,
+            CaptureProcessingSettingsPort settings,
+            Clock clock
+    ) {
+        this.jobStore = jobStore;
+        this.classifier = classifier;
+        this.contentPolicy = contentPolicy;
+        this.settings = settings;
+        this.clock = clock;
+    }
+
+    public boolean process(UUID jobId, String workerId) {
+        Instant claimedAt = clock.instant();
+        Optional<ProcessingJobResult> claimed = jobStore.claim(
+                jobId,
+                workerId,
+                claimedAt,
+                claimedAt.plus(settings.leaseDuration())
+        );
+        if (claimed.isEmpty()) {
+            return true;
+        }
+
+        ProcessingJobResult job = claimed.get();
+        long startedAtNanos = System.nanoTime();
+        try {
+            contentPolicy.validate(job.originalText());
+            CaptureAnalysis analysis = classifier.classify(job.originalText());
+            jobStore.complete(job.id(), analysis, clock.instant());
+            log.info(
+                    "Capture job completed: jobId={}, captureId={}, attempt={}, provider={}, model={}, durationMs={}",
+                    job.id(),
+                    job.captureId(),
+                    job.attemptCount(),
+                    analysis.provider(),
+                    analysis.model(),
+                    (System.nanoTime() - startedAtNanos) / 1_000_000
+            );
+            return true;
+        } catch (TextClassificationException exception) {
+            handleFailure(job, safeErrorCode(exception.failureCode()), exception.retryable());
+            return true;
+        } catch (RuntimeException exception) {
+            log.error("Unexpected text capture classification failure for job {}", job.id(), exception);
+            handleFailure(job, UNEXPECTED_ERROR, true);
+            return true;
+        }
+    }
+
+    private void handleFailure(ProcessingJobResult job, String errorCode, boolean retryable) {
+        Instant now = clock.instant();
+        if (!retryable || job.attemptCount() >= job.maxAttempts()) {
+            jobStore.markDead(job.id(), errorCode, now);
+            log.warn(
+                    "Capture job marked dead: jobId={}, captureId={}, attempt={}, errorCode={}",
+                    job.id(), job.captureId(), job.attemptCount(), errorCode
+            );
+            return;
+        }
+        Instant retryAt = now.plus(settings.retryDelay(job.attemptCount()));
+        jobStore.scheduleRetry(
+                job.id(),
+                errorCode,
+                retryAt,
+                now
+        );
+        log.warn(
+                "Capture job retry scheduled: jobId={}, captureId={}, attempt={}, errorCode={}, availableAt={}",
+                job.id(), job.captureId(), job.attemptCount(), errorCode, retryAt
+        );
+    }
+
+    private String safeErrorCode(String errorCode) {
+        if (errorCode == null || !errorCode.matches("[a-z0-9_]{1,100}")) {
+            return UNEXPECTED_ERROR;
+        }
+        return errorCode;
+    }
+}

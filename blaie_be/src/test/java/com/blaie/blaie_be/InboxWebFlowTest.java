@@ -4,6 +4,7 @@ import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
+import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.core.request.RequestContextFilter;
 import java.util.Map;
 import java.util.UUID;
@@ -34,6 +35,11 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 @Import({TestcontainersConfiguration.class, InboxWebFlowTest.ClassifierTestConfiguration.class})
 @SpringBootTest(properties = {
         "blaie.ai.provider=stub",
+        "blaie.capture.processing.poll-interval=100ms",
+        "blaie.capture.processing.recovery-interval=100ms",
+        "blaie.capture.processing.retry-delays[0]=100ms",
+        "blaie.capture.processing.retry-delays[1]=100ms",
+        "blaie.capture.processing.retry-delays[2]=100ms",
         "blaie.auth.access-token-secret=test-access-secret-that-is-at-least-32-bytes",
         "blaie.auth.cookie-secure=false",
         "blaie.security.cors.allowed-origins=http://localhost:3000",
@@ -70,6 +76,9 @@ class InboxWebFlowTest {
                 .apply(springSecurity())
                 .build();
         jdbcTemplate.execute("delete from capture_items");
+        jdbcTemplate.execute("delete from capture_idempotency_keys");
+        jdbcTemplate.execute("delete from processing_jobs");
+        jdbcTemplate.execute("delete from captures");
         jdbcTemplate.execute("delete from auth_action_tokens");
         jdbcTemplate.execute("delete from refresh_tokens");
         jdbcTemplate.execute("delete from auth_identities");
@@ -80,17 +89,51 @@ class InboxWebFlowTest {
     void verifiedUserCanCaptureAndOnlyOwnerCanReadTheItem() throws Exception {
         String ownerUsername = uniqueValue("inbox-owner");
         String ownerToken = registeredAndVerifiedAccessToken(ownerUsername);
+        String idempotencyKey = UUID.randomUUID().toString();
 
         MvcResult capture = mockMvc.perform(post("/api/v1/captures/text")
                         .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\":\"Send the proposal tomorrow\"}"))
-                .andExpect(status().isCreated())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.originalText").value("Send the proposal tomorrow"))
+                .andExpect(jsonPath("$.data.processingStatus").value("processing"))
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andReturn();
+        String captureId = capture.getResponse().getContentAsString()
+                .replaceAll(".*\\\"id\\\":\\\"([^\\\"]+)\\\".*", "$1");
+
+        mockMvc.perform(post("/api/v1/captures/text")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"Send the proposal tomorrow\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.id").value(captureId));
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from processing_jobs where capture_id = ?",
+                Integer.class,
+                UUID.fromString(captureId)
+        )).isEqualTo(1);
+
+        mockMvc.perform(post("/api/v1/captures/text")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"Different request\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+
+        awaitCaptureStatus(captureId, "completed");
+
+        MvcResult completedCapture = mockMvc.perform(get("/api/v1/captures/{captureId}", captureId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.processingStatus").value("completed"))
                 .andExpect(jsonPath("$.data.items[0].category").value("task"))
                 .andReturn();
-        String itemId = capture.getResponse().getContentAsString()
+        String itemId = completedCapture.getResponse().getContentAsString()
                 .replaceAll(".*\\\"items\\\":\\[\\{\\\"id\\\":\\\"([^\\\"]+)\\\".*", "$1");
         assertThat(UUID.fromString(itemId)).isNotNull();
 
@@ -105,6 +148,16 @@ class InboxWebFlowTest {
                         .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CAPTURE_ITEM_NOT_FOUND"));
+
+        mockMvc.perform(get("/api/v1/captures/{captureId}", captureId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CAPTURE_NOT_FOUND"));
+
+        mockMvc.perform(post("/api/v1/captures/{captureId}/retry", captureId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CAPTURE_NOT_FOUND"));
     }
 
     @Test
@@ -114,6 +167,7 @@ class InboxWebFlowTest {
 
         mockMvc.perform(post("/api/v1/captures/text")
                         .header("Authorization", "Bearer " + cookieValue(registered, ACCESS_COOKIE))
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\":\"Pay rent\"}"))
                 .andExpect(status().isForbidden())
@@ -124,11 +178,21 @@ class InboxWebFlowTest {
     void cancelledCaptureCompletesWithoutCreatingAnInboxItem() throws Exception {
         String accessToken = registeredAndVerifiedAccessToken(uniqueValue("inbox-cancelled"));
 
-        mockMvc.perform(post("/api/v1/captures/text")
+        MvcResult capture = mockMvc.perform(post("/api/v1/captures/text")
                         .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\":\"CANCELLED_INPUT\"}"))
-                .andExpect(status().isCreated())
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.processingStatus").value("processing"))
+                .andReturn();
+        String captureId = capture.getResponse().getContentAsString()
+                .replaceAll(".*\\\"id\\\":\\\"([^\\\"]+)\\\".*", "$1");
+        awaitCaptureStatus(captureId, "completed");
+
+        mockMvc.perform(get("/api/v1/captures/{captureId}", captureId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.processingStatus").value("completed"))
                 .andExpect(jsonPath("$.data.items").isEmpty());
 
@@ -136,6 +200,69 @@ class InboxWebFlowTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void retryableProviderFailureIsAutomaticallyRetriedThroughTheQueue() throws Exception {
+        String accessToken = registeredAndVerifiedAccessToken(uniqueValue("inbox-retry"));
+        String text = "RETRY_ONCE_" + UUID.randomUUID();
+
+        MvcResult capture = mockMvc.perform(post("/api/v1/captures/text")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"" + text + "\"}"))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        String captureId = capture.getResponse().getContentAsString()
+                .replaceAll(".*\\\"id\\\":\\\"([^\\\"]+)\\\".*", "$1");
+
+        awaitCaptureStatus(captureId, "completed");
+        assertThat(jdbcTemplate.queryForObject(
+                "select attempt_count from processing_jobs where capture_id = ?",
+                Integer.class,
+                UUID.fromString(captureId)
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from capture_items where capture_id = ?",
+                Integer.class,
+                UUID.fromString(captureId)
+        )).isEqualTo(1);
+    }
+
+    @Test
+    void ownerCanManuallyRetryADeadCaptureWithoutCreatingAnotherCapture() throws Exception {
+        String accessToken = registeredAndVerifiedAccessToken(uniqueValue("inbox-manual-retry"));
+        String text = "Store sk-abcdefghijklmnopqrstuvwxyz123456";
+
+        MvcResult capture = mockMvc.perform(post("/api/v1/captures/text")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"" + text + "\"}"))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        String captureId = capture.getResponse().getContentAsString()
+                .replaceAll(".*\\\"id\\\":\\\"([^\\\"]+)\\\".*", "$1");
+        awaitCaptureStatus(captureId, "failed");
+
+        mockMvc.perform(post("/api/v1/captures/{captureId}/retry", captureId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.id").value(captureId))
+                .andExpect(jsonPath("$.data.processingStatus").value("processing"));
+
+        awaitCaptureStatus(captureId, "failed");
+        assertThat(jdbcTemplate.queryForObject(
+                "select retry_generation from processing_jobs where capture_id = ?",
+                Integer.class,
+                UUID.fromString(captureId)
+        )).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from captures where id = ?",
+                Integer.class,
+                UUID.fromString(captureId)
+        )).isEqualTo(1);
     }
 
     private String registeredAndVerifiedAccessToken(String username) throws Exception {
@@ -148,6 +275,23 @@ class InboxWebFlowTest {
                    and users.username_normalized = ?
                 """, username.toLowerCase());
         return cookieValue(registered, ACCESS_COOKIE);
+    }
+
+    private void awaitCaptureStatus(String captureId, String expectedStatus) throws InterruptedException {
+        UUID id = UUID.fromString(captureId);
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline) {
+            String status = jdbcTemplate.queryForObject(
+                    "select processing_status from captures where id = ?",
+                    String.class,
+                    id
+            );
+            if (expectedStatus.equals(status)) {
+                return;
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Capture " + captureId + " did not reach status " + expectedStatus);
     }
 
     private MvcResult register(String username) throws Exception {
@@ -192,10 +336,22 @@ class InboxWebFlowTest {
 
     @TestConfiguration
     static class ClassifierTestConfiguration {
+        private static final java.util.concurrent.ConcurrentMap<String, java.util.concurrent.atomic.AtomicInteger>
+                ATTEMPTS = new java.util.concurrent.ConcurrentHashMap<>();
+
         @Bean
         @Primary
         TextClassifierPort testTextClassifier() {
             return text -> {
+                if (text.startsWith("RETRY_ONCE_")
+                        && ATTEMPTS.computeIfAbsent(text, ignored -> new java.util.concurrent.atomic.AtomicInteger())
+                        .incrementAndGet() == 1) {
+                    throw new TextClassificationException(
+                            "ai_provider_unavailable",
+                            "simulated retryable provider failure",
+                            true
+                    );
+                }
                 java.util.List<ClassifiedTextItem> items = "CANCELLED_INPUT".equals(text)
                         ? java.util.List.of()
                         : java.util.List.of(new ClassifiedTextItem(text, CaptureCategory.TASK));

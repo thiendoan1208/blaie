@@ -24,7 +24,12 @@ public enum ErrorCode {
     SESSION_REVOKED(HttpStatus.UNAUTHORIZED, "Session revoked"),
     OWNER_REQUIRED(HttpStatus.FORBIDDEN, "Owner required"),
     RESOURCE_NOT_FOUND_OR_FORBIDDEN(HttpStatus.NOT_FOUND, "Resource not found"),
+    CAPTURE_NOT_FOUND(HttpStatus.NOT_FOUND, "Capture not found"),
     CAPTURE_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "Inbox item not found"),
+    CAPTURE_NOT_RETRYABLE(HttpStatus.CONFLICT, "Capture cannot be retried"),
+    IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST, "Idempotency-Key header is required"),
+    IDEMPOTENCY_KEY_INVALID(HttpStatus.BAD_REQUEST, "Idempotency-Key header must be a UUID"),
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "Idempotency key was reused with another request"),
     AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI classification is temporarily unavailable"),
     SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable"),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");

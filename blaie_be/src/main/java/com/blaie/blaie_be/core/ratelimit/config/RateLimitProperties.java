@@ -71,6 +71,23 @@ public class RateLimitProperties {
             new RateLimitWindow(60, Duration.ofMinutes(10))
     );
 
+    @Valid
+    private RateLimitPolicy captureText = failClosed(new RateLimitPolicy(
+            new RateLimitWindow(10, Duration.ofMinutes(1)),
+            new RateLimitWindow(60, Duration.ofMinutes(10))
+    ));
+
+    @Valid
+    private RateLimitPolicy captureRetry = failClosed(new RateLimitPolicy(
+            new RateLimitWindow(5, Duration.ofMinutes(1)),
+            new RateLimitWindow(20, Duration.ofMinutes(10))
+    ));
+
+    private static RateLimitPolicy failClosed(RateLimitPolicy policy) {
+        policy.setFailOpen(false);
+        return policy;
+    }
+
     public boolean enabled() {
         return enabled;
     }
@@ -181,5 +198,21 @@ public class RateLimitProperties {
 
     public void setGoogleCallback(RateLimitPolicy googleCallback) {
         this.googleCallback = googleCallback;
+    }
+
+    public RateLimitPolicy captureText() {
+        return captureText;
+    }
+
+    public void setCaptureText(RateLimitPolicy captureText) {
+        this.captureText = captureText;
+    }
+
+    public RateLimitPolicy captureRetry() {
+        return captureRetry;
+    }
+
+    public void setCaptureRetry(RateLimitPolicy captureRetry) {
+        this.captureRetry = captureRetry;
     }
 }

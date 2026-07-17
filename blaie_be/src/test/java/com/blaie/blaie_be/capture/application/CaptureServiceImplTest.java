@@ -1,21 +1,21 @@
 package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.CaptureItemStorePort;
-import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
+import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.application.result.CaptureItemResult;
 import com.blaie.blaie_be.capture.application.result.CaptureResult;
-import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
-import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.security.CurrentUser;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -26,76 +26,66 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CaptureServiceImplTest {
-    @Test
-    void captureSplitsOneInputIntoMultipleCompletedInboxItems() {
-        UUID userId = UUID.randomUUID();
-        InMemoryCaptureItemStore store = new InMemoryCaptureItemStore();
-        TextClassifierPort classifier = text -> analysis(
-                new ClassifiedTextItem("Meeting at 5 PM", CaptureCategory.CALENDAR_EVENT),
-                new ClassifiedTextItem("Go running", CaptureCategory.TASK),
-                new ClassifiedTextItem("Research hardcode engineering for me", CaptureCategory.INFORMATION)
-        );
-        CaptureService service = new CaptureServiceImpl(store, classifier);
-
-        CaptureResult result = runAs(userId, () -> service.captureText("  Long mixed input  "));
-
-        assertThat(result.originalText()).isEqualTo("Long mixed input");
-        assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.COMPLETED);
-        assertThat(result.items()).extracting(CaptureItemResult::category).containsExactly(
-                CaptureCategory.CALENDAR_EVENT, CaptureCategory.TASK, CaptureCategory.INFORMATION
-        );
-        assertThat(store.items).hasSize(3).allSatisfy(item -> assertThat(item.userId).isEqualTo(userId));
-    }
+    private static final Instant NOW = Instant.parse("2026-07-16T12:00:00Z");
+    private static final UUID IDEMPOTENCY_KEY = UUID.fromString("6a99337a-65aa-4f19-a2c4-8796434a1ee8");
 
     @Test
-    void classifierFailureCreatesOneFailedFallbackInboxItemAndReturnsSafeError() {
+    void captureTextCreatesProcessingWorkflowWithoutCallingAiInTheRequest() {
         UUID userId = UUID.randomUUID();
-        InMemoryCaptureItemStore store = new InMemoryCaptureItemStore();
-        TextClassifierPort classifier = text -> {
-            throw new TextClassificationException("ai_provider_unavailable", "provider details must not reach the client");
-        };
-        CaptureService service = new CaptureServiceImpl(store, classifier);
-
-        assertThatThrownBy(() -> runAs(userId, () -> service.captureText("Buy milk")))
-                .isInstanceOf(AppException.class)
-                .extracting(exception -> ((AppException) exception).errorCode())
-                .isEqualTo(ErrorCode.AI_UNAVAILABLE);
-
-        assertThat(store.items).singleElement().satisfies(item -> {
-            assertThat(item.userId).isEqualTo(userId);
-            assertThat(item.processingStatus).isEqualTo(ProcessingStatus.FAILED);
-            assertThat(item.category).isNull();
-            assertThat(item.originalText).isEqualTo("Buy milk");
-        });
-    }
-
-    @Test
-    void cancelledInputCompletesCaptureWithoutCreatingInboxItems() {
-        UUID userId = UUID.randomUUID();
-        InMemoryCaptureItemStore store = new InMemoryCaptureItemStore();
-        CaptureService service = new CaptureServiceImpl(store, text -> analysis());
+        InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
+        CaptureService service = service(new InMemoryCaptureItemStore(), workflowStore);
 
         CaptureResult result = runAs(userId, () -> service.captureText(
-                "Hôm nay định đi chạy bộ mà mưa quá nên thôi bỏ qua đi"
+                "  Meeting at 5 PM and go running  ",
+                IDEMPOTENCY_KEY.toString()
         ));
 
-        assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.COMPLETED);
+        assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.PROCESSING);
         assertThat(result.items()).isEmpty();
-        assertThat(store.items).isEmpty();
+        assertThat(workflowStore.userId).isEqualTo(userId);
+        assertThat(workflowStore.originalText).isEqualTo("Meeting at 5 PM and go running");
+        assertThat(workflowStore.idempotencyKey).isEqualTo(IDEMPOTENCY_KEY);
+        assertThat(workflowStore.requestHash).hasSize(64);
+        assertThat(workflowStore.now).isEqualTo(NOW);
+        assertThat(workflowStore.expiresAt).isEqualTo(NOW.plus(Duration.ofHours(24)));
+    }
+
+    @Test
+    void captureTextRequiresUuidIdempotencyKey() {
+        CaptureService service = service(new InMemoryCaptureItemStore(), new InMemoryWorkflowStore());
+
+        assertThatThrownBy(() -> runAs(UUID.randomUUID(), () -> service.captureText("Buy milk", null)))
+                .isInstanceOf(AppException.class)
+                .extracting(exception -> ((AppException) exception).errorCode())
+                .isEqualTo(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
+
+        assertThatThrownBy(() -> runAs(UUID.randomUUID(), () -> service.captureText("Buy milk", "not-a-uuid")))
+                .isInstanceOf(AppException.class)
+                .extracting(exception -> ((AppException) exception).errorCode())
+                .isEqualTo(ErrorCode.IDEMPOTENCY_KEY_INVALID);
+    }
+
+    @Test
+    void captureLookupAlwaysUsesAuthenticatedUser() {
+        UUID ownerId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
+        CaptureService service = service(new InMemoryCaptureItemStore(), workflowStore);
+        CaptureResult created = runAs(ownerId, () -> service.captureText("Private", IDEMPOTENCY_KEY.toString()));
+
+        assertThatThrownBy(() -> runAs(otherId, () -> service.capture(created.id())))
+                .isInstanceOf(AppException.class)
+                .extracting(exception -> ((AppException) exception).errorCode())
+                .isEqualTo(ErrorCode.CAPTURE_NOT_FOUND);
     }
 
     @Test
     void inboxItemIsNotVisibleToAnotherAuthenticatedUser() {
         UUID ownerId = UUID.randomUUID();
         UUID otherUserId = UUID.randomUUID();
-        InMemoryCaptureItemStore store = new InMemoryCaptureItemStore();
-        CaptureResult capture = store.createProcessing(ownerId, "Private note");
-        CaptureItemResult item = store.markCompleted(capture.id(), analysis(
-                new ClassifiedTextItem("Private note", CaptureCategory.INFORMATION)
-        )).items().getFirst();
-        CaptureService service = new CaptureServiceImpl(store, text -> analysis(
-                new ClassifiedTextItem(text, CaptureCategory.INFORMATION)
-        ));
+        InMemoryCaptureItemStore itemStore = new InMemoryCaptureItemStore();
+        CaptureItemResult item = itemStore.add(ownerId, "Private note");
+        CaptureService service = service(itemStore, new InMemoryWorkflowStore());
 
         assertThatThrownBy(() -> runAs(otherUserId, () -> service.inboxItem(item.id())))
                 .isInstanceOf(AppException.class)
@@ -103,118 +93,140 @@ class CaptureServiceImplTest {
                 .isEqualTo(ErrorCode.CAPTURE_ITEM_NOT_FOUND);
     }
 
-    private static CaptureAnalysis analysis(ClassifiedTextItem... items) {
-        return new CaptureAnalysis(List.of(items), "deepseek", "test-model", "v4");
+    private CaptureService service(CaptureItemStorePort itemStore, CaptureWorkflowStorePort workflowStore) {
+        CaptureProcessingSettingsPort settings = new CaptureProcessingSettingsPort() {
+            @Override
+            public int maxAttempts() {
+                return 4;
+            }
+
+            @Override
+            public Duration idempotencyTtl() {
+                return Duration.ofHours(24);
+            }
+
+            @Override
+            public Duration leaseDuration() {
+                return Duration.ofSeconds(30);
+            }
+
+            @Override
+            public Duration retryDelay(int failedAttemptCount) {
+                return Duration.ofSeconds(2);
+            }
+        };
+        return new CaptureServiceImpl(
+                itemStore,
+                workflowStore,
+                settings,
+                Clock.fixed(NOW, ZoneOffset.UTC)
+        );
     }
 
     private <T> T runAs(UUID userId, java.util.function.Supplier<T> supplier) {
         return CurrentUserHolder.runAs(new CurrentUser(userId.toString(), false, Set.of()), supplier);
     }
 
-    private static final class InMemoryCaptureItemStore implements CaptureItemStorePort {
-        private final List<Capture> captures = new ArrayList<>();
-        private final List<Item> items = new ArrayList<>();
+    private static final class InMemoryWorkflowStore implements CaptureWorkflowStorePort {
+        private final List<OwnedCapture> captures = new ArrayList<>();
+        private UUID userId;
+        private String originalText;
+        private UUID idempotencyKey;
+        private String requestHash;
+        private Instant now;
+        private Instant expiresAt;
 
         @Override
-        public CaptureResult createProcessing(UUID userId, String originalText) {
-            Capture capture = new Capture(UUID.randomUUID(), userId, originalText, ProcessingStatus.PROCESSING, Instant.now());
-            captures.add(capture);
-            return capture.toResult(List.of());
+        public CaptureResult startTextCapture(
+                UUID userId,
+                String originalText,
+                UUID idempotencyKey,
+                String requestHash,
+                Instant now,
+                Instant idempotencyExpiresAt,
+                int maxAttempts
+        ) {
+            this.userId = userId;
+            this.originalText = originalText;
+            this.idempotencyKey = idempotencyKey;
+            this.requestHash = requestHash;
+            this.now = now;
+            this.expiresAt = idempotencyExpiresAt;
+            CaptureResult result = new CaptureResult(
+                    UUID.randomUUID(),
+                    originalText,
+                    ProcessingStatus.PROCESSING,
+                    null,
+                    false,
+                    List.of(),
+                    now,
+                    now
+            );
+            captures.add(new OwnedCapture(userId, result));
+            return result;
         }
 
         @Override
-        public CaptureResult markCompleted(UUID captureId, CaptureAnalysis analysis) {
-            Capture capture = capture(captureId);
-            capture.processingStatus = ProcessingStatus.COMPLETED;
-            List<CaptureItemResult> createdItems = analysis.items().stream()
-                    .map(classified -> {
-                        Item item = new Item(UUID.randomUUID(), capture.userId, capture.id, classified.originalText(),
-                                classified.category(), ProcessingStatus.COMPLETED, Instant.now());
-                        items.add(item);
-                        return item.toResult();
-                    })
+        public Optional<CaptureResult> findOwned(UUID captureId, UUID userId) {
+            return captures.stream()
+                    .filter(capture -> capture.userId().equals(userId) && capture.result().id().equals(captureId))
+                    .map(OwnedCapture::result)
+                    .findFirst();
+        }
+
+        @Override
+        public List<CaptureResult> findOwnedProcessing(UUID userId, int limit) {
+            return captures.stream()
+                    .filter(capture -> capture.userId().equals(userId))
+                    .limit(limit)
+                    .map(OwnedCapture::result)
                     .toList();
-            return capture.toResult(createdItems);
         }
 
         @Override
-        public void markFailed(UUID captureId, String failureCode) {
-            Capture capture = capture(captureId);
-            capture.processingStatus = ProcessingStatus.FAILED;
-            items.add(new Item(UUID.randomUUID(), capture.userId, capture.id, capture.originalText,
-                    null, ProcessingStatus.FAILED, Instant.now()));
+        public CaptureResult retryOwned(UUID captureId, UUID userId, Instant now) {
+            return findOwned(captureId, userId).orElseThrow();
+        }
+    }
+
+    private record OwnedCapture(UUID userId, CaptureResult result) {
+    }
+
+    private static final class InMemoryCaptureItemStore implements CaptureItemStorePort {
+        private final List<OwnedItem> items = new ArrayList<>();
+
+        private CaptureItemResult add(UUID userId, String text) {
+            CaptureItemResult result = new CaptureItemResult(
+                    UUID.randomUUID(),
+                    text,
+                    CaptureCategory.INFORMATION,
+                    ProcessingStatus.COMPLETED,
+                    NOW
+            );
+            items.add(new OwnedItem(userId, result));
+            return result;
         }
 
         @Override
         public Optional<CaptureItemResult> findOwned(UUID itemId, UUID userId) {
-            return items.stream().filter(item -> item.id.equals(itemId) && item.userId.equals(userId))
-                    .findFirst().map(Item::toResult);
+            return items.stream()
+                    .filter(item -> item.userId().equals(userId) && item.result().id().equals(itemId))
+                    .map(OwnedItem::result)
+                    .findFirst();
         }
 
         @Override
         public List<CaptureItemResult> findFirstPage(UUID userId, int limit) {
-            return items.stream().filter(item -> item.userId.equals(userId)).sorted(Item.ORDER).limit(limit)
-                    .map(Item::toResult).toList();
+            return items.stream().filter(item -> item.userId().equals(userId)).limit(limit)
+                    .map(OwnedItem::result).toList();
         }
 
         @Override
         public List<CaptureItemResult> findPageAfter(UUID userId, Instant createdAt, UUID itemId, int limit) {
-            return items.stream().filter(item -> item.userId.equals(userId)).sorted(Item.ORDER)
-                    .dropWhile(item -> item.createdAt.isAfter(createdAt)
-                            || (item.createdAt.equals(createdAt) && item.id.compareTo(itemId) >= 0))
-                    .limit(limit).map(Item::toResult).toList();
+            return findFirstPage(userId, limit);
         }
+    }
 
-        private Capture capture(UUID captureId) {
-            return captures.stream().filter(capture -> capture.id.equals(captureId)).findFirst().orElseThrow();
-        }
-
-        private static final class Capture {
-            private final UUID id;
-            private final UUID userId;
-            private final String originalText;
-            private ProcessingStatus processingStatus;
-            private final Instant createdAt;
-
-            private Capture(UUID id, UUID userId, String originalText, ProcessingStatus processingStatus, Instant createdAt) {
-                this.id = id;
-                this.userId = userId;
-                this.originalText = originalText;
-                this.processingStatus = processingStatus;
-                this.createdAt = createdAt;
-            }
-
-            private CaptureResult toResult(List<CaptureItemResult> items) {
-                return new CaptureResult(id, originalText, processingStatus, items, createdAt);
-            }
-        }
-
-        private static final class Item {
-            private static final Comparator<Item> ORDER = Comparator
-                    .comparing((Item item) -> item.createdAt).reversed()
-                    .thenComparing(item -> item.id, Comparator.reverseOrder());
-            private final UUID id;
-            private final UUID userId;
-            private final UUID captureId;
-            private final String originalText;
-            private final CaptureCategory category;
-            private final ProcessingStatus processingStatus;
-            private final Instant createdAt;
-
-            private Item(UUID id, UUID userId, UUID captureId, String originalText, CaptureCategory category,
-                         ProcessingStatus processingStatus, Instant createdAt) {
-                this.id = id;
-                this.userId = userId;
-                this.captureId = captureId;
-                this.originalText = originalText;
-                this.category = category;
-                this.processingStatus = processingStatus;
-                this.createdAt = createdAt;
-            }
-
-            private CaptureItemResult toResult() {
-                return new CaptureItemResult(id, originalText, category, processingStatus, createdAt);
-            }
-        }
+    private record OwnedItem(UUID userId, CaptureItemResult result) {
     }
 }

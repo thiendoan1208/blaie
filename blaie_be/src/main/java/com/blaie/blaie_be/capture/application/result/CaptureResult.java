@@ -9,10 +9,23 @@ public record CaptureResult(
         UUID id,
         String originalText,
         ProcessingStatus processingStatus,
+        String failureCode,
+        boolean canRetry,
         List<CaptureItemResult> items,
-        Instant createdAt
+        Instant createdAt,
+        Instant updatedAt
 ) {
     public CaptureResult {
         items = List.copyOf(items);
+    }
+
+    public CaptureResult(
+            UUID id,
+            String originalText,
+            ProcessingStatus processingStatus,
+            List<CaptureItemResult> items,
+            Instant createdAt
+    ) {
+        this(id, originalText, processingStatus, null, false, items, createdAt, createdAt);
     }
 }

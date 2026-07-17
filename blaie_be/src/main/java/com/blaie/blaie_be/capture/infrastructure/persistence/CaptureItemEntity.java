@@ -28,11 +28,14 @@ public class CaptureItemEntity {
     @Column(name = "original_text", nullable = false)
     private String originalText;
 
-    @Column(name = "category", length = 30)
+    @Column(name = "category", nullable = false, length = 30)
     private String category;
 
     @Column(name = "processing_status", nullable = false, length = 20)
     private String processingStatus;
+
+    @Column(name = "item_position", nullable = false)
+    private int itemPosition;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false)
@@ -45,7 +48,11 @@ public class CaptureItemEntity {
     protected CaptureItemEntity() {
     }
 
-    public static CaptureItemEntity completed(CaptureEntity capture, ClassifiedTextItem classifiedItem) {
+    public static CaptureItemEntity completed(
+            CaptureEntity capture,
+            ClassifiedTextItem classifiedItem,
+            int itemPosition
+    ) {
         CaptureItemEntity item = new CaptureItemEntity();
         item.id = UUID.randomUUID();
         item.userId = capture.userId();
@@ -53,17 +60,7 @@ public class CaptureItemEntity {
         item.originalText = classifiedItem.originalText().trim();
         item.category = classifiedItem.category().value();
         item.processingStatus = "completed";
-        return item;
-    }
-
-    public static CaptureItemEntity failed(CaptureEntity capture) {
-        CaptureItemEntity item = new CaptureItemEntity();
-        item.id = UUID.randomUUID();
-        item.userId = capture.userId();
-        item.captureId = capture.id();
-        item.originalText = capture.originalText();
-        item.category = null;
-        item.processingStatus = "failed";
+        item.itemPosition = itemPosition;
         return item;
     }
 

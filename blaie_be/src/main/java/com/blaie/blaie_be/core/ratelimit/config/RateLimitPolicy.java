@@ -8,6 +8,7 @@ import java.util.List;
 
 public class RateLimitPolicy {
     private boolean enabled = true;
+    private Boolean failOpen;
 
     @NotEmpty
     private List<@Valid RateLimitWindow> windows = new ArrayList<>();
@@ -29,6 +30,14 @@ public class RateLimitPolicy {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public Boolean failOpen() {
+        return failOpen;
+    }
+
+    public void setFailOpen(Boolean failOpen) {
+        this.failOpen = failOpen;
     }
 
     public List<RateLimitWindow> windows() {

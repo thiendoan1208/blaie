@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.deepseek;
 
-import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
+import com.blaie.blaie_be.capture.application.port.TextClassifierProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
@@ -10,19 +10,18 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-@ConditionalOnProperty(prefix = "blaie.ai", name = "provider", havingValue = "deepseek", matchIfMissing = true)
-public class DeepSeekTextClassifierAdapter implements TextClassifierPort {
+public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
     private static final Logger log = LoggerFactory.getLogger(DeepSeekTextClassifierAdapter.class);
     static final String PROMPT_VERSION = "v4";
     static final String SYSTEM_PROMPT = """
@@ -44,7 +43,7 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierPort {
               the assistant by default.
             - task: an action the user intends, needs, plans, or commits to perform themselves.
 
-          
+
             Keep text concise, preserve dates/times and language, and never invent facts.
             Do not add markdown, explanations, or extra keys.
             """;
@@ -72,9 +71,18 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierPort {
     }
 
     @Override
+    public String providerId() {
+        return "deepseek";
+    }
+
+    @Override
     public CaptureAnalysis classify(String text) {
         if (properties.apiKey() == null || properties.apiKey().isBlank()) {
-            throw new TextClassificationException("ai_not_configured", "DeepSeek API key is not configured");
+            throw new TextClassificationException(
+                    "ai_not_configured",
+                    "DeepSeek API key is not configured",
+                    false
+            );
         }
 
         try {
@@ -101,6 +109,15 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierPort {
             return parseAnalysis(content, choice.finishReason());
         } catch (TextClassificationException exception) {
             throw exception;
+        } catch (RestClientResponseException exception) {
+            int status = exception.getStatusCode().value();
+            boolean retryable = status == 408 || status == 429 || status >= 500;
+            throw new TextClassificationException(
+                    retryable ? "ai_provider_unavailable" : "ai_provider_rejected",
+                    "DeepSeek request was rejected",
+                    retryable,
+                    exception
+            );
         } catch (RestClientException exception) {
             throw new TextClassificationException("ai_provider_unavailable", "DeepSeek request failed", exception);
         } catch (RuntimeException exception) {
@@ -124,8 +141,8 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierPort {
             List<ClassifiedTextItem> items = new ArrayList<>();
             for (JsonNode itemNode : itemNodes) {
                 if (!itemNode.isObject() || itemNode.size() != 2
-                        || !itemNode.has("text") || !itemNode.get("text").isTextual()
-                        || !itemNode.has("category") || !itemNode.get("category").isTextual()) {
+                        || !itemNode.has("text") || !itemNode.get("text").isString()
+                        || !itemNode.has("category") || !itemNode.get("category").isString()) {
                     throw invalidResponse("invalid item schema", finishReason);
                 }
                 String itemText = itemNode.get("text").asString().trim();

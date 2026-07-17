@@ -134,7 +134,8 @@ class AuthServiceImplTest {
         );
         when(fixture.userStore.findActiveById(googleUser.id())).thenReturn(Optional.of(googleUser));
         when(fixture.identityStore.findLocalIdentity(googleUser.id()))
-                .thenReturn(Optional.empty(), Optional.of(savedLocalIdentity));
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedLocalIdentity));
         when(fixture.passwordHasher.encode("Newpass1!")).thenReturn("encoded-new-password");
         when(fixture.identityStore.existsVerifiedEmail(googleUser.id())).thenReturn(true);
 

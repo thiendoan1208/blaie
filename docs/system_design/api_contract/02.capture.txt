@@ -1,78 +1,90 @@
-API Contract - 02. Capture (phase 1)
+API Contract - 02. Capture text (asynchronous processing)
 
 Base path: /api/v1/captures
 
-Scope phase 1 chi ho tro text Inbox. Server luu raw capture, goi DeepSeek dong bo de tach cac y doc lap
-va phan loai tung y. Mot input co the tao nhieu Inbox item. Khong co queue, upload image/audio, OCR hay metadata
-chi tiet trong phase nay.
+Text capture is accepted synchronously and classified asynchronously. PostgreSQL is the source of truth for
+captures, jobs and Inbox items. Redis Stream only transports job identifiers. A capture never uses a pending
+status: processing means accepted and not terminal; completed and failed are terminal.
+
+Capture state machine:
+  processing -> completed | failed
+
+Job state machine:
+  queued -> processing -> completed
+  processing -> retry_wait -> queued
+  processing | retry_wait -> dead
+
+Authentication and ownership:
+- The user must be authenticated and email verified.
+- user_id always comes from the current authenticated user. Clients cannot submit userId.
+- Every read and retry query filters by both resource id and current user id.
+- A missing or foreign capture returns the same CAPTURE_NOT_FOUND response.
 
 ----------------------------------------------------------------------
 
 POST /api/v1/captures/text
 
-Mo ta: Luu text cua nguoi dung, tach cac y doc lap va phan loai tung y vao mot trong bon category:
-task | calendar_event | reminder | information.
+Headers:
+  Idempotency-Key: UUID (required)
+  Content-Type: application/json
 
-Quy tac phan biet task va information:
-- information: cau hoi hoac yeu cau AI tim kiem, nghien cuu, giai thich, so sanh, tom tat hay cung cap kien thuc.
-  Trong ngu canh chat, cau menh lenh luoc bo chu ngu nhu "tim hieu ETH la gi" duoc hieu la yeu cau AI.
-- task: hanh dong ma chinh nguoi dung can, du dinh hoac cam ket tu thuc hien.
-
-Vi du:
-- "Tim hieu ETH la gi" -> information.
-- "Tim hieu giup toi ETH la gi" -> information.
-- "Toi can tu tim hieu ETH" -> task.
-- "Nhac toi tim hieu ETH luc 8 gio" -> reminder.
-
-Quy tac active intent:
-- Khong tao item cho hanh dong da bi huy, phu dinh, bo qua, khong con can hoac da hoan thanh.
-- Quyet dinh cuoi cung trong toan bo menh de duoc uu tien. Vi du "dinh chay bo nhung mua nen thoi bo qua"
-  khong tao task chay bo.
-- Cac cau lien ke cung dien dat mot nhu cau duoc gop thanh mot item, khong tao item trung lap.
-- Neu input khong con active intent nao, API van tra 201 completed voi items = []. Raw capture van duoc luu.
-
-Auth required:
-- User phai dang nhap va email da verify.
-- user_id luon lay tu current authenticated user; request body khong co va khong duoc phep gui userId.
-- Khong dung admin bypass cho Inbox ca nhan.
-
-Content-Type: application/json
-
-Request body:
+Request:
 {
   "text": "string (required, min 1, max 10000)"
 }
 
-Response 201:
+Behavior:
+- Validate auth, email verification, rate limit, body and idempotency key.
+- The rate-limit subject combines hashed current user id and client IP. If its Redis backend is unavailable, reject
+  with SERVICE_UNAVAILABLE instead of creating an unprotected AI job.
+- In one database transaction, create the processing capture, queued processing job, idempotency record and
+  transactional application event.
+- Do not call the AI provider in the HTTP request.
+- Reusing the same key with the same normalized request returns the existing capture.
+- Reusing the same key with another request returns IDEMPOTENCY_KEY_REUSED.
+
+Response 202:
 {
   "data": {
     "id": "uuid",
-    "originalText": "Chieu nay hop luc 5h, sau do chay bo va lam bai tap",
-    "processingStatus": "completed",
-    "items": [
-      {
-        "id": "uuid",
-        "originalText": "Chieu nay hop luc 5h",
-        "category": "calendar_event",
-        "processingStatus": "completed",
-        "createdAt": "2026-07-16T10:00:00Z"
-      },
-      {
-        "id": "uuid",
-        "originalText": "Chay bo",
-        "category": "task",
-        "processingStatus": "completed",
-        "createdAt": "2026-07-16T10:00:00Z"
-      }
-    ],
-    "createdAt": "2026-07-14T10:00:00Z"
+    "originalText": "Chieu nay hop luc 5h, sau do mua sua",
+    "processingStatus": "processing",
+    "failureCode": null,
+    "canRetry": false,
+    "items": [],
+    "createdAt": "2026-07-16T10:00:00Z",
+    "updatedAt": "2026-07-16T10:00:00Z"
   }
 }
 
-Neu DeepSeek khong truy cap duoc hoac tra JSON/category khong hop le, item van duoc luu
-voi processingStatus = failed va API tra loi 503. Client co the xem failed fallback item qua Inbox.
+----------------------------------------------------------------------
+
+GET /api/v1/captures/{captureId}
+
+Returns the current user's capture. When completed, items contains every classified Inbox item. When failed,
+failureCode is a safe application code and canRetry is true.
+
+----------------------------------------------------------------------
+
+GET /api/v1/captures?status=processing&limit=20
+
+Returns recent processing captures owned by the current user. This endpoint restores UI state after reload,
+reconnect or opening another device. status currently accepts processing only. limit is 1..50.
+
+----------------------------------------------------------------------
+
+POST /api/v1/captures/{captureId}/retry
+
+Requeues a failed capture owned by the current user. The same capture id and original text are reused. The
+capture becomes processing and the existing logical job starts a new retry generation.
+
+Response 202: Capture response with processingStatus = processing.
 
 Errors:
+  400  IDEMPOTENCY_KEY_REQUIRED | IDEMPOTENCY_KEY_INVALID
   403  EMAIL_NOT_VERIFIED
-  422  VALIDATION_ERROR  - text trong hoac vuot 10000 ky tu
-  503  AI_UNAVAILABLE
+  404  CAPTURE_NOT_FOUND
+  409  IDEMPOTENCY_KEY_REUSED | CAPTURE_NOT_RETRYABLE
+  422  VALIDATION_ERROR
+  429  RATE_LIMITED
+  503  SERVICE_UNAVAILABLE

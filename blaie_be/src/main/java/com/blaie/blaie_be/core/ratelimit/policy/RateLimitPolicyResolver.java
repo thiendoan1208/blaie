@@ -82,6 +82,12 @@ public class RateLimitPolicyResolver {
         if (HttpMethod.GET.matches(method) && "/api/v1/auth/google/callback".equals(path)) {
             return request("google-callback", properties.googleCallback(), ipSubject);
         }
+        if (HttpMethod.POST.matches(method) && "/api/v1/captures/text".equals(path)) {
+            return request("capture-text", properties.captureText(), userSubject(), ipSubject);
+        }
+        if (HttpMethod.POST.matches(method) && isCaptureRetryPath(path)) {
+            return request("capture-retry", properties.captureRetry(), userSubject(), ipSubject);
+        }
         return Optional.empty();
     }
 
@@ -89,13 +95,29 @@ public class RateLimitPolicyResolver {
         if (policy == null || !policy.enabled()) {
             return Optional.empty();
         }
-        return Optional.of(new RateLimitRequest(policyName, String.join(":", subjectParts), policy.windows()));
+        boolean failOpen = policy.failOpen() == null ? properties.failOpen() : policy.failOpen();
+        return Optional.of(new RateLimitRequest(
+                policyName,
+                String.join(":", subjectParts),
+                policy.windows(),
+                failOpen
+        ));
     }
 
     private String userOrIpSubject(String ipSubject) {
         return CurrentUserHolder.current()
                 .map(user -> hashedPart("user", user.userId()))
                 .orElse(ipSubject);
+    }
+
+    private String userSubject() {
+        return CurrentUserHolder.current()
+                .map(user -> hashedPart("user", user.userId()))
+                .orElseGet(() -> hashedPart("user", "anonymous"));
+    }
+
+    private boolean isCaptureRetryPath(String path) {
+        return path.matches("/api/v1/captures/[0-9a-fA-F-]{36}/retry");
     }
 
     private String fieldPart(HttpServletRequest request, String fieldName) {

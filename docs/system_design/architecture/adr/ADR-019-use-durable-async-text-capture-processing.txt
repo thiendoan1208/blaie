@@ -1,0 +1,33 @@
+ADR-019 - Use durable asynchronous processing for text capture
+
+Status: Accepted
+
+## Context
+
+The synchronous text capture request waits for the external AI provider. Provider latency and availability then
+consume web request threads and directly determine API latency. Client retries after a lost response can also
+create duplicate captures.
+
+## Decision
+
+- POST /api/v1/captures/text returns 202 after committing a processing capture and queued job.
+- PostgreSQL processing_jobs is the durable execution source of truth.
+- Spring Modulith event_publication is the transactional outbox.
+- Redis Stream transports job identifiers using at-least-once delivery.
+- Workers are idempotent and acknowledge Redis only after the result transaction commits.
+- Capture states are processing/completed/failed. Job states are queued/processing/retry_wait/completed/dead.
+- Automatic retries use backoff; leased processing jobs are recovered after the lease expires.
+- HTTP Idempotency-Key prevents duplicate captures when a response is lost.
+- Raw capture text stays in PostgreSQL and is never included in the Redis message.
+- A provider router selects the configured provider and can try ordered fallback providers after retryable errors.
+- Credential-like secrets are rejected before any provider call and are not automatically retried.
+- Provider timeout/429/5xx and invalid structured output are retryable; configuration and policy errors are terminal.
+- Capture submit/retry rate limits use hashed user id + IP and fail closed when Redis is unavailable.
+- Operational logs include job/capture ids, attempts, safe error codes, provider/model and latency, never raw text.
+- Quota/payment usage accounting is explicitly deferred. Capture-specific Redis rate limiting is included.
+
+## Consequences
+
+Capture latency no longer depends on the AI provider and jobs survive client disconnects, Redis outages and
+worker restarts. The trade-off is eventual consistency, additional worker/queue operations and a frontend that
+must restore and poll processing captures.

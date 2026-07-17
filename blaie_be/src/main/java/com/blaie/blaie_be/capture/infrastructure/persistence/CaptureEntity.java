@@ -73,6 +73,14 @@ public class CaptureEntity {
         failureCode = safeFailureCode;
     }
 
+    public void restart() {
+        processingStatus = "processing";
+        failureCode = null;
+        aiProvider = null;
+        aiModel = null;
+        promptVersion = null;
+    }
+
     public UUID id() {
         return id;
     }
@@ -89,7 +97,15 @@ public class CaptureEntity {
         return processingStatus;
     }
 
+    public String failureCode() {
+        return failureCode;
+    }
+
     public Instant createdAt() {
         return createdAt;
+    }
+
+    public Instant updatedAt() {
+        return updatedAt;
     }
 }

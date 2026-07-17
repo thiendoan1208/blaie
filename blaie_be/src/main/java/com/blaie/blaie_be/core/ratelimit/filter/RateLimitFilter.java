@@ -3,6 +3,7 @@ package com.blaie.blaie_be.core.ratelimit.filter;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.ratelimit.config.RateLimitProperties;
 import com.blaie.blaie_be.core.ratelimit.limiter.RateLimitDecision;
+import com.blaie.blaie_be.core.ratelimit.limiter.RateLimitBackendUnavailableException;
 import com.blaie.blaie_be.core.ratelimit.limiter.RateLimiter;
 import com.blaie.blaie_be.core.ratelimit.policy.RateLimitPolicyResolver;
 import com.blaie.blaie_be.core.ratelimit.policy.RateLimitRequest;
@@ -54,7 +55,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        RateLimitDecision decision = rateLimiter.check(rateLimitRequest);
+        RateLimitDecision decision;
+        try {
+            decision = rateLimiter.check(rateLimitRequest);
+        } catch (RateLimitBackendUnavailableException exception) {
+            errorResponseWriter.write(
+                    response,
+                    ErrorCode.SERVICE_UNAVAILABLE,
+                    "Capture submission is temporarily unavailable",
+                    Map.of("Retry-After", "30")
+            );
+            return;
+        }
         if (decision.allowed()) {
             filterChain.doFilter(effectiveRequest, response);
             return;

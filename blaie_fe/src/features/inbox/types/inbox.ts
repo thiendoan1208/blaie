@@ -16,12 +16,16 @@ export type InboxItem = {
 
 export type CreateTextCaptureInput = {
   text: string;
+  idempotencyKey: string;
 };
 
 export type TextCapture = {
   id: string;
   originalText: string;
   processingStatus: InboxProcessingStatus;
+  failureCode: string | null;
+  canRetry: boolean;
   items: InboxItem[];
   createdAt: string;
+  updatedAt: string;
 };

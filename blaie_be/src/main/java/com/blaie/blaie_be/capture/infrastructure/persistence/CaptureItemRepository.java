@@ -14,6 +14,10 @@ public interface CaptureItemRepository extends JpaRepository<CaptureItemEntity, 
 
     List<CaptureItemEntity> findByUserIdOrderByCreatedAtDescIdDesc(UUID userId, Pageable pageable);
 
+    List<CaptureItemEntity> findByCaptureIdOrderByItemPositionAsc(UUID captureId);
+
+    void deleteByCaptureId(UUID captureId);
+
     @Query(value = """
             SELECT * FROM capture_items
             WHERE user_id = :userId

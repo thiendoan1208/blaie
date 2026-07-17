@@ -2,8 +2,9 @@ API Contract - 03. Inbox (phase 1)
 
 Base path: /api/v1/inbox
 
-Inbox hien thi cac record con da duoc AI tach tu raw capture cua chinh nguoi dung dang dang nhap. Tat ca truy van
-bat buoc filter theo user_id tu authentication; admin khong co bypass mac dinh.
+Inbox hien thi cac record con da duoc AI tach thanh cong tu raw capture cua chinh nguoi dung dang dang nhap.
+Capture dang processing/failed duoc theo doi qua Capture API; capture_items chi la output phan loai thanh cong.
+Tat ca truy van bat buoc filter theo user_id tu authentication; admin khong co bypass mac dinh.
 
 ----------------------------------------------------------------------
 
@@ -21,8 +22,8 @@ Response 200:
     {
       "id": "uuid",
       "originalText": "Nho goi cho me toi nay",
-      "category": "reminder | null",
-      "processingStatus": "processing | completed | failed",
+      "category": "reminder",
+      "processingStatus": "completed",
       "createdAt": "2026-07-14T10:00:00Z"
     }
   ],
@@ -44,8 +45,8 @@ Response 200:
   "data": {
     "id": "uuid",
     "originalText": "Nho goi cho me toi nay",
-    "category": "reminder | null",
-    "processingStatus": "processing | completed | failed",
+    "category": "reminder",
+    "processingStatus": "completed",
     "createdAt": "2026-07-14T10:00:00Z"
   }
 }
@@ -54,4 +55,4 @@ Errors:
   404  CAPTURE_ITEM_NOT_FOUND - item khong ton tai hoac khong thuoc current user.
   422  VALIDATION_ERROR - cursor hoac limit khong hop le.
 
-Khong co PATCH, confirm, retry hay DELETE trong phase 1.
+Khong co PATCH, confirm, retry hay DELETE item trong phase nay. Retry thuc hien tren Capture API.
