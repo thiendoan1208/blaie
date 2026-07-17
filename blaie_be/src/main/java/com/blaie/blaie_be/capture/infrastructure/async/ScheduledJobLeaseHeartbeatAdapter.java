@@ -35,22 +35,34 @@ public class ScheduledJobLeaseHeartbeatAdapter implements JobLeaseHeartbeatPort 
     }
 
     @Override
-    public ActiveHeartbeat start(UUID jobId, String workerId) {
+    public ActiveHeartbeat start(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration
+    ) {
         Instant firstHeartbeat = clock.instant().plus(settings.heartbeatInterval());
         ScheduledFuture<?> future = scheduler.scheduleAtFixedRate(
-                () -> extendLease(jobId, workerId),
+                () -> extendLease(jobId, workerId, attemptCount, retryGeneration),
                 firstHeartbeat,
                 settings.heartbeatInterval()
         );
         return () -> future.cancel(false);
     }
 
-    private void extendLease(UUID jobId, String workerId) {
+    private void extendLease(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration
+    ) {
         Instant now = clock.instant();
         try {
             boolean extended = jobStore.extendLease(
                     jobId,
                     workerId,
+                    attemptCount,
+                    retryGeneration,
                     now.plus(settings.leaseDuration())
             );
             if (!extended) {

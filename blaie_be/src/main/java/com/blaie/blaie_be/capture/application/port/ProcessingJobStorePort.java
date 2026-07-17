@@ -9,17 +9,53 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ProcessingJobStorePort {
-    Optional<ProcessingJobResult> claim(UUID jobId, String workerId, Instant now, Instant leaseExpiresAt);
+    Optional<ProcessingJobResult> claim(
+            UUID jobId,
+            int dispatchGeneration,
+            String workerId,
+            Instant now,
+            Instant leaseExpiresAt
+    );
 
-    boolean extendLease(UUID jobId, String workerId, Instant leaseExpiresAt);
+    boolean extendLease(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration,
+            Instant leaseExpiresAt
+    );
 
-    void complete(UUID jobId, CaptureAnalysis analysis, Instant now);
+    boolean complete(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration,
+            CaptureAnalysis analysis,
+            Instant now
+    );
 
-    void scheduleRetry(UUID jobId, String errorCode, Instant availableAt, Instant now);
+    boolean scheduleRetry(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration,
+            String errorCode,
+            Instant availableAt,
+            Instant now
+    );
 
-    void markDead(UUID jobId, String errorCode, Instant now);
+    boolean markDead(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration,
+            String errorCode,
+            Instant now
+    );
 
     List<RecoveredJobResult> recoverStale(Instant now);
 
     int dispatchReadyRetries(Instant now, int limit);
+
+    int redispatchStaleQueued(Instant now, int limit);
 }

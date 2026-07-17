@@ -27,16 +27,16 @@ Run AI processing in a background worker.
 Capture API chỉ làm:
 
 1. validate input
-2. save CaptureItem immediately
-3. create processing job
-4. return response to client
+2. save Capture ở trạng thái processing
+3. create queued processing job và transactional outbox event trong cùng database transaction
+4. return 202 response to client
 
 Worker xử lý AI sau:
 
 1. consume job
-2. update processing_status
+2. claim PostgreSQL job bằng dispatch generation hiện tại
 3. call AI provider through adapter
-4. save AI result
+4. save classified CaptureItem result trong database transaction
 5. mark completed or failed
 
 ## Consequences
@@ -51,15 +51,16 @@ Worker xử lý AI sau:
 
 Trade-off:
 
-- Hệ thống eventual consistent: item có thể pending một lúc.
+- Hệ thống eventual consistent: capture ở trạng thái processing một lúc trước khi completed hoặc failed.
 - Cần queue/worker/retry/monitoring.
 - Client phải hiển thị processing state.
 
 Mitigation:
 
-- Inbox hiển thị pending/processing/completed/failed rõ ràng.
+- Capture API hiển thị processing/completed/failed; Inbox chỉ chứa item đã phân loại thành công.
 - Failed job có retry.
 - Worker không overwrite manual edits.
+- PostgreSQL là source of truth; transactional outbox và queued-job reconciliation phục hồi các khoảng trống dispatch.
 - Metrics theo dõi processing time, failure rate và backlog.
 
 ## Alternatives Considered

@@ -5,6 +5,7 @@ import java.util.UUID;
 public record TextCaptureQueuedEvent(
         UUID eventId,
         UUID jobId,
-        UUID captureId
+        UUID captureId,
+        int dispatchGeneration
 ) {
 }

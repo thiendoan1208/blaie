@@ -43,10 +43,11 @@ public class CaptureJobProcessor {
         this.heartbeatPort = heartbeatPort;
     }
 
-    public boolean process(UUID jobId, String workerId) {
+    public boolean process(UUID jobId, int dispatchGeneration, String workerId) {
         Instant claimedAt = clock.instant();
         Optional<ProcessingJobResult> claimed = jobStore.claim(
                 jobId,
+                dispatchGeneration,
                 workerId,
                 claimedAt,
                 claimedAt.plus(settings.leaseDuration())
@@ -56,12 +57,31 @@ public class CaptureJobProcessor {
         }
 
         ProcessingJobResult job = claimed.get();
-        JobLeaseHeartbeatPort.ActiveHeartbeat heartbeat = heartbeatPort.start(job.id(), workerId);
+        JobLeaseHeartbeatPort.ActiveHeartbeat heartbeat = heartbeatPort.start(
+                job.id(),
+                workerId,
+                job.attemptCount(),
+                job.retryGeneration()
+        );
         long startedAtNanos = System.nanoTime();
         try {
             contentPolicy.validate(job.originalText());
             CaptureAnalysis analysis = classifier.classify(job.originalText());
-            jobStore.complete(job.id(), analysis, clock.instant());
+            boolean completed = jobStore.complete(
+                    job.id(),
+                    workerId,
+                    job.attemptCount(),
+                    job.retryGeneration(),
+                    analysis,
+                    clock.instant()
+            );
+            if (!completed) {
+                log.info(
+                        "Discarded stale capture result: jobId={}, attempt={}, retryGeneration={}",
+                        job.id(), job.attemptCount(), job.retryGeneration()
+                );
+                return true;
+            }
             log.info(
                     "Capture job completed: jobId={}, captureId={}, attempt={}, provider={}, model={}, durationMs={}",
                     job.id(),
@@ -73,21 +93,37 @@ public class CaptureJobProcessor {
             );
             return true;
         } catch (TextClassificationException exception) {
-            handleFailure(job, safeErrorCode(exception.failureCode()), exception.retryable());
+            handleFailure(job, workerId, safeErrorCode(exception.failureCode()), exception.retryable());
             return true;
         } catch (RuntimeException exception) {
             log.error("Unexpected text capture classification failure for job {}", job.id(), exception);
-            handleFailure(job, UNEXPECTED_ERROR, true);
+            handleFailure(job, workerId, UNEXPECTED_ERROR, true);
             return true;
         } finally {
             heartbeat.stop();
         }
     }
 
-    private void handleFailure(ProcessingJobResult job, String errorCode, boolean retryable) {
+    private void handleFailure(
+            ProcessingJobResult job,
+            String workerId,
+            String errorCode,
+            boolean retryable
+    ) {
         Instant now = clock.instant();
         if (!retryable || job.attemptCount() >= job.maxAttempts()) {
-            jobStore.markDead(job.id(), errorCode, now);
+            boolean markedDead = jobStore.markDead(
+                    job.id(),
+                    workerId,
+                    job.attemptCount(),
+                    job.retryGeneration(),
+                    errorCode,
+                    now
+            );
+            if (!markedDead) {
+                log.info("Discarded stale capture failure: jobId={}, attempt={}", job.id(), job.attemptCount());
+                return;
+            }
             log.warn(
                     "Capture job marked dead: jobId={}, captureId={}, attempt={}, errorCode={}",
                     job.id(), job.captureId(), job.attemptCount(), errorCode
@@ -95,12 +131,19 @@ public class CaptureJobProcessor {
             return;
         }
         Instant retryAt = now.plus(settings.retryDelay(job.attemptCount()));
-        jobStore.scheduleRetry(
+        boolean scheduled = jobStore.scheduleRetry(
                 job.id(),
+                workerId,
+                job.attemptCount(),
+                job.retryGeneration(),
                 errorCode,
                 retryAt,
                 now
         );
+        if (!scheduled) {
+            log.info("Discarded stale capture retry: jobId={}, attempt={}", job.id(), job.attemptCount());
+            return;
+        }
         log.warn(
                 "Capture job retry scheduled: jobId={}, captureId={}, attempt={}, errorCode={}, availableAt={}",
                 job.id(), job.captureId(), job.attemptCount(), errorCode, retryAt

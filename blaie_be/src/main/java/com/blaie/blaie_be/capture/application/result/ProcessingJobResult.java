@@ -12,6 +12,7 @@ public record ProcessingJobResult(
         int attemptCount,
         int maxAttempts,
         int retryGeneration,
+        int dispatchGeneration,
         Instant availableAt
 ) {
 }

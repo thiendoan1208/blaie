@@ -5,6 +5,8 @@ Base path: /api/v1/inbox
 Inbox hien thi cac record con da duoc AI tach thanh cong tu raw capture cua chinh nguoi dung dang dang nhap.
 Capture dang processing/failed duoc theo doi qua Capture API; capture_items chi la output phan loai thanh cong.
 Tat ca truy van bat buoc filter theo user_id tu authentication; admin khong co bypass mac dinh.
+Inbox read endpoints van hoat dong khi asynchronous capture acceptance bi tat (vi du drain mode). Tat acceptance
+chi chan submit/retry moi; no khong an cac CaptureItem da completed cua current user.
 
 ----------------------------------------------------------------------
 

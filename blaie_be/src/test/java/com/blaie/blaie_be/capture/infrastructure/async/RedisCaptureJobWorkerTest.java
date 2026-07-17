@@ -51,9 +51,13 @@ class RedisCaptureJobWorkerTest {
         StreamOperations<String, String, String> streams = mock(StreamOperations.class);
         PendingMessages pending = mock(PendingMessages.class);
         CaptureJobProcessor processor = mock(CaptureJobProcessor.class);
+        RedisCaptureMessageFinalizer messageFinalizer = mock(RedisCaptureMessageFinalizer.class);
         UUID jobId = UUID.randomUUID();
         MapRecord<String, String, String> record = StreamRecords
-                .mapBacked(Map.of("jobId", jobId.toString()))
+                .mapBacked(Map.of(
+                        "jobId", jobId.toString(),
+                        "dispatchGeneration", "3"
+                ))
                 .withStreamKey(properties.streamKey());
         CountDownLatch providerStarted = new CountDownLatch(1);
         CountDownLatch releaseProvider = new CountDownLatch(1);
@@ -72,7 +76,7 @@ class RedisCaptureJobWorkerTest {
                 any(StreamReadOptions.class),
                 any(StreamOffset[].class)
         )).thenReturn(List.of(record));
-        when(processor.process(jobId, properties.consumerName())).thenAnswer(invocation -> {
+        when(processor.process(jobId, 3, properties.consumerName())).thenAnswer(invocation -> {
             providerStarted.countDown();
             releaseProvider.await();
             return true;
@@ -81,6 +85,7 @@ class RedisCaptureJobWorkerTest {
                 redisTemplate,
                 properties,
                 processor,
+                messageFinalizer,
                 executor
         );
 
@@ -103,11 +108,7 @@ class RedisCaptureJobWorkerTest {
             executor.shutdown();
         }
 
-        verify(streams, timeout(1_000)).acknowledge(
-                properties.streamKey(),
-                properties.consumerGroup(),
-                record.getId()
-        );
+        verify(messageFinalizer, timeout(1_000)).acknowledgeAndDelete(record.getId());
     }
 
     @Test
@@ -119,6 +120,7 @@ class RedisCaptureJobWorkerTest {
                 redisTemplate,
                 properties,
                 mock(CaptureJobProcessor.class),
+                mock(RedisCaptureMessageFinalizer.class),
                 executor
         );
 

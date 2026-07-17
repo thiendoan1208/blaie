@@ -37,4 +37,13 @@ public interface ProcessingJobRepository extends JpaRepository<ProcessingJobEnti
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
     List<ProcessingJobEntity> findReadyRetries(@Param("now") Instant now, Pageable pageable);
+
+    @Query(value = """
+            SELECT * FROM processing_jobs
+            WHERE status = 'queued'
+              AND (next_dispatch_at IS NULL OR next_dispatch_at <= :now)
+            ORDER BY next_dispatch_at NULLS FIRST, id
+            FOR UPDATE SKIP LOCKED
+            """, nativeQuery = true)
+    List<ProcessingJobEntity> findDueDispatches(@Param("now") Instant now, Pageable pageable);
 }

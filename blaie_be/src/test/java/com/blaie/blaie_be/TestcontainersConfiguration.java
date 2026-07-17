@@ -20,7 +20,7 @@ class TestcontainersConfiguration {
 	@ServiceConnection(name = "redis")
 	@SuppressWarnings("resource")
 	GenericContainer<?> redisContainer() {
-		return new GenericContainer<>(DockerImageName.parse("redis:latest")).withExposedPorts(6379);
+		return new GenericContainer<>(DockerImageName.parse("redis:7-alpine")).withExposedPorts(6379);
 	}
 
 }

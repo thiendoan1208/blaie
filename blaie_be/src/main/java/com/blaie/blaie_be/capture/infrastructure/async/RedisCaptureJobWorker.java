@@ -30,7 +30,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(
         prefix = "blaie.capture.processing",
-        name = "enabled",
+        name = "worker-enabled",
         havingValue = "true",
         matchIfMissing = true
 )
@@ -41,6 +41,7 @@ public class RedisCaptureJobWorker {
     private final StringRedisTemplate redisTemplate;
     private final CaptureProcessingProperties properties;
     private final CaptureJobProcessor processor;
+    private final RedisCaptureMessageFinalizer messageFinalizer;
     private final ThreadPoolTaskExecutor jobExecutor;
     private final AtomicBoolean acceptingWork = new AtomicBoolean(true);
     private volatile boolean consumerGroupReady;
@@ -49,11 +50,13 @@ public class RedisCaptureJobWorker {
             StringRedisTemplate redisTemplate,
             CaptureProcessingProperties properties,
             CaptureJobProcessor processor,
+            RedisCaptureMessageFinalizer messageFinalizer,
             @Qualifier(CaptureAsyncConfiguration.JOB_EXECUTOR) ThreadPoolTaskExecutor jobExecutor
     ) {
         this.redisTemplate = redisTemplate;
         this.properties = properties;
         this.processor = processor;
+        this.messageFinalizer = messageFinalizer;
         this.jobExecutor = jobExecutor;
     }
 
@@ -72,8 +75,7 @@ public class RedisCaptureJobWorker {
                 return;
             }
             int reclaimed = processRecords(
-                    reclaimStaleRecords(streams, availableCapacity),
-                    streams
+                    reclaimStaleRecords(streams, availableCapacity)
             );
             if (reclaimed > 0) {
                 return;
@@ -86,7 +88,7 @@ public class RedisCaptureJobWorker {
                 return;
             }
             List<MapRecord<String, String, String>> records = readNewRecords(streams, availableCapacity);
-            processRecords(records, streams);
+            processRecords(records);
         } catch (DataAccessException exception) {
             consumerGroupReady = false;
             log.warn("Capture Redis worker is temporarily unavailable: {}", exception.getMessage());
@@ -140,25 +142,23 @@ public class RedisCaptureJobWorker {
         );
     }
 
-    private int processRecords(
-            List<MapRecord<String, String, String>> records,
-            StreamOperations<String, String, String> streams
-    ) {
+    private int processRecords(List<MapRecord<String, String, String>> records) {
         if (records == null) {
             return 0;
         }
         int submitted = 0;
         for (MapRecord<String, String, String> record : records) {
             String jobId = record.getValue().get("jobId");
-            if (jobId == null) {
-                streams.acknowledge(properties.streamKey(), properties.consumerGroup(), record.getId());
+            String dispatchGeneration = record.getValue().get("dispatchGeneration");
+            if (jobId == null || dispatchGeneration == null) {
+                messageFinalizer.acknowledgeAndDelete(record.getId());
                 continue;
             }
             if (!acceptingWork.get()) {
                 return submitted;
             }
             try {
-                jobExecutor.execute(() -> processRecord(record, jobId));
+                jobExecutor.execute(() -> processRecord(record, jobId, dispatchGeneration));
                 submitted++;
             } catch (TaskRejectedException exception) {
                 log.warn("Capture worker capacity is full; message {} remains pending", record.getId());
@@ -173,15 +173,22 @@ public class RedisCaptureJobWorker {
         return Math.min(properties.batchSize(), executionSlots + queueSlots);
     }
 
-    private void processRecord(MapRecord<String, String, String> record, String jobId) {
-        StreamOperations<String, String, String> streams = redisTemplate.opsForStream();
+    private void processRecord(
+            MapRecord<String, String, String> record,
+            String jobId,
+            String dispatchGeneration
+    ) {
         try {
-            if (processor.process(UUID.fromString(jobId), properties.consumerName())) {
-                streams.acknowledge(properties.streamKey(), properties.consumerGroup(), record.getId());
+            if (processor.process(
+                    UUID.fromString(jobId),
+                    Integer.parseInt(dispatchGeneration),
+                    properties.consumerName()
+            )) {
+                messageFinalizer.acknowledgeAndDelete(record.getId());
             }
         } catch (IllegalArgumentException exception) {
             log.warn("Discarding malformed capture job message {}", record.getId());
-            streams.acknowledge(properties.streamKey(), properties.consumerGroup(), record.getId());
+            messageFinalizer.acknowledgeAndDelete(record.getId());
         } catch (RuntimeException exception) {
             log.error("Capture job message {} could not be processed", record.getId(), exception);
         }

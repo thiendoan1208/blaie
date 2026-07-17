@@ -14,6 +14,7 @@ create duplicate captures.
 - PostgreSQL processing_jobs is the durable execution source of truth.
 - Spring Modulith event_publication is the transactional outbox.
 - Redis Stream transports job identifiers using at-least-once delivery.
+- Redis is a wake-up transport, not the authoritative job state. Losing a Redis record must not lose the job.
 - Workers are idempotent and acknowledge Redis only after the result transaction commits.
 - Capture states are processing/completed/failed. Job states are queued/processing/retry_wait/completed/dead.
 - Automatic retries use backoff; leased processing jobs are recovered after the lease expires.
@@ -26,8 +27,76 @@ create duplicate captures.
 - Operational logs include job/capture ids, attempts, safe error codes, provider/model and latency, never raw text.
 - Quota/payment usage accounting is explicitly deferred. Capture-specific Redis rate limiting is included.
 
+## Durable dispatch and recovery
+
+The durable flow has two different delivery gaps and therefore two different repair loops:
+
+1. Transactional outbox recovery covers failure before Redis dispatch completes. Creating or redispatching a job
+   and recording TextCaptureQueuedEvent happen in the same PostgreSQL transaction. If the event listener or Redis
+   XADD fails, Spring Modulith leaves event_publication incomplete and later resubmits that publication.
+2. Queued-job reconciliation covers failure after the outbox publication is already complete. A Redis record can
+   still disappear or be deleted operationally. A queued processing_jobs row keeps last_dispatched_at,
+   next_dispatch_at and a monotonically increasing dispatch_generation. When next_dispatch_at is due, recovery
+   republishes the job and advances its dispatch generation.
+
+Outbox recovery is intentionally attempted before queued reconciliation becomes due. The first dispatch retry
+delay must therefore be greater than outbox_recovery_age. This avoids both repair loops immediately producing the
+same wake-up record while still allowing eventual recovery when the Redis record itself is lost.
+
+Each Redis record carries jobId, captureId, eventId and dispatchGeneration, never the raw user text. A worker may
+claim the PostgreSQL job only when it is still queued and the message dispatchGeneration equals the current job
+generation. This database compare-and-set is the idempotency boundary: duplicate or superseded Redis messages
+cannot run the AI attempt again. Attempt ownership is also fenced by worker id, attempt count and retry generation,
+so a worker whose lease expired cannot commit over a newer attempt.
+
+Delivery is at least once. After a terminal processing transaction or a harmless duplicate has been resolved, the
+worker performs XACK followed by XDEL for that exact record inside one Redis Lua script. The server-side operation
+closes the client-disconnect gap between two separate commands and works on Redis 7 without Redis 8 XACKDEL. An
+ambiguous connection failure is safe: PostgreSQL already contains the processing result, redelivery is idempotent,
+and rerunning the Lua script is harmless.
+
+The producer never uses MAXLEN trimming because producer-side length trimming can delete a record that no consumer
+has processed. The recovery role periodically applies approximate XTRIM MINID using an age cutoff; defaults are a
+24-hour retention and a one-hour cleanup interval, both configurable. PostgreSQL queued-job reconciliation remains
+the recovery path if an old Redis wake-up record is removed. Exact-record XDEL assumes the capture stream is
+dedicated to one consumer group. A future second consumer group requires group-aware retention instead of deleting
+immediately after the first group acknowledges.
+
+## Startup roles and admission control
+
+The legacy blaie.capture.processing.enabled switch is deprecated. It remains a compatibility fallback for one
+release: each role-specific property defaults to the legacy value, while an explicitly configured role-specific
+property takes precedence.
+
+Role-specific startup properties:
+
+- accept-async-enabled controls whether POST text capture and manual retry accept new asynchronous work.
+- publisher-enabled installs the transactional outbox listener that writes wake-up records to Redis.
+- worker-enabled installs the Redis consumer and AI job executor.
+- recovery-enabled installs stale-lease recovery, ready-retry dispatch, queued-job reconciliation and outbox
+  resubmission.
+
+Valid deployment combinations include:
+
+- all-in-one: accept=true, publisher=true, worker=true, recovery=true.
+- API node: accept=true, publisher=true, worker=false; recovery may run on a designated recovery node instead.
+- worker node: accept=false, publisher=false, worker=true, recovery=false.
+- recovery node: accept=false, publisher=true, worker=false, recovery=true.
+- drain mode: accept=false, publisher=true, worker=true, recovery=true, so existing work finishes while new work is
+  rejected.
+- fully disabled: all four flags are false.
+
+Startup validation rejects accept=true with publisher=false and recovery=true with publisher=false. Cross-instance
+availability cannot be validated by one process, so deployment configuration must still guarantee at least one
+worker and one recovery loop cluster-wide whenever asynchronous capture is accepted.
+
+When acceptance is disabled, POST /api/v1/captures/text and POST /api/v1/captures/{captureId}/retry fail with 503
+CAPTURE_PROCESSING_UNAVAILABLE before capture/job persistence. Read endpoints remain available, including capture
+status restoration and Inbox reads. The flags are startup configuration, not runtime traffic switches.
+
 ## Consequences
 
 Capture latency no longer depends on the AI provider and jobs survive client disconnects, Redis outages and
-worker restarts. The trade-off is eventual consistency, additional worker/queue operations and a frontend that
-must restore and poll processing captures.
+worker restarts. PostgreSQL-backed reconciliation also lets Redis stay an operational accelerator rather than a
+durability dependency. The trade-off is eventual consistency, duplicate wake-up messages by design, additional
+worker/recovery operations and a frontend that must restore and poll processing captures.

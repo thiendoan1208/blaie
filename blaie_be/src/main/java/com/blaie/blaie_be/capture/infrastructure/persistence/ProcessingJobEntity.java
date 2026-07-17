@@ -40,6 +40,9 @@ public class ProcessingJobEntity {
     @Column(name = "retry_generation", nullable = false)
     private int retryGeneration;
 
+    @Column(name = "dispatch_generation", nullable = false)
+    private int dispatchGeneration;
+
     @Column(name = "available_at", nullable = false)
     private Instant availableAt;
 
@@ -51,6 +54,12 @@ public class ProcessingJobEntity {
 
     @Column(name = "last_error_code", length = 100)
     private String lastErrorCode;
+
+    @Column(name = "last_dispatched_at")
+    private Instant lastDispatchedAt;
+
+    @Column(name = "next_dispatch_at")
+    private Instant nextDispatchAt;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false)
@@ -66,7 +75,12 @@ public class ProcessingJobEntity {
     protected ProcessingJobEntity() {
     }
 
-    public static ProcessingJobEntity queued(CaptureEntity capture, int maxAttempts, Instant now) {
+    public static ProcessingJobEntity queued(
+            CaptureEntity capture,
+            int maxAttempts,
+            Instant now,
+            Instant nextDispatchAt
+    ) {
         ProcessingJobEntity job = new ProcessingJobEntity();
         job.id = UUID.randomUUID();
         job.captureId = capture.id();
@@ -77,26 +91,52 @@ public class ProcessingJobEntity {
         job.maxAttempts = maxAttempts;
         job.retryGeneration = 0;
         job.availableAt = now;
+        job.recordDispatch(now, nextDispatchAt);
         return job;
     }
 
-    public boolean claim(String workerId, Instant now, Instant leaseUntil) {
-        if (!"queued".equals(status) || availableAt.isAfter(now) || attemptCount >= maxAttempts) {
+    public boolean claim(
+            int expectedDispatchGeneration,
+            String workerId,
+            Instant now,
+            Instant leaseUntil
+    ) {
+        if (!"queued".equals(status)
+                || dispatchGeneration != expectedDispatchGeneration
+                || availableAt.isAfter(now)
+                || attemptCount >= maxAttempts) {
             return false;
         }
         status = "processing";
         attemptCount++;
         leaseOwner = workerId;
         leaseExpiresAt = leaseUntil;
+        nextDispatchAt = null;
         return true;
     }
 
-    public boolean extendLease(String workerId, Instant leaseUntil) {
-        if (!"processing".equals(status) || !Objects.equals(leaseOwner, workerId)) {
+    public boolean extendLease(
+            String workerId,
+            int expectedAttemptCount,
+            int expectedRetryGeneration,
+            Instant leaseUntil
+    ) {
+        if (!ownsLease(workerId, expectedAttemptCount, expectedRetryGeneration)) {
             return false;
         }
         leaseExpiresAt = leaseUntil;
         return true;
+    }
+
+    public boolean ownsLease(
+            String workerId,
+            int expectedAttemptCount,
+            int expectedRetryGeneration
+    ) {
+        return "processing".equals(status)
+                && Objects.equals(leaseOwner, workerId)
+                && attemptCount == expectedAttemptCount
+                && retryGeneration == expectedRetryGeneration;
     }
 
     public void complete(Instant now) {
@@ -105,6 +145,7 @@ public class ProcessingJobEntity {
         leaseExpiresAt = null;
         lastErrorCode = null;
         completedAt = now;
+        nextDispatchAt = null;
     }
 
     public void scheduleRetry(String errorCode, Instant retryAt) {
@@ -114,10 +155,12 @@ public class ProcessingJobEntity {
         leaseExpiresAt = null;
         lastErrorCode = errorCode;
         completedAt = null;
+        nextDispatchAt = null;
     }
 
-    public void dispatch() {
+    public void dispatch(Instant now, Instant nextDispatchAt) {
         status = "queued";
+        recordDispatch(now, nextDispatchAt);
     }
 
     public void dead(String errorCode, Instant now) {
@@ -126,9 +169,10 @@ public class ProcessingJobEntity {
         leaseExpiresAt = null;
         lastErrorCode = errorCode;
         completedAt = now;
+        nextDispatchAt = null;
     }
 
-    public void restart(Instant now) {
+    public void restart(Instant now, Instant nextDispatchAt) {
         status = "queued";
         attemptCount = 0;
         retryGeneration++;
@@ -137,6 +181,16 @@ public class ProcessingJobEntity {
         leaseExpiresAt = null;
         lastErrorCode = null;
         completedAt = null;
+        recordDispatch(now, nextDispatchAt);
+    }
+
+    private void recordDispatch(Instant now, Instant nextDispatchAt) {
+        if (nextDispatchAt == null || nextDispatchAt.isBefore(now)) {
+            throw new IllegalArgumentException("next dispatch time must not be before dispatch time");
+        }
+        dispatchGeneration++;
+        lastDispatchedAt = now;
+        this.nextDispatchAt = nextDispatchAt;
     }
 
     public UUID id() {
@@ -167,11 +221,23 @@ public class ProcessingJobEntity {
         return retryGeneration;
     }
 
+    public int dispatchGeneration() {
+        return dispatchGeneration;
+    }
+
     public Instant availableAt() {
         return availableAt;
     }
 
     public Instant leaseExpiresAt() {
         return leaseExpiresAt;
+    }
+
+    public Instant lastDispatchedAt() {
+        return lastDispatchedAt;
+    }
+
+    public Instant nextDispatchAt() {
+        return nextDispatchAt;
     }
 }

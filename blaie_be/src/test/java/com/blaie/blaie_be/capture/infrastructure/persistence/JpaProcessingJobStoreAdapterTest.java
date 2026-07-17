@@ -1,12 +1,15 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
+import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 
@@ -14,6 +17,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class JpaProcessingJobStoreAdapterTest {
@@ -51,17 +57,91 @@ class JpaProcessingJobStoreAdapterTest {
         assertThat(capture.failureCode()).isEqualTo("job_lease_expired");
     }
 
+    @Test
+    void staleQueuedJobIsRedispatchedWithIncreasingGenerationAndCadence() {
+        CaptureEntity capture = CaptureEntity.processing(UUID.randomUUID(), "Lost Redis message");
+        ProcessingJobEntity job = ProcessingJobEntity.queued(
+                capture,
+                4,
+                NOW.minusSeconds(30),
+                NOW
+        );
+        Fixture fixture = fixture(List.of());
+        when(fixture.jobRepository.findDueDispatches(eq(NOW), any(Pageable.class)))
+                .thenReturn(List.of(job));
+
+        assertThat(fixture.adapter.redispatchStaleQueued(NOW, 10)).isEqualTo(1);
+        assertThat(job.dispatchGeneration()).isEqualTo(2);
+        assertThat(job.lastDispatchedAt()).isEqualTo(NOW);
+        assertThat(job.nextDispatchAt()).isEqualTo(NOW.plusSeconds(120));
+
+        Instant secondRedispatch = NOW.plusSeconds(120);
+        when(fixture.jobRepository.findDueDispatches(eq(secondRedispatch), any(Pageable.class)))
+                .thenReturn(List.of(job));
+
+        assertThat(fixture.adapter.redispatchStaleQueued(secondRedispatch, 10)).isEqualTo(1);
+        assertThat(job.dispatchGeneration()).isEqualTo(3);
+        assertThat(job.lastDispatchedAt()).isEqualTo(secondRedispatch);
+        assertThat(job.nextDispatchAt()).isEqualTo(secondRedispatch.plusSeconds(600));
+
+        ArgumentCaptor<TextCaptureQueuedEvent> events = ArgumentCaptor.forClass(TextCaptureQueuedEvent.class);
+        verify(fixture.eventPublisher, times(2)).publishEvent(events.capture());
+        assertThat(events.getAllValues())
+                .extracting(TextCaptureQueuedEvent::dispatchGeneration)
+                .containsExactly(2, 3);
+        assertThat(events.getAllValues())
+                .allSatisfy(event -> {
+                    assertThat(event.jobId()).isEqualTo(job.id());
+                    assertThat(event.captureId()).isEqualTo(capture.id());
+                });
+    }
+
+    @Test
+    void staleWorkerResultCannotCompleteANewerAttempt() {
+        CaptureEntity capture = CaptureEntity.processing(UUID.randomUUID(), "Slow provider response");
+        ProcessingJobEntity job = ProcessingJobEntity.queued(capture, 4, NOW, NOW.plusSeconds(30));
+        assertThat(job.claim(1, "worker-1", NOW, NOW.plusSeconds(30))).isTrue();
+        job.scheduleRetry("job_lease_expired", NOW.plusSeconds(31));
+        job.dispatch(NOW.plusSeconds(31), NOW.plusSeconds(61));
+        assertThat(job.claim(2, "worker-2", NOW.plusSeconds(31), NOW.plusSeconds(61))).isTrue();
+        Fixture fixture = fixture(List.of());
+        when(fixture.jobRepository.findLockedById(job.id())).thenReturn(Optional.of(job));
+        CaptureAnalysis staleAnalysis = new CaptureAnalysis(List.of(), "test", "model", "v1");
+
+        boolean completed = fixture.adapter.complete(
+                job.id(),
+                "worker-1",
+                1,
+                0,
+                staleAnalysis,
+                NOW.plusSeconds(32)
+        );
+
+        assertThat(completed).isFalse();
+        assertThat(job.status()).isEqualTo("processing");
+        assertThat(job.ownsLease("worker-2", 2, 0)).isTrue();
+        assertThat(capture.processingStatus()).isEqualTo("processing");
+        verifyNoInteractions(fixture.itemRepository);
+    }
+
     private ProcessingJobEntity processingJob(CaptureEntity capture, int attempts, int maxAttempts) {
-        ProcessingJobEntity job = ProcessingJobEntity.queued(capture, maxAttempts, NOW.minusSeconds(300));
+        Instant firstDispatch = NOW.minusSeconds(300);
+        ProcessingJobEntity job = ProcessingJobEntity.queued(
+                capture,
+                maxAttempts,
+                firstDispatch,
+                firstDispatch.plusSeconds(30)
+        );
         for (int attempt = 1; attempt <= attempts; attempt++) {
             assertThat(job.claim(
+                    job.dispatchGeneration(),
                     "worker-" + attempt,
                     NOW.minusSeconds(40),
                     NOW.minusSeconds(30)
             )).isTrue();
             if (attempt < attempts) {
                 job.scheduleRetry("provider_unavailable", NOW.minusSeconds(50));
-                job.dispatch();
+                job.dispatch(NOW.minusSeconds(50), NOW.minusSeconds(20));
             }
         }
         return job;
@@ -71,25 +151,34 @@ class JpaProcessingJobStoreAdapterTest {
         ProcessingJobRepository jobRepository = mock(ProcessingJobRepository.class);
         CaptureRepository captureRepository = mock(CaptureRepository.class);
         CaptureItemRepository itemRepository = mock(CaptureItemRepository.class);
+        ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
         when(jobRepository.findStale(eq(NOW), any(Pageable.class))).thenReturn(staleJobs);
         CaptureProcessingSettingsPort settings = new TestSettings();
         JpaProcessingJobStoreAdapter adapter = new JpaProcessingJobStoreAdapter(
                 jobRepository,
                 captureRepository,
                 itemRepository,
-                mock(ApplicationEventPublisher.class),
+                eventPublisher,
                 settings
         );
-        return new Fixture(adapter, captureRepository);
+        return new Fixture(adapter, jobRepository, captureRepository, itemRepository, eventPublisher);
     }
 
     private record Fixture(
             JpaProcessingJobStoreAdapter adapter,
-            CaptureRepository captureRepository
+            ProcessingJobRepository jobRepository,
+            CaptureRepository captureRepository,
+            CaptureItemRepository itemRepository,
+            ApplicationEventPublisher eventPublisher
     ) {
     }
 
     private static final class TestSettings implements CaptureProcessingSettingsPort {
+        @Override
+        public boolean acceptAsyncEnabled() {
+            return true;
+        }
+
         @Override
         public int maxAttempts() {
             return 4;
@@ -116,6 +205,15 @@ class JpaProcessingJobStoreAdapterTest {
                 case 1 -> Duration.ofSeconds(5);
                 case 2 -> Duration.ofSeconds(15);
                 default -> Duration.ofSeconds(45);
+            };
+        }
+
+        @Override
+        public Duration dispatchRetryDelay(int dispatchGeneration) {
+            return switch (dispatchGeneration) {
+                case 1 -> Duration.ofSeconds(30);
+                case 2 -> Duration.ofSeconds(120);
+                default -> Duration.ofSeconds(600);
             };
         }
     }

@@ -14,7 +14,13 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "blaie.capture.processing")
 public class CaptureProcessingProperties implements CaptureProcessingSettingsPort {
+    /** @deprecated use the role-specific flags instead. */
+    @Deprecated
     private boolean enabled = true;
+    private boolean acceptAsyncEnabled = true;
+    private boolean publisherEnabled = true;
+    private boolean workerEnabled = true;
+    private boolean recoveryEnabled = true;
     private int maxAttempts = 4;
     private Duration idempotencyTtl = Duration.ofHours(24);
     private Duration leaseDuration = Duration.ofSeconds(30);
@@ -22,13 +28,17 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
     private List<Duration> retryDelays = new ArrayList<>(
             List.of(Duration.ofSeconds(2), Duration.ofSeconds(10), Duration.ofSeconds(30))
     );
+    private List<Duration> dispatchRetryDelays = new ArrayList<>(
+            List.of(Duration.ofSeconds(30), Duration.ofMinutes(2), Duration.ofMinutes(10))
+    );
     private String streamKey = "blaie:capture:text-jobs";
     private String consumerGroup = "capture-text-workers";
     private String consumerName = "worker-" + UUID.randomUUID();
     private int batchSize = 10;
-    private long streamMaxLength = 10_000;
     private Duration readBlock = Duration.ofMillis(200);
     private Duration outboxRecoveryAge = Duration.ofSeconds(10);
+    private Duration streamRetention = Duration.ofHours(24);
+    private Duration streamCleanupInterval = Duration.ofHours(1);
     private int workerCorePoolSize = 1;
     private int workerMaxPoolSize = 1;
     private int workerQueueCapacity = 0;
@@ -38,6 +48,11 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
     private int eventCorePoolSize = 1;
     private int eventMaxPoolSize = 2;
     private int eventQueueCapacity = 100;
+
+    @Override
+    public boolean acceptAsyncEnabled() {
+        return acceptAsyncEnabled;
+    }
 
     @Override
     public int maxAttempts() {
@@ -68,6 +83,15 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
         return retryDelays.get(index);
     }
 
+    @Override
+    public Duration dispatchRetryDelay(int dispatchGeneration) {
+        if (dispatchRetryDelays.isEmpty()) {
+            return Duration.ZERO;
+        }
+        int index = Math.max(0, Math.min(dispatchGeneration - 1, dispatchRetryDelays.size() - 1));
+        return dispatchRetryDelays.get(index);
+    }
+
     public String streamKey() {
         return streamKey;
     }
@@ -88,8 +112,16 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
         return enabled;
     }
 
-    public long streamMaxLength() {
-        return streamMaxLength;
+    public boolean publisherEnabled() {
+        return publisherEnabled;
+    }
+
+    public boolean workerEnabled() {
+        return workerEnabled;
+    }
+
+    public boolean recoveryEnabled() {
+        return recoveryEnabled;
     }
 
     public Duration readBlock() {
@@ -98,6 +130,14 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
 
     public Duration outboxRecoveryAge() {
         return outboxRecoveryAge;
+    }
+
+    public Duration streamRetention() {
+        return streamRetention;
+    }
+
+    public Duration streamCleanupInterval() {
+        return streamCleanupInterval;
     }
 
     public int workerCorePoolSize() {
@@ -145,13 +185,17 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
                 && heartbeatInterval.compareTo(leaseDuration) < 0
                 && retryDelays != null && !retryDelays.isEmpty()
                 && retryDelays.stream().allMatch(delay -> delay != null && !delay.isNegative())
+                && dispatchRetryDelays != null && !dispatchRetryDelays.isEmpty()
+                && dispatchRetryDelays.stream().allMatch(delay -> delay != null && delay.isPositive())
                 && streamKey != null && !streamKey.isBlank()
                 && consumerGroup != null && !consumerGroup.isBlank()
                 && consumerName != null && !consumerName.isBlank()
                 && batchSize > 0
-                && streamMaxLength > 0
                 && readBlock != null && !readBlock.isNegative()
                 && outboxRecoveryAge != null && !outboxRecoveryAge.isNegative()
+                && streamRetention != null && streamRetention.isPositive()
+                && streamCleanupInterval != null && streamCleanupInterval.isPositive()
+                && dispatchRetryDelays.getFirst().compareTo(outboxRecoveryAge) > 0
                 && workerCorePoolSize > 0
                 && workerMaxPoolSize >= workerCorePoolSize
                 && workerQueueCapacity >= 0
@@ -163,12 +207,34 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
                 && eventQueueCapacity >= 0;
     }
 
+    @AssertTrue(message = "capture acceptance and recovery require the durable publisher")
+    public boolean isRoleConfigurationValid() {
+        return (!acceptAsyncEnabled || publisherEnabled)
+                && (!recoveryEnabled || publisherEnabled);
+    }
+
     public void setMaxAttempts(int maxAttempts) {
         this.maxAttempts = maxAttempts;
     }
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public void setAcceptAsyncEnabled(boolean acceptAsyncEnabled) {
+        this.acceptAsyncEnabled = acceptAsyncEnabled;
+    }
+
+    public void setPublisherEnabled(boolean publisherEnabled) {
+        this.publisherEnabled = publisherEnabled;
+    }
+
+    public void setWorkerEnabled(boolean workerEnabled) {
+        this.workerEnabled = workerEnabled;
+    }
+
+    public void setRecoveryEnabled(boolean recoveryEnabled) {
+        this.recoveryEnabled = recoveryEnabled;
     }
 
     public void setIdempotencyTtl(Duration idempotencyTtl) {
@@ -187,6 +253,10 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
         this.retryDelays = new ArrayList<>(retryDelays);
     }
 
+    public void setDispatchRetryDelays(List<Duration> dispatchRetryDelays) {
+        this.dispatchRetryDelays = new ArrayList<>(dispatchRetryDelays);
+    }
+
     public void setStreamKey(String streamKey) {
         this.streamKey = streamKey;
     }
@@ -203,16 +273,20 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
         this.batchSize = batchSize;
     }
 
-    public void setStreamMaxLength(long streamMaxLength) {
-        this.streamMaxLength = streamMaxLength;
-    }
-
     public void setReadBlock(Duration readBlock) {
         this.readBlock = readBlock;
     }
 
     public void setOutboxRecoveryAge(Duration outboxRecoveryAge) {
         this.outboxRecoveryAge = outboxRecoveryAge;
+    }
+
+    public void setStreamRetention(Duration streamRetention) {
+        this.streamRetention = streamRetention;
+    }
+
+    public void setStreamCleanupInterval(Duration streamCleanupInterval) {
+        this.streamCleanupInterval = streamCleanupInterval;
     }
 
     public void setWorkerCorePoolSize(int workerCorePoolSize) {

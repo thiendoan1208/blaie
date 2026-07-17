@@ -14,6 +14,17 @@ Job state machine:
   processing -> retry_wait -> queued
   processing | retry_wait -> dead
 
+Durability and delivery semantics:
+- PostgreSQL processing_jobs is authoritative. Redis Stream is only an at-least-once wake-up transport.
+- A queued job records a monotonic dispatchGeneration and its next reconciliation time. If its Redis record is
+  lost after outbox completion, queued-job reconciliation publishes a newer generation.
+- A worker claims only the current queued dispatch generation. Duplicate and superseded Redis records therefore
+  cannot create another AI attempt or duplicate Inbox items.
+- Transactional outbox recovery repairs event-listener/Redis publish failures. Queued-job reconciliation repairs a
+  different gap: a queued database job whose already-published Redis record was later lost.
+- After the database result transaction commits, the worker acknowledges and deletes that exact Redis record.
+  Producers do not apply stream MAXLEN trimming because it could remove unprocessed work.
+
 Authentication and ownership:
 - The user must be authenticated and email verified.
 - user_id always comes from the current authenticated user. Clients cannot submit userId.
@@ -34,7 +45,9 @@ Request:
 }
 
 Behavior:
-- Validate auth, email verification, rate limit, body and idempotency key.
+- Validate auth, email verification, capture acceptance, rate limit, body and idempotency key.
+- If asynchronous capture acceptance is disabled for deployment/drain mode, reject with
+  CAPTURE_PROCESSING_UNAVAILABLE before creating a capture, job or idempotency record.
 - The rate-limit subject combines hashed current user id and client IP. If its Redis backend is unavailable, reject
   with SERVICE_UNAVAILABLE instead of creating an unprotected AI job.
 - In one database transaction, create the processing capture, queued processing job, idempotency record and
@@ -62,21 +75,24 @@ Response 202:
 GET /api/v1/captures/{captureId}
 
 Returns the current user's capture. When completed, items contains every classified Inbox item. When failed,
-failureCode is a safe application code and canRetry is true.
+failureCode is a safe application code and canRetry is true. This read remains available when asynchronous
+acceptance is disabled.
 
 ----------------------------------------------------------------------
 
 GET /api/v1/captures?status=processing&limit=20
 
 Returns recent processing captures owned by the current user. This endpoint restores UI state after reload,
-reconnect or opening another device. status currently accepts processing only. limit is 1..50.
+reconnect or opening another device. status currently accepts processing only. limit is 1..50. This read remains
+available when asynchronous acceptance is disabled.
 
 ----------------------------------------------------------------------
 
 POST /api/v1/captures/{captureId}/retry
 
 Requeues a failed capture owned by the current user. The same capture id and original text are reused. The
-capture becomes processing and the existing logical job starts a new retry generation.
+capture becomes processing and the existing logical job starts a new retry generation. If asynchronous acceptance
+is disabled, reject with CAPTURE_PROCESSING_UNAVAILABLE before changing capture or job state.
 
 Response 202: Capture response with processingStatus = processing.
 
@@ -87,4 +103,5 @@ Errors:
   409  IDEMPOTENCY_KEY_REUSED | CAPTURE_NOT_RETRYABLE
   422  VALIDATION_ERROR
   429  RATE_LIMITED
-  503  SERVICE_UNAVAILABLE
+  503  CAPTURE_PROCESSING_UNAVAILABLE - deployment is not accepting new asynchronous capture work
+       SERVICE_UNAVAILABLE - a required fail-closed dependency such as the capture rate-limit backend is unavailable

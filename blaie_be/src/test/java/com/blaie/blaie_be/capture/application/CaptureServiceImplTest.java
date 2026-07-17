@@ -93,8 +93,43 @@ class CaptureServiceImplTest {
                 .isEqualTo(ErrorCode.CAPTURE_ITEM_NOT_FOUND);
     }
 
+    @Test
+    void disabledAsyncAcceptanceRejectsWritesBeforeCallingWorkflowStore() {
+        UUID userId = UUID.randomUUID();
+        InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
+        CaptureService service = service(new InMemoryCaptureItemStore(), workflowStore, false);
+
+        assertThatThrownBy(() -> runAs(userId, () -> service.captureText(
+                "Buy milk",
+                IDEMPOTENCY_KEY.toString()
+        )))
+                .isInstanceOf(AppException.class)
+                .extracting(exception -> ((AppException) exception).errorCode())
+                .isEqualTo(ErrorCode.CAPTURE_PROCESSING_UNAVAILABLE);
+        assertThatThrownBy(() -> runAs(userId, () -> service.retry(UUID.randomUUID())))
+                .isInstanceOf(AppException.class)
+                .extracting(exception -> ((AppException) exception).errorCode())
+                .isEqualTo(ErrorCode.CAPTURE_PROCESSING_UNAVAILABLE);
+
+        assertThat(workflowStore.startCalls).isZero();
+        assertThat(workflowStore.retryCalls).isZero();
+    }
+
     private CaptureService service(CaptureItemStorePort itemStore, CaptureWorkflowStorePort workflowStore) {
+        return service(itemStore, workflowStore, true);
+    }
+
+    private CaptureService service(
+            CaptureItemStorePort itemStore,
+            CaptureWorkflowStorePort workflowStore,
+            boolean acceptAsyncEnabled
+    ) {
         CaptureProcessingSettingsPort settings = new CaptureProcessingSettingsPort() {
+            @Override
+            public boolean acceptAsyncEnabled() {
+                return acceptAsyncEnabled;
+            }
+
             @Override
             public int maxAttempts() {
                 return 4;
@@ -119,6 +154,11 @@ class CaptureServiceImplTest {
             public Duration retryDelay(int failedAttemptCount) {
                 return Duration.ofSeconds(2);
             }
+
+            @Override
+            public Duration dispatchRetryDelay(int dispatchGeneration) {
+                return Duration.ofSeconds(30);
+            }
         };
         return new CaptureServiceImpl(
                 itemStore,
@@ -140,6 +180,8 @@ class CaptureServiceImplTest {
         private String requestHash;
         private Instant now;
         private Instant expiresAt;
+        private int startCalls;
+        private int retryCalls;
 
         @Override
         public CaptureResult startTextCapture(
@@ -151,6 +193,7 @@ class CaptureServiceImplTest {
                 Instant idempotencyExpiresAt,
                 int maxAttempts
         ) {
+            startCalls++;
             this.userId = userId;
             this.originalText = originalText;
             this.idempotencyKey = idempotencyKey;
@@ -190,6 +233,7 @@ class CaptureServiceImplTest {
 
         @Override
         public CaptureResult retryOwned(UUID captureId, UUID userId, Instant now) {
+            retryCalls++;
             return findOwned(captureId, userId).orElseThrow();
         }
     }

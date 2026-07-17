@@ -30,16 +30,22 @@ class CaptureJobProcessorTest {
         FakeHeartbeat heartbeat = new FakeHeartbeat();
         CaptureJobProcessor processor = processor(store, text -> analysis, heartbeat);
 
-        assertThat(processor.process(store.job.id(), "worker-1")).isTrue();
+        assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
         assertThat(store.completedAnalysis).isSameAs(analysis);
         assertThat(store.retryAt).isNull();
         assertThat(store.deadError).isNull();
+        assertThat(store.claimDispatchGeneration).isEqualTo(store.job.dispatchGeneration());
+        assertThat(store.completedWorkerId).isEqualTo("worker-1");
+        assertThat(store.completedAttemptCount).isEqualTo(store.job.attemptCount());
+        assertThat(store.completedRetryGeneration).isEqualTo(store.job.retryGeneration());
         assertThat(heartbeat.startedJobId).isEqualTo(store.job.id());
         assertThat(heartbeat.startedWorkerId).isEqualTo("worker-1");
+        assertThat(heartbeat.startedAttemptCount).isEqualTo(store.job.attemptCount());
+        assertThat(heartbeat.startedRetryGeneration).isEqualTo(store.job.retryGeneration());
         assertThat(heartbeat.stopCalls).isEqualTo(1);
 
         store.claimed = Optional.empty();
-        assertThat(processor.process(store.job.id(), "worker-2")).isTrue();
+        assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-2")).isTrue();
         assertThat(store.completeCalls).isEqualTo(1);
     }
 
@@ -50,9 +56,12 @@ class CaptureJobProcessorTest {
             throw new TextClassificationException("ai_provider_unavailable", "safe internal detail");
         }, new FakeHeartbeat());
 
-        assertThat(processor.process(store.job.id(), "worker-1")).isTrue();
+        assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
         assertThat(store.retryError).isEqualTo("ai_provider_unavailable");
         assertThat(store.retryAt).isEqualTo(NOW.plusSeconds(2));
+        assertThat(store.retryWorkerId).isEqualTo("worker-1");
+        assertThat(store.retryAttemptCount).isEqualTo(store.job.attemptCount());
+        assertThat(store.retryGeneration).isEqualTo(store.job.retryGeneration());
         assertThat(store.deadError).isNull();
     }
 
@@ -63,9 +72,29 @@ class CaptureJobProcessorTest {
             throw new TextClassificationException("ai_invalid_response", "invalid response");
         }, new FakeHeartbeat());
 
-        assertThat(processor.process(store.job.id(), "worker-1")).isTrue();
+        assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
         assertThat(store.deadError).isEqualTo("ai_invalid_response");
+        assertThat(store.deadWorkerId).isEqualTo("worker-1");
+        assertThat(store.deadAttemptCount).isEqualTo(store.job.attemptCount());
+        assertThat(store.deadRetryGeneration).isEqualTo(store.job.retryGeneration());
         assertThat(store.retryAt).isNull();
+    }
+
+    @Test
+    void staleSuccessfulResultIsDiscardedWithoutMutatingNewerAttempt() {
+        FakeJobStore store = new FakeJobStore(job(1, 4));
+        store.completeAccepted = false;
+        CaptureAnalysis analysis = new CaptureAnalysis(List.of(), "test", "model", "v1");
+        FakeHeartbeat heartbeat = new FakeHeartbeat();
+        CaptureJobProcessor processor = processor(store, text -> analysis, heartbeat);
+
+        assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "stale-worker")).isTrue();
+
+        assertThat(store.completeCalls).isEqualTo(1);
+        assertThat(store.completedWorkerId).isEqualTo("stale-worker");
+        assertThat(store.retryAt).isNull();
+        assertThat(store.deadError).isNull();
+        assertThat(heartbeat.stopCalls).isEqualTo(1);
     }
 
     private CaptureJobProcessor processor(
@@ -74,6 +103,11 @@ class CaptureJobProcessorTest {
             JobLeaseHeartbeatPort heartbeat
     ) {
         CaptureProcessingSettingsPort settings = new CaptureProcessingSettingsPort() {
+            @Override
+            public boolean acceptAsyncEnabled() {
+                return true;
+            }
+
             @Override
             public int maxAttempts() {
                 return 4;
@@ -98,6 +132,11 @@ class CaptureJobProcessorTest {
             public Duration retryDelay(int failedAttemptCount) {
                 return Duration.ofSeconds(2);
             }
+
+            @Override
+            public Duration dispatchRetryDelay(int dispatchGeneration) {
+                return Duration.ofSeconds(30);
+            }
         };
         return new CaptureJobProcessor(
                 store,
@@ -117,7 +156,8 @@ class CaptureJobProcessorTest {
                 ProcessingJobStatus.PROCESSING,
                 attemptCount,
                 maxAttempts,
-                0,
+                2,
+                7,
                 NOW
         );
     }
@@ -127,9 +167,20 @@ class CaptureJobProcessorTest {
         private Optional<ProcessingJobResult> claimed;
         private CaptureAnalysis completedAnalysis;
         private int completeCalls;
+        private boolean completeAccepted = true;
+        private int claimDispatchGeneration;
+        private String completedWorkerId;
+        private int completedAttemptCount;
+        private int completedRetryGeneration;
         private String retryError;
         private Instant retryAt;
+        private String retryWorkerId;
+        private int retryAttemptCount;
+        private int retryGeneration;
         private String deadError;
+        private String deadWorkerId;
+        private int deadAttemptCount;
+        private int deadRetryGeneration;
 
         private FakeJobStore(ProcessingJobResult job) {
             this.job = job;
@@ -137,30 +188,77 @@ class CaptureJobProcessorTest {
         }
 
         @Override
-        public Optional<ProcessingJobResult> claim(UUID jobId, String workerId, Instant now, Instant leaseExpiresAt) {
+        public Optional<ProcessingJobResult> claim(
+                UUID jobId,
+                int dispatchGeneration,
+                String workerId,
+                Instant now,
+                Instant leaseExpiresAt
+        ) {
+            claimDispatchGeneration = dispatchGeneration;
             return claimed;
         }
 
         @Override
-        public boolean extendLease(UUID jobId, String workerId, Instant leaseExpiresAt) {
+        public boolean extendLease(
+                UUID jobId,
+                String workerId,
+                int attemptCount,
+                int retryGeneration,
+                Instant leaseExpiresAt
+        ) {
             return true;
         }
 
         @Override
-        public void complete(UUID jobId, CaptureAnalysis analysis, Instant now) {
+        public boolean complete(
+                UUID jobId,
+                String workerId,
+                int attemptCount,
+                int retryGeneration,
+                CaptureAnalysis analysis,
+                Instant now
+        ) {
             completedAnalysis = analysis;
+            completedWorkerId = workerId;
+            completedAttemptCount = attemptCount;
+            completedRetryGeneration = retryGeneration;
             completeCalls++;
+            return completeAccepted;
         }
 
         @Override
-        public void scheduleRetry(UUID jobId, String errorCode, Instant availableAt, Instant now) {
+        public boolean scheduleRetry(
+                UUID jobId,
+                String workerId,
+                int attemptCount,
+                int retryGeneration,
+                String errorCode,
+                Instant availableAt,
+                Instant now
+        ) {
+            retryWorkerId = workerId;
+            retryAttemptCount = attemptCount;
+            this.retryGeneration = retryGeneration;
             retryError = errorCode;
             retryAt = availableAt;
+            return true;
         }
 
         @Override
-        public void markDead(UUID jobId, String errorCode, Instant now) {
+        public boolean markDead(
+                UUID jobId,
+                String workerId,
+                int attemptCount,
+                int retryGeneration,
+                String errorCode,
+                Instant now
+        ) {
+            deadWorkerId = workerId;
+            deadAttemptCount = attemptCount;
+            deadRetryGeneration = retryGeneration;
             deadError = errorCode;
+            return true;
         }
 
         @Override
@@ -172,17 +270,31 @@ class CaptureJobProcessorTest {
         public int dispatchReadyRetries(Instant now, int limit) {
             return 0;
         }
+
+        @Override
+        public int redispatchStaleQueued(Instant now, int limit) {
+            return 0;
+        }
     }
 
     private static final class FakeHeartbeat implements JobLeaseHeartbeatPort {
         private UUID startedJobId;
         private String startedWorkerId;
+        private int startedAttemptCount;
+        private int startedRetryGeneration;
         private int stopCalls;
 
         @Override
-        public ActiveHeartbeat start(UUID jobId, String workerId) {
+        public ActiveHeartbeat start(
+                UUID jobId,
+                String workerId,
+                int attemptCount,
+                int retryGeneration
+        ) {
             startedJobId = jobId;
             startedWorkerId = workerId;
+            startedAttemptCount = attemptCount;
+            startedRetryGeneration = retryGeneration;
             return () -> stopCalls++;
         }
     }

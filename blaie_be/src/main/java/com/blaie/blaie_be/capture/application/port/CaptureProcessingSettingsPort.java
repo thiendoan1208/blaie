@@ -3,6 +3,8 @@ package com.blaie.blaie_be.capture.application.port;
 import java.time.Duration;
 
 public interface CaptureProcessingSettingsPort {
+    boolean acceptAsyncEnabled();
+
     int maxAttempts();
 
     Duration idempotencyTtl();
@@ -12,4 +14,6 @@ public interface CaptureProcessingSettingsPort {
     Duration heartbeatInterval();
 
     Duration retryDelay(int failedAttemptCount);
+
+    Duration dispatchRetryDelay(int dispatchGeneration);
 }

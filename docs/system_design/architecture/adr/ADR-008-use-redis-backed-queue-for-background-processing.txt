@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed
+Accepted
+
+The durable text-capture implementation and its recovery/retention semantics are refined by ADR-019.
 
 ## Context
 
@@ -39,8 +41,13 @@ Trade-off:
 Mitigation:
 
 - Job handler phải idempotent.
-- Processing job có status trong PostgreSQL.
+- Processing job có status trong PostgreSQL; PostgreSQL là source of truth, Redis chỉ là wake-up transport.
 - Retry không được tạo duplicate item.
+- Transactional outbox sửa lỗi publish; queued-job reconciliation sửa Redis record đã publish nhưng bị mất.
+- Producer không trim MAXLEN. Sau khi database transaction thành công, worker dùng một Lua script phía Redis để
+  XACK rồi XDEL đúng record trong một server-side atomic operation tương thích Redis 7.
+- Recovery role dọn record cũ theo tuổi bằng XTRIM MINID gần đúng. Retention dài hơn recovery windows và
+  PostgreSQL queued-job reconciliation bảo đảm Redis cleanup không trở thành durability boundary.
 - Monitor queue length, failed jobs và oldest job age.
 
 ## Alternatives Considered

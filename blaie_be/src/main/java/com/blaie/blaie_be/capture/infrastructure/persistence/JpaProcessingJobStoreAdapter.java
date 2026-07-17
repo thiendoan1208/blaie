@@ -45,15 +45,27 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
 
     @Override
     @Transactional
-    public boolean extendLease(UUID jobId, String workerId, Instant leaseExpiresAt) {
+    public boolean extendLease(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration,
+            Instant leaseExpiresAt
+    ) {
         ProcessingJobEntity job = jobRepository.findLockedById(jobId).orElse(null);
-        return job != null && job.extendLease(workerId, leaseExpiresAt);
+        return job != null && job.extendLease(
+                workerId,
+                attemptCount,
+                retryGeneration,
+                leaseExpiresAt
+        );
     }
 
     @Override
     @Transactional
     public Optional<ProcessingJobResult> claim(
             UUID jobId,
+            int dispatchGeneration,
             String workerId,
             Instant now,
             Instant leaseExpiresAt
@@ -65,7 +77,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
         CaptureEntity capture = captureRepository.findById(job.captureId())
                 .orElseThrow(() -> new IllegalStateException("Capture for processing job is missing"));
         if (!ProcessingStatus.PROCESSING.value().equals(capture.processingStatus())
-                || !job.claim(workerId, now, leaseExpiresAt)) {
+                || !job.claim(dispatchGeneration, workerId, now, leaseExpiresAt)) {
             return Optional.empty();
         }
         return Optional.of(toResult(job, capture.originalText()));
@@ -73,22 +85,26 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
 
     @Override
     @Transactional
-    public void complete(UUID jobId, CaptureAnalysis analysis, Instant now) {
+    public boolean complete(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration,
+            CaptureAnalysis analysis,
+            Instant now
+    ) {
         ProcessingJobEntity job = jobRepository.findLockedById(jobId).orElse(null);
-        if (job == null || ProcessingJobStatus.COMPLETED.value().equals(job.status())) {
-            return;
-        }
-        if (!ProcessingJobStatus.PROCESSING.value().equals(job.status())) {
-            return;
+        if (job == null || !job.ownsLease(workerId, attemptCount, retryGeneration)) {
+            return false;
         }
         CaptureEntity capture = captureRepository.findLockedById(job.captureId())
                 .orElseThrow(() -> new IllegalStateException("Capture for processing job is missing"));
         if (ProcessingStatus.COMPLETED.value().equals(capture.processingStatus())) {
             job.complete(now);
-            return;
+            return true;
         }
         if (!ProcessingStatus.PROCESSING.value().equals(capture.processingStatus())) {
-            return;
+            return false;
         }
 
         captureItemRepository.deleteByCaptureId(capture.id());
@@ -102,25 +118,41 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
         captureItemRepository.saveAll(items);
         capture.complete(analysis);
         job.complete(now);
+        return true;
     }
 
     @Override
     @Transactional
-    public void scheduleRetry(UUID jobId, String errorCode, Instant availableAt, Instant now) {
+    public boolean scheduleRetry(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration,
+            String errorCode,
+            Instant availableAt,
+            Instant now
+    ) {
         ProcessingJobEntity job = jobRepository.findLockedById(jobId).orElse(null);
-        if (job == null || !ProcessingJobStatus.PROCESSING.value().equals(job.status())) {
-            return;
+        if (job == null || !job.ownsLease(workerId, attemptCount, retryGeneration)) {
+            return false;
         }
         job.scheduleRetry(errorCode, availableAt);
+        return true;
     }
 
     @Override
     @Transactional
-    public void markDead(UUID jobId, String errorCode, Instant now) {
+    public boolean markDead(
+            UUID jobId,
+            String workerId,
+            int attemptCount,
+            int retryGeneration,
+            String errorCode,
+            Instant now
+    ) {
         ProcessingJobEntity job = jobRepository.findLockedById(jobId).orElse(null);
-        if (job == null || ProcessingJobStatus.COMPLETED.value().equals(job.status())
-                || ProcessingJobStatus.DEAD.value().equals(job.status())) {
-            return;
+        if (job == null || !job.ownsLease(workerId, attemptCount, retryGeneration)) {
+            return false;
         }
         CaptureEntity capture = captureRepository.findLockedById(job.captureId())
                 .orElseThrow(() -> new IllegalStateException("Capture for processing job is missing"));
@@ -129,6 +161,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             capture.fail(errorCode);
             captureItemRepository.deleteByCaptureId(capture.id());
         }
+        return true;
     }
 
     @Override
@@ -159,12 +192,30 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
     public int dispatchReadyRetries(Instant now, int limit) {
         List<ProcessingJobEntity> jobs = jobRepository.findReadyRetries(now, PageRequest.of(0, limit));
         for (ProcessingJobEntity job : jobs) {
-            job.dispatch();
-            eventPublisher.publishEvent(
-                    new TextCaptureQueuedEvent(UUID.randomUUID(), job.id(), job.captureId())
-            );
+            dispatch(job, now);
         }
         return jobs.size();
+    }
+
+    @Override
+    @Transactional
+    public int redispatchStaleQueued(Instant now, int limit) {
+        List<ProcessingJobEntity> jobs = jobRepository.findDueDispatches(now, PageRequest.of(0, limit));
+        for (ProcessingJobEntity job : jobs) {
+            dispatch(job, now);
+        }
+        return jobs.size();
+    }
+
+    private void dispatch(ProcessingJobEntity job, Instant now) {
+        int nextGeneration = job.dispatchGeneration() + 1;
+        job.dispatch(now, now.plus(settings.dispatchRetryDelay(nextGeneration)));
+        eventPublisher.publishEvent(new TextCaptureQueuedEvent(
+                UUID.randomUUID(),
+                job.id(),
+                job.captureId(),
+                job.dispatchGeneration()
+        ));
     }
 
     private ProcessingJobResult toResult(ProcessingJobEntity job, String originalText) {
@@ -176,6 +227,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
                 job.attemptCount(),
                 job.maxAttempts(),
                 job.retryGeneration(),
+                job.dispatchGeneration(),
                 job.availableAt()
         );
     }

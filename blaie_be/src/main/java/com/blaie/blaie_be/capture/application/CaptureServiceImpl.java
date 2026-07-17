@@ -44,6 +44,7 @@ public class CaptureServiceImpl implements CaptureService {
 
     @Override
     public CaptureResult captureText(String text, String idempotencyKey) {
+        requireAsyncAcceptance();
         String originalText = requireText(text);
         UUID key = requireIdempotencyKey(idempotencyKey);
         Instant now = clock.instant();
@@ -71,7 +72,14 @@ public class CaptureServiceImpl implements CaptureService {
 
     @Override
     public CaptureResult retry(UUID captureId) {
+        requireAsyncAcceptance();
         return workflowStore.retryOwned(captureId, currentUserId(), clock.instant());
+    }
+
+    private void requireAsyncAcceptance() {
+        if (!settings.acceptAsyncEnabled()) {
+            throw new AppException(ErrorCode.CAPTURE_PROCESSING_UNAVAILABLE);
+        }
     }
 
     @Override

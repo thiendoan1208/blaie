@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
 import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.application.result.CaptureItemResult;
 import com.blaie.blaie_be.capture.application.result.CaptureResult;
@@ -27,19 +28,22 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
     private final ProcessingJobRepository jobRepository;
     private final CaptureIdempotencyKeyRepository idempotencyRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final CaptureProcessingSettingsPort settings;
 
     public JpaCaptureWorkflowAdapter(
             CaptureRepository captureRepository,
             CaptureItemRepository captureItemRepository,
             ProcessingJobRepository jobRepository,
             CaptureIdempotencyKeyRepository idempotencyRepository,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            CaptureProcessingSettingsPort settings
     ) {
         this.captureRepository = captureRepository;
         this.captureItemRepository = captureItemRepository;
         this.jobRepository = jobRepository;
         this.idempotencyRepository = idempotencyRepository;
         this.eventPublisher = eventPublisher;
+        this.settings = settings;
     }
 
     @Override
@@ -79,9 +83,14 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
         }
 
         ProcessingJobEntity job = jobRepository.save(
-                ProcessingJobEntity.queued(capture, maxAttempts, now)
+                ProcessingJobEntity.queued(
+                        capture,
+                        maxAttempts,
+                        now,
+                        now.plus(settings.dispatchRetryDelay(1))
+                )
         );
-        eventPublisher.publishEvent(new TextCaptureQueuedEvent(UUID.randomUUID(), job.id(), capture.id()));
+        publishDispatch(job);
         return toCaptureResult(capture, job);
     }
 
@@ -128,11 +137,20 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
 
         captureItemRepository.deleteByCaptureId(captureId);
         capture.restart();
-        job.restart(now);
+        job.restart(now, now.plus(settings.dispatchRetryDelay(job.dispatchGeneration() + 1)));
         captureRepository.flush();
         jobRepository.flush();
-        eventPublisher.publishEvent(new TextCaptureQueuedEvent(UUID.randomUUID(), job.id(), capture.id()));
+        publishDispatch(job);
         return toCaptureResult(capture, job);
+    }
+
+    private void publishDispatch(ProcessingJobEntity job) {
+        eventPublisher.publishEvent(new TextCaptureQueuedEvent(
+                UUID.randomUUID(),
+                job.id(),
+                job.captureId(),
+                job.dispatchGeneration()
+        ));
     }
 
     private CaptureResult resolveExisting(

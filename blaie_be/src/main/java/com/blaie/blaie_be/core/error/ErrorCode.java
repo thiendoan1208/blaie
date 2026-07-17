@@ -27,6 +27,10 @@ public enum ErrorCode {
     CAPTURE_NOT_FOUND(HttpStatus.NOT_FOUND, "Capture not found"),
     CAPTURE_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "Inbox item not found"),
     CAPTURE_NOT_RETRYABLE(HttpStatus.CONFLICT, "Capture cannot be retried"),
+    CAPTURE_PROCESSING_UNAVAILABLE(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Capture processing is temporarily unavailable"
+    ),
     IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST, "Idempotency-Key header is required"),
     IDEMPOTENCY_KEY_INVALID(HttpStatus.BAD_REQUEST, "Idempotency-Key header must be a UUID"),
     IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "Idempotency key was reused with another request"),

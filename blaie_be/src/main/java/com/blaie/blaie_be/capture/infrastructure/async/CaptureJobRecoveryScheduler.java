@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(
         prefix = "blaie.capture.processing",
-        name = "enabled",
+        name = "recovery-enabled",
         havingValue = "true",
         matchIfMissing = true
 )
@@ -41,12 +41,14 @@ public class CaptureJobRecoveryScheduler {
     public void recoverJobs() {
         Instant now = clock.instant();
         int staleCount = jobStore.recoverStale(now).size();
-        int dispatchedCount = jobStore.dispatchReadyRetries(now, properties.batchSize());
-        if (staleCount > 0 || dispatchedCount > 0) {
+        int retryDispatchCount = jobStore.dispatchReadyRetries(now, properties.batchSize());
+        int queuedRedispatchCount = jobStore.redispatchStaleQueued(now, properties.batchSize());
+        if (staleCount > 0 || retryDispatchCount > 0 || queuedRedispatchCount > 0) {
             log.info(
-                    "Capture job recovery cycle: staleRecovered={}, retriesDispatched={}",
+                    "Capture job recovery cycle: staleRecovered={}, retriesDispatched={}, queuedRedispatched={}",
                     staleCount,
-                    dispatchedCount
+                    retryDispatchCount,
+                    queuedRedispatchCount
             );
         }
     }

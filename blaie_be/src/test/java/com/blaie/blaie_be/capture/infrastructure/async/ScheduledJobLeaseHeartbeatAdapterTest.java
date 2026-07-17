@@ -36,7 +36,7 @@ class ScheduledJobLeaseHeartbeatAdapterTest {
                 eq(NOW.plusSeconds(10)),
                 eq(Duration.ofSeconds(10))
         );
-        when(jobStore.extendLease(any(), any(), any())).thenReturn(true);
+        when(jobStore.extendLease(any(), any(), any(Integer.class), any(Integer.class), any())).thenReturn(true);
         ScheduledJobLeaseHeartbeatAdapter adapter = new ScheduledJobLeaseHeartbeatAdapter(
                 jobStore,
                 properties,
@@ -44,11 +44,11 @@ class ScheduledJobLeaseHeartbeatAdapterTest {
                 scheduler
         );
 
-        var heartbeat = adapter.start(jobId, "worker-1");
+        var heartbeat = adapter.start(jobId, "worker-1", 2, 3);
         heartbeatTask.getValue().run();
         heartbeat.stop();
 
-        verify(jobStore).extendLease(jobId, "worker-1", NOW.plusSeconds(30));
+        verify(jobStore).extendLease(jobId, "worker-1", 2, 3, NOW.plusSeconds(30));
         verify(scheduledFuture).cancel(false);
         assertThat(properties.heartbeatInterval()).isLessThan(properties.leaseDuration());
     }
