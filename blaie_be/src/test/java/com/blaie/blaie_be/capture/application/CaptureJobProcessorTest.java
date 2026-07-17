@@ -214,6 +214,26 @@ class CaptureJobProcessorTest {
             public Duration dispatchRetryDelay(int dispatchGeneration) {
                 return Duration.ofSeconds(30);
             }
+
+            @Override
+            public int maxActiveJobsPerUser() {
+                return 10;
+            }
+
+            @Override
+            public int maxActiveJobsTotal() {
+                return 1_000;
+            }
+
+            @Override
+            public Duration maxOldestQueuedAge() {
+                return Duration.ofMinutes(5);
+            }
+
+            @Override
+            public Duration admissionRetryAfter() {
+                return Duration.ofSeconds(30);
+            }
         };
         return new CaptureJobProcessor(
                 store,

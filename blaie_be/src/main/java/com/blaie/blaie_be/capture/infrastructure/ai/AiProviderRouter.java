@@ -19,8 +19,13 @@ public class AiProviderRouter implements TextClassifierPort {
     private static final Logger log = LoggerFactory.getLogger(AiProviderRouter.class);
     private final Map<String, TextClassifierProvider> providers;
     private final AiProviderProperties properties;
+    private final ProviderConcurrencyLimiter concurrencyLimiter;
 
-    public AiProviderRouter(List<TextClassifierProvider> providers, AiProviderProperties properties) {
+    public AiProviderRouter(
+            List<TextClassifierProvider> providers,
+            AiProviderProperties properties,
+            ProviderConcurrencyLimiter concurrencyLimiter
+    ) {
         Map<String, TextClassifierProvider> indexed = new LinkedHashMap<>();
         for (TextClassifierProvider provider : providers) {
             String providerId = normalize(provider.providerId());
@@ -30,6 +35,7 @@ public class AiProviderRouter implements TextClassifierPort {
         }
         this.providers = Map.copyOf(indexed);
         this.properties = properties;
+        this.concurrencyLimiter = concurrencyLimiter;
     }
 
     @Override
@@ -42,7 +48,7 @@ public class AiProviderRouter implements TextClassifierPort {
                 lastProviderTerminalFailure = providerNotConfigured(providerId);
                 continue;
             }
-            try {
+            try (ProviderConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire(providerId)) {
                 return provider.classify(text);
             } catch (TextClassificationException exception) {
                 TextClassificationFailureClass failureClass = exception.failureClass();

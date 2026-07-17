@@ -4,6 +4,7 @@ import com.blaie.blaie_be.capture.application.port.TextClassifierProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -13,6 +14,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AiProviderRouterTest {
+    private static final ProviderConcurrencyLimiter NO_OP_LIMITER = providerId -> () -> { };
+
     @Test
     void retryablePrimaryFailureFallsBackToNextConfiguredProvider() {
         CaptureAnalysis expected = analysis("fallback");
@@ -170,15 +173,116 @@ class AiProviderRouterTest {
                 });
     }
 
+    @Test
+    void providerCallIsWrappedByItsConcurrencyPermit() {
+        List<String> lifecycle = new ArrayList<>();
+        ProviderConcurrencyLimiter limiter = providerId -> {
+            lifecycle.add("acquire:" + providerId);
+            return () -> lifecycle.add("release:" + providerId);
+        };
+        AiProviderRouter router = router(
+                List.of(provider("primary", text -> {
+                    lifecycle.add("classify:primary");
+                    return analysis("primary");
+                })),
+                limiter,
+                "primary"
+        );
+
+        router.classify("Buy milk");
+
+        assertThat(lifecycle).containsExactly(
+                "acquire:primary",
+                "classify:primary",
+                "release:primary"
+        );
+    }
+
+    @Test
+    void providerPermitIsReleasedBeforeFallbackIsAcquired() {
+        List<String> lifecycle = new ArrayList<>();
+        ProviderConcurrencyLimiter limiter = providerId -> {
+            lifecycle.add("acquire:" + providerId);
+            return () -> lifecycle.add("release:" + providerId);
+        };
+        AiProviderRouter router = router(
+                List.of(
+                        provider("primary", text -> {
+                            lifecycle.add("classify:primary");
+                            throw failure(
+                                    "ai_provider_unavailable",
+                                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+                            );
+                        }),
+                        provider("fallback", text -> {
+                            lifecycle.add("classify:fallback");
+                            return analysis("fallback");
+                        })
+                ),
+                limiter,
+                "primary",
+                "fallback"
+        );
+
+        router.classify("Buy milk");
+
+        assertThat(lifecycle).containsExactly(
+                "acquire:primary",
+                "classify:primary",
+                "release:primary",
+                "acquire:fallback",
+                "classify:fallback",
+                "release:fallback"
+        );
+    }
+
+    @Test
+    void concurrencyBackendFailureStopsTheProviderRoute() {
+        AtomicInteger providerCalls = new AtomicInteger();
+        TextClassificationException backendFailure = failure(
+                "ai_concurrency_backend_unavailable",
+                TextClassificationFailureClass.SYSTEM_RETRYABLE
+        );
+        AiProviderRouter router = router(
+                List.of(
+                        provider("primary", text -> {
+                            providerCalls.incrementAndGet();
+                            return analysis("primary");
+                        }),
+                        provider("fallback", text -> {
+                            providerCalls.incrementAndGet();
+                            return analysis("fallback");
+                        })
+                ),
+                providerId -> {
+                    throw backendFailure;
+                },
+                "primary",
+                "fallback"
+        );
+
+        assertThatThrownBy(() -> router.classify("Buy milk")).isSameAs(backendFailure);
+        assertThat(providerCalls).hasValue(0);
+    }
+
     private AiProviderRouter router(
             List<TextClassifierProvider> providers,
+            String primary,
+            String... fallbacks
+    ) {
+        return router(providers, NO_OP_LIMITER, primary, fallbacks);
+    }
+
+    private AiProviderRouter router(
+            List<TextClassifierProvider> providers,
+            ProviderConcurrencyLimiter limiter,
             String primary,
             String... fallbacks
     ) {
         AiProviderProperties properties = new AiProviderProperties();
         properties.setProvider(primary);
         properties.setFallbackProviders(List.of(fallbacks));
-        return new AiProviderRouter(providers, properties);
+        return new AiProviderRouter(providers, properties, limiter);
     }
 
     private CaptureAnalysis analysis(String provider) {

@@ -16,4 +16,12 @@ public interface CaptureProcessingSettingsPort {
     Duration retryDelay(int failedAttemptCount);
 
     Duration dispatchRetryDelay(int dispatchGeneration);
+
+    int maxActiveJobsPerUser();
+
+    int maxActiveJobsTotal();
+
+    Duration maxOldestQueuedAge();
+
+    Duration admissionRetryAfter();
 }

@@ -48,6 +48,11 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
     private int eventCorePoolSize = 1;
     private int eventMaxPoolSize = 2;
     private int eventQueueCapacity = 100;
+    private int schedulerPoolSize = 1;
+    private int maxActiveJobsPerUser = 10;
+    private int maxActiveJobsTotal = 1_000;
+    private Duration maxOldestQueuedAge = Duration.ofMinutes(5);
+    private Duration admissionRetryAfter = Duration.ofSeconds(30);
 
     @Override
     public boolean acceptAsyncEnabled() {
@@ -90,6 +95,26 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
         }
         int index = Math.max(0, Math.min(dispatchGeneration - 1, dispatchRetryDelays.size() - 1));
         return dispatchRetryDelays.get(index);
+    }
+
+    @Override
+    public int maxActiveJobsPerUser() {
+        return maxActiveJobsPerUser;
+    }
+
+    @Override
+    public int maxActiveJobsTotal() {
+        return maxActiveJobsTotal;
+    }
+
+    @Override
+    public Duration maxOldestQueuedAge() {
+        return maxOldestQueuedAge;
+    }
+
+    @Override
+    public Duration admissionRetryAfter() {
+        return admissionRetryAfter;
     }
 
     public String streamKey() {
@@ -176,6 +201,10 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
         return eventQueueCapacity;
     }
 
+    public int schedulerPoolSize() {
+        return schedulerPoolSize;
+    }
+
     @AssertTrue(message = "capture processing configuration must use positive limits and durations")
     public boolean isConfigurationValid() {
         return maxAttempts > 0
@@ -204,7 +233,12 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
                 && heartbeatPoolSize > 0
                 && eventCorePoolSize > 0
                 && eventMaxPoolSize >= eventCorePoolSize
-                && eventQueueCapacity >= 0;
+                && eventQueueCapacity >= 0
+                && schedulerPoolSize > 0
+                && maxActiveJobsPerUser > 0
+                && maxActiveJobsTotal >= maxActiveJobsPerUser
+                && maxOldestQueuedAge != null && maxOldestQueuedAge.isPositive()
+                && admissionRetryAfter != null && admissionRetryAfter.isPositive();
     }
 
     @AssertTrue(message = "capture acceptance and recovery require the durable publisher")
@@ -323,5 +357,25 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
 
     public void setEventQueueCapacity(int eventQueueCapacity) {
         this.eventQueueCapacity = eventQueueCapacity;
+    }
+
+    public void setSchedulerPoolSize(int schedulerPoolSize) {
+        this.schedulerPoolSize = schedulerPoolSize;
+    }
+
+    public void setMaxActiveJobsPerUser(int maxActiveJobsPerUser) {
+        this.maxActiveJobsPerUser = maxActiveJobsPerUser;
+    }
+
+    public void setMaxActiveJobsTotal(int maxActiveJobsTotal) {
+        this.maxActiveJobsTotal = maxActiveJobsTotal;
+    }
+
+    public void setMaxOldestQueuedAge(Duration maxOldestQueuedAge) {
+        this.maxOldestQueuedAge = maxOldestQueuedAge;
+    }
+
+    public void setAdmissionRetryAfter(Duration admissionRetryAfter) {
+        this.admissionRetryAfter = admissionRetryAfter;
     }
 }

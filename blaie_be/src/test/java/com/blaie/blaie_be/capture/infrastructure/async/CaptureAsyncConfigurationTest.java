@@ -1,5 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.async;
 
+import com.blaie.blaie_be.capture.infrastructure.ai.AiProviderConcurrencyConfiguration;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -9,12 +10,38 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 class CaptureAsyncConfigurationTest {
+
+    @Test
+    void scheduledTriggersUseTheirOwnConventionalSchedulerBean() throws Exception {
+        CaptureProcessingProperties properties = new CaptureProcessingProperties();
+        properties.setSchedulerPoolSize(1);
+        CaptureAsyncConfiguration configuration = new CaptureAsyncConfiguration();
+        Bean bean = CaptureAsyncConfiguration.class
+                .getDeclaredMethod("captureTaskScheduler", CaptureProcessingProperties.class)
+                .getAnnotation(Bean.class);
+        ThreadPoolTaskScheduler scheduler = configuration.captureTaskScheduler(properties);
+        scheduler.initialize();
+        CompletableFuture<String> threadName = new CompletableFuture<>();
+
+        try {
+            scheduler.execute(() -> threadName.complete(Thread.currentThread().getName()));
+
+            assertThat(bean.name()).containsExactly(CaptureAsyncConfiguration.TASK_SCHEDULER);
+            assertThat(threadName.get(1, TimeUnit.SECONDS)).startsWith("capture-scheduler-");
+            assertThat(CaptureAsyncConfiguration.TASK_SCHEDULER)
+                    .isNotEqualTo(CaptureAsyncConfiguration.HEARTBEAT_SCHEDULER)
+                    .isNotEqualTo(AiProviderConcurrencyConfiguration.RENEWAL_SCHEDULER);
+        } finally {
+            scheduler.shutdown();
+        }
+    }
 
     @Test
     void jobExecutorIsBoundedAndUsesDedicatedWorkerThreads() throws Exception {

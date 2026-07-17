@@ -8,6 +8,7 @@ import com.blaie.blaie_be.core.security.SecurityCorsProperties;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -86,6 +87,23 @@ public class SecurityConfig {
     }
 
     @Bean
+    FilterRegistrationBean<AuthRequestFilter> authRequestFilterRegistration(AuthRequestFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(RateLimitFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    FilterRegistrationBean<EmailVerificationRequiredFilter> emailVerificationFilterRegistration(
+            EmailVerificationRequiredFilter filter
+    ) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
     CookieCsrfTokenRepository csrfTokenRepository(AuthProperties authProperties) {
         CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         repository.setCookiePath("/");
@@ -145,5 +163,11 @@ public class SecurityConfig {
             }
         }
         return false;
+    }
+
+    private <T extends jakarta.servlet.Filter> FilterRegistrationBean<T> securityChainOnly(T filter) {
+        FilterRegistrationBean<T> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 }

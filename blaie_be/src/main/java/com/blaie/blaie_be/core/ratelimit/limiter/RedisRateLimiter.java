@@ -83,7 +83,7 @@ public class RedisRateLimiter implements RateLimiter {
 
     private long longAt(List<?> result, int index) {
         if (result == null || result.size() <= index || !(result.get(index) instanceof Number number)) {
-            return 0L;
+            throw new IllegalStateException("Redis rate limit script returned an invalid result");
         }
         return number.longValue();
     }

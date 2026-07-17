@@ -2,6 +2,7 @@ package com.blaie.blaie_be.core.ratelimit.config;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,10 @@ public class RateLimitProperties {
 
     @NotBlank
     private String keyPrefix = "blaie:rl";
+
+    @NotBlank
+    @Size(min = 32, message = "Rate limit subject HMAC secret must contain at least 32 characters")
+    private String subjectHmacSecret;
 
     @Valid
     private RateLimitPolicy authLogin = new RateLimitPolicy(
@@ -118,6 +123,14 @@ public class RateLimitProperties {
 
     public void setKeyPrefix(String keyPrefix) {
         this.keyPrefix = keyPrefix;
+    }
+
+    public String subjectHmacSecret() {
+        return subjectHmacSecret;
+    }
+
+    public void setSubjectHmacSecret(String subjectHmacSecret) {
+        this.subjectHmacSecret = subjectHmacSecret;
     }
 
     public RateLimitPolicy authLogin() {

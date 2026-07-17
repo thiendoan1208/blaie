@@ -26,7 +26,13 @@ create duplicate captures.
 - Provider timeout/429/5xx and invalid structured output permit fallback and automatic retry. Provider-local
   configuration/rejection failures permit fallback but are terminal for the current job attempt. Content-policy
   failures stop fallback and are terminal.
-- Capture submit/retry rate limits use hashed user id + IP and fail closed when Redis is unavailable.
+- Capture submit/retry rate limits use HMAC-SHA-256 pseudonyms of user id + IP and fail closed when Redis is
+  unavailable. The security-chain registration is the only servlet registration for these filters, preserving
+  authentication -> rate limit -> email-verification ordering.
+- PostgreSQL serializes admission for new and manually retried jobs. Per-user active jobs, global active jobs and
+  oldest queued age bound how much work the system accepts before it writes another capture.
+- Redis provides a distributed leased semaphore per AI provider. Semaphore saturation waits for that provider and
+  does not itself trigger fallback or consume another provider attempt.
 - Operational logs include job/capture ids, attempts, safe error codes, provider/model and latency, never raw text.
 - Quota/payment usage accounting is explicitly deferred. Capture-specific Redis rate limiting is included.
 
@@ -122,6 +128,61 @@ worker and one recovery loop cluster-wide whenever asynchronous capture is accep
 When acceptance is disabled, POST /api/v1/captures/text and POST /api/v1/captures/{captureId}/retry fail with 503
 CAPTURE_PROCESSING_UNAVAILABLE before capture/job persistence. Read endpoints remain available, including capture
 status restoration and Inbox reads. The flags are startup configuration, not runtime traffic switches.
+
+## Backpressure and provider concurrency
+
+Admission and HTTP rate limiting solve different problems. Redis HTTP rate limits reject short request bursts. The
+database admission guard bounds durable work that has already been accepted but is not terminal. Quota/payment
+accounting remains deferred.
+
+For every new logical job or permitted manual retry, the workflow locks the singleton capture-admission row inside
+its transaction. While holding that lock it evaluates:
+
+- the current user's jobs in queued, processing or retry_wait;
+- all jobs in those active states; and
+- the age of the oldest queued job, measured from available_at for its current queue cycle.
+
+At the configured per-user boundary the API returns 429 TOO_MANY_ACTIVE_JOBS. At the global boundary or queued-age
+threshold it returns 503 CAPTURE_PROCESSING_OVERLOADED. Both include a configurable Retry-After. The checks and the
+new active transition share one transaction, preventing concurrent accepted requests from writing past the bound.
+Concurrent worker completion may cause a conservative temporary rejection, but cannot create an over-admission
+race. A rejection rolls back without a capture, idempotency key, job mutation or outbox publication.
+
+Idempotency and ownership semantics take precedence over capacity. POST resolves a matching existing key again
+after acquiring the admission lock, so a lost-response replay returns its original capture even when capacity is
+full. A same-key payload conflict remains 409. Retry validates ownership and terminal policy before revealing queue
+health, then rechecks locked state before changing the dead job to queued.
+
+The singleton lock is added by an additive migration. During a rolling deployment, old binaries do not acquire it;
+operators must drain old writers before relying on strict limits. Terminal worker transitions do not require the
+lock because they only reduce active work.
+
+Scheduled poll/recovery/cleanup triggers, database job heartbeats and provider-permit renewals use three dedicated,
+separately sized scheduler pools. A slow trigger therefore cannot delay either lease-safety loop.
+
+Before each real provider call, the router acquires a provider-specific permit from a Redis sorted set. One atomic
+Lua operation uses Redis server time to remove expired owners and install a unique leased owner only when the
+configured global limit has room. While the provider call is active, a dedicated bounded scheduler renews that
+exact owner token with another Redis-time Lua operation. The renewal interval is at most one third of the lease,
+leaving room for a delayed tick. The permit cancels renewal and releases its owner in finally; process failure stops
+renewal and is recovered by lease expiry. A stale owner cannot renew or release a replacement owner's permit.
+
+The worker's database heartbeat continues while it waits. Waiting for provider capacity is not a provider failure,
+does not spill traffic into a fallback provider and does not consume an additional attempt. Real provider failures
+continue to use the failure taxonomy and ordered fallback policy above. An acquire/scheduling backend failure is
+treated as SYSTEM_RETRYABLE so an unbounded provider call is never started. A transient renewal failure is retried
+on the next scheduled tick; if Redis reports that ownership is already lost, further renewal stops and the incident
+is logged. The base lease should still exceed the normal provider timeout as a second safety margin against a
+prolonged Redis or scheduler outage. Permit usage/wait/renewal metrics and dynamic provider health are deferred to
+the observability and multi-provider commits.
+
+Rate-limit Redis subjects no longer use a plain digest. A secret-keyed HMAC prevents offline enumeration of
+low-entropy identifiers if Redis keys are exposed. Production should provide a dedicated
+BLAIE_RATE_LIMIT_SUBJECT_HMAC_SECRET; compatibility currently falls back to the access-token secret. Rotating this
+secret changes the keyspace and effectively resets counters, whose old keys expire within their configured window.
+The current capture policy intentionally retains one composite user+IP bucket, fixed windows and forwarded-header
+trust disabled. Independent IP/user buckets, trusted-proxy configuration and alternative algorithms require real
+deployment topology and traffic evidence and are not part of this decision.
 
 ## Consequences
 

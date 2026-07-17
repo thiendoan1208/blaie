@@ -19,6 +19,11 @@ class CaptureProcessingPropertiesTest {
         assertThat(properties.dispatchRetryDelay(99)).isEqualTo(Duration.ofMinutes(10));
         assertThat(properties.streamRetention()).isEqualTo(Duration.ofHours(24));
         assertThat(properties.streamCleanupInterval()).isEqualTo(Duration.ofHours(1));
+        assertThat(properties.schedulerPoolSize()).isEqualTo(1);
+        assertThat(properties.maxActiveJobsPerUser()).isEqualTo(10);
+        assertThat(properties.maxActiveJobsTotal()).isEqualTo(1_000);
+        assertThat(properties.maxOldestQueuedAge()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(properties.admissionRetryAfter()).isEqualTo(Duration.ofSeconds(30));
     }
 
     @Test
@@ -56,6 +61,39 @@ class CaptureProcessingPropertiesTest {
 
         properties.setStreamRetention(Duration.ofHours(1));
         properties.setStreamCleanupInterval(Duration.ZERO);
+        assertThat(properties.isConfigurationValid()).isFalse();
+    }
+
+    @Test
+    void scheduledTriggerPoolMustBePositive() {
+        CaptureProcessingProperties properties = new CaptureProcessingProperties();
+        properties.setSchedulerPoolSize(0);
+
+        assertThat(properties.isConfigurationValid()).isFalse();
+
+        properties.setSchedulerPoolSize(1);
+        assertThat(properties.isConfigurationValid()).isTrue();
+    }
+
+    @Test
+    void admissionLimitsAndDurationsMustBePositive() {
+        CaptureProcessingProperties properties = new CaptureProcessingProperties();
+        properties.setMaxActiveJobsPerUser(0);
+        assertThat(properties.isConfigurationValid()).isFalse();
+
+        properties.setMaxActiveJobsPerUser(10);
+        properties.setMaxActiveJobsTotal(0);
+        assertThat(properties.isConfigurationValid()).isFalse();
+
+        properties.setMaxActiveJobsTotal(9);
+        assertThat(properties.isConfigurationValid()).isFalse();
+
+        properties.setMaxActiveJobsTotal(10);
+        properties.setMaxOldestQueuedAge(Duration.ZERO);
+        assertThat(properties.isConfigurationValid()).isFalse();
+
+        properties.setMaxOldestQueuedAge(Duration.ofMinutes(1));
+        properties.setAdmissionRetryAfter(Duration.ZERO);
         assertThat(properties.isConfigurationValid()).isFalse();
     }
 }

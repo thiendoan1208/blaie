@@ -48,10 +48,16 @@ Behavior:
 - Validate auth, email verification, capture acceptance, rate limit, body and idempotency key.
 - If asynchronous capture acceptance is disabled for deployment/drain mode, reject with
   CAPTURE_PROCESSING_UNAVAILABLE before creating a capture, job or idempotency record.
-- The rate-limit subject combines hashed current user id and client IP. If its Redis backend is unavailable, reject
-  with SERVICE_UNAVAILABLE instead of creating an unprotected AI job.
-- In one database transaction, create the processing capture, queued processing job, idempotency record and
-  transactional application event.
+- The rate-limit subject combines HMAC-SHA-256 pseudonyms of the current user id and client IP. If its Redis backend
+  is unavailable, reject with SERVICE_UNAVAILABLE instead of creating an unprotected AI job.
+- Resolve an existing Idempotency-Key before capacity admission. A same-payload replay still returns its existing
+  capture even while the user or system is at capacity; a conflicting replay still returns IDEMPOTENCY_KEY_REUSED.
+- For a new request, serialize admission in PostgreSQL and count queued, processing and retry_wait jobs. Reject with
+  TOO_MANY_ACTIVE_JOBS when the current user is at their active-job limit. Reject with
+  CAPTURE_PROCESSING_OVERLOADED when the global active-job limit is reached or the oldest queued work exceeds its
+  configured age threshold. Both responses include Retry-After and create no capture, key, job or outbox event.
+- After admission succeeds, create the processing capture, queued processing job, idempotency record and
+  transactional application event in the same database transaction.
 - Do not call the AI provider in the HTTP request.
 - Reusing the same key with the same normalized request returns the existing capture.
 - Reusing the same key with another request returns IDEMPOTENCY_KEY_REUSED.
@@ -104,6 +110,11 @@ existing logical job starts a new retry generation. The policy is checked while 
 a rejected retry does not delete items, mutate retryGeneration or publish another job. If asynchronous acceptance
 is disabled, reject with CAPTURE_PROCESSING_UNAVAILABLE before changing capture or job state.
 
+A permitted dead job must pass the same serialized active-job and queue-health admission checks before it is
+requeued. Capacity rejection leaves the capture failed, leaves the retry generation unchanged and publishes no
+event. Ownership and retry-policy checks retain precedence, so a missing/foreign capture still returns 404 and a
+non-retryable capture still returns 409 without disclosing queue state.
+
 A dead job whose failure is content-terminal (for example sensitive_credential_detected) cannot be retried with
 the same original text and returns CAPTURE_NOT_RETRYABLE. Missing/foreign captures continue to return the same
 CAPTURE_NOT_FOUND response, so retry policy does not disclose ownership.
@@ -118,5 +129,10 @@ Errors:
        CAPTURE_NOT_RETRYABLE - capture/job is not terminal or its terminal policy forbids manual retry
   422  VALIDATION_ERROR
   429  RATE_LIMITED
+       TOO_MANY_ACTIVE_JOBS - the current user already has the configured number of active jobs
   503  CAPTURE_PROCESSING_UNAVAILABLE - deployment is not accepting new asynchronous capture work
+       CAPTURE_PROCESSING_OVERLOADED - global queue depth or oldest queued age has crossed its admission threshold
        SERVICE_UNAVAILABLE - a required fail-closed dependency such as the capture rate-limit backend is unavailable
+
+RATE_LIMITED, TOO_MANY_ACTIVE_JOBS and CAPTURE_PROCESSING_OVERLOADED include Retry-After. The first is short-term
+HTTP abuse protection; the latter two are asynchronous-work backpressure. None is a billing or subscription quota.

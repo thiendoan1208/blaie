@@ -13,8 +13,20 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @EnableScheduling
 public class CaptureAsyncConfiguration {
     public static final String JOB_EXECUTOR = "captureJobExecutor";
+    public static final String TASK_SCHEDULER = "taskScheduler";
     public static final String HEARTBEAT_SCHEDULER = "captureJobHeartbeatScheduler";
     public static final String EVENT_EXECUTOR = "captureEventExecutor";
+
+    @Bean(name = TASK_SCHEDULER)
+    ThreadPoolTaskScheduler captureTaskScheduler(CaptureProcessingProperties properties) {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(properties.schedulerPoolSize());
+        scheduler.setThreadNamePrefix("capture-scheduler-");
+        scheduler.setRemoveOnCancelPolicy(true);
+        scheduler.setWaitForTasksToCompleteOnShutdown(false);
+        scheduler.setAcceptTasksAfterContextClose(false);
+        return scheduler;
+    }
 
     @Bean(name = HEARTBEAT_SCHEDULER)
     TaskScheduler captureJobHeartbeatScheduler(CaptureProcessingProperties properties) {

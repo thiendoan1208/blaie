@@ -29,6 +29,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
     private final CaptureIdempotencyKeyRepository idempotencyRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final CaptureProcessingSettingsPort settings;
+    private final JpaCaptureAdmissionGuard admissionGuard;
 
     public JpaCaptureWorkflowAdapter(
             CaptureRepository captureRepository,
@@ -36,7 +37,8 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
             ProcessingJobRepository jobRepository,
             CaptureIdempotencyKeyRepository idempotencyRepository,
             ApplicationEventPublisher eventPublisher,
-            CaptureProcessingSettingsPort settings
+            CaptureProcessingSettingsPort settings,
+            JpaCaptureAdmissionGuard admissionGuard
     ) {
         this.captureRepository = captureRepository;
         this.captureItemRepository = captureItemRepository;
@@ -44,6 +46,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
         this.idempotencyRepository = idempotencyRepository;
         this.eventPublisher = eventPublisher;
         this.settings = settings;
+        this.admissionGuard = admissionGuard;
     }
 
     @Override
@@ -63,6 +66,15 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
         if (existing.isPresent()) {
             return resolveExisting(existing.get(), requestHash, userId);
         }
+
+        admissionGuard.acquireGlobalMutex();
+        idempotencyRepository.deleteExpired(userId, idempotencyKey, now);
+        existing = idempotencyRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey);
+        if (existing.isPresent()) {
+            return resolveExisting(existing.get(), requestHash, userId);
+        }
+
+        admissionGuard.requireCapacity(userId, now);
 
         CaptureEntity capture = captureRepository.saveAndFlush(CaptureEntity.processing(userId, originalText));
         int inserted = idempotencyRepository.insertIfAbsent(
@@ -135,6 +147,9 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
                 || !job.manualRetryAllowed()) {
             throw new AppException(ErrorCode.CAPTURE_NOT_RETRYABLE);
         }
+
+        admissionGuard.acquireGlobalMutex();
+        admissionGuard.requireCapacity(userId, now);
 
         captureItemRepository.deleteByCaptureId(captureId);
         capture.restart();

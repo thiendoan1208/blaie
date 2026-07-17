@@ -3,12 +3,14 @@ package com.blaie.blaie_be.core.ratelimit.config;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
+import org.hibernate.validator.constraints.time.DurationMin;
 
 public class RateLimitWindow {
     @Min(1)
     private int permitLimit;
 
     @NotNull
+    @DurationMin(seconds = 1)
     private Duration window;
 
     public RateLimitWindow() {
