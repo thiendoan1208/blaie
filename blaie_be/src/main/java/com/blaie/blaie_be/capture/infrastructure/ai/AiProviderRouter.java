@@ -4,6 +4,7 @@ import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,34 +34,51 @@ public class AiProviderRouter implements TextClassifierPort {
 
     @Override
     public CaptureAnalysis classify(String text) {
-        TextClassificationException lastRetryableFailure = null;
+        TextClassificationException lastProviderRetryableFailure = null;
+        TextClassificationException lastProviderTerminalFailure = null;
         for (String providerId : route()) {
             TextClassifierProvider provider = providers.get(providerId);
             if (provider == null) {
+                lastProviderTerminalFailure = providerNotConfigured(providerId);
                 continue;
             }
             try {
                 return provider.classify(text);
             } catch (TextClassificationException exception) {
-                if (!exception.retryable()) {
+                TextClassificationFailureClass failureClass = exception.failureClass();
+                if (!failureClass.providerFallbackAllowed()) {
                     throw exception;
                 }
                 log.warn(
-                        "AI text provider attempt failed: provider={}, errorCode={}, retryable={}",
+                        "AI text provider attempt failed: provider={}, errorCode={}, failureClass={}",
                         providerId,
                         exception.failureCode(),
-                        true
+                        failureClass.value()
                 );
-                lastRetryableFailure = exception;
+                if (failureClass == TextClassificationFailureClass.PROVIDER_RETRYABLE) {
+                    lastProviderRetryableFailure = exception;
+                } else {
+                    lastProviderTerminalFailure = exception;
+                }
             }
         }
-        if (lastRetryableFailure != null) {
-            throw lastRetryableFailure;
+        if (lastProviderRetryableFailure != null) {
+            throw lastProviderRetryableFailure;
         }
-        throw new TextClassificationException(
+        if (lastProviderTerminalFailure != null) {
+            throw lastProviderTerminalFailure;
+        }
+        throw providerNotConfigured("");
+    }
+
+    private TextClassificationException providerNotConfigured(String providerId) {
+        String message = providerId.isBlank()
+                ? "No AI provider is configured"
+                : "AI provider is not configured: " + providerId;
+        return new TextClassificationException(
                 "ai_provider_not_configured",
-                "No configured AI provider is available",
-                false
+                message,
+                TextClassificationFailureClass.PROVIDER_TERMINAL
         );
     }
 

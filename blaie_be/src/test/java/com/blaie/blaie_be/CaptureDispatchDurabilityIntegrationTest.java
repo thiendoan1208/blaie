@@ -10,6 +10,7 @@ import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
 import com.blaie.blaie_be.capture.infrastructure.async.CaptureProcessingProperties;
 import com.blaie.blaie_be.capture.infrastructure.async.RedisCaptureMessageFinalizer;
+import com.blaie.blaie_be.capture.infrastructure.persistence.ProcessingJobRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -65,6 +66,9 @@ class CaptureDispatchDurabilityIntegrationTest {
 
     @Autowired
     private ProcessingJobStorePort jobStore;
+
+    @Autowired
+    private ProcessingJobRepository jobRepository;
 
     @Autowired
     private CaptureJobProcessor processor;
@@ -204,6 +208,11 @@ class CaptureDispatchDurabilityIntegrationTest {
                 userId
         );
         assertDispatchMetadata(jobId, 0, false, false);
+        assertThat(jdbcTemplate.queryForObject(
+                "select last_failure_class is null from processing_jobs where id = ?",
+                Boolean.class,
+                jobId
+        )).isTrue();
 
         // Simulate V11 claim -> retry_wait -> dispatch. V11 never writes V12 columns.
         jdbcTemplate.update(
@@ -221,7 +230,7 @@ class CaptureDispatchDurabilityIntegrationTest {
                 update processing_jobs
                    set status = 'retry_wait', available_at = CURRENT_TIMESTAMP,
                        lease_owner = NULL, lease_expires_at = NULL,
-                       last_error_code = 'provider_unavailable'
+                       last_error_code = 'ai_provider_unavailable'
                  where id = ?
                 """,
                 jobId
@@ -250,11 +259,20 @@ class CaptureDispatchDurabilityIntegrationTest {
                 update processing_jobs
                    set status = 'dead', lease_owner = NULL, lease_expires_at = NULL,
                        completed_at = CURRENT_TIMESTAMP,
-                       last_error_code = 'provider_unavailable'
+                       last_error_code = 'ai_provider_unavailable'
                  where id = ?
                 """,
                 jobId
         );
+
+        // A pre-V13 worker cannot write last_failure_class. The new reader must
+        // still derive the manual-retry policy from its known safe error code.
+        assertThat(jdbcTemplate.queryForObject(
+                "select last_failure_class is null from processing_jobs where id = ?",
+                Boolean.class,
+                jobId
+        )).isTrue();
+        assertThat(jobRepository.findById(jobId).orElseThrow().manualRetryAllowed()).isTrue();
 
         // New binaries clear next_dispatch_at in terminal states. A V11 manual restart must
         // still be accepted, and the reconciler must repair its missing dispatch schedule.
@@ -272,6 +290,7 @@ class CaptureDispatchDurabilityIntegrationTest {
                 """,
                 jobId
         );
+        assertThat(jobRepository.findById(jobId).orElseThrow().manualRetryAllowed()).isFalse();
 
         assertThat(jobStore.redispatchStaleQueued(Instant.now(), 10)).isEqualTo(1);
         assertDispatchMetadata(jobId, 2, true, true);

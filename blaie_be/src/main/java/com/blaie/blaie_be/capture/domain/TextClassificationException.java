@@ -1,37 +1,35 @@
 package com.blaie.blaie_be.capture.domain;
 
+import java.util.Objects;
+
 public class TextClassificationException extends RuntimeException {
     private final String failureCode;
-    private final boolean retryable;
+    private final TextClassificationFailureClass failureClass;
 
-    public TextClassificationException(String failureCode, String message) {
-        this(failureCode, message, true, null);
-    }
-
-    public TextClassificationException(String failureCode, String message, Throwable cause) {
-        this(failureCode, message, true, cause);
-    }
-
-    public TextClassificationException(String failureCode, String message, boolean retryable) {
-        this(failureCode, message, retryable, null);
+    public TextClassificationException(
+            String failureCode,
+            String message,
+            TextClassificationFailureClass failureClass
+    ) {
+        this(failureCode, message, failureClass, null);
     }
 
     public TextClassificationException(
             String failureCode,
             String message,
-            boolean retryable,
+            TextClassificationFailureClass failureClass,
             Throwable cause
     ) {
         super(message, cause);
-        this.failureCode = failureCode;
-        this.retryable = retryable;
+        this.failureCode = Objects.requireNonNull(failureCode, "failureCode");
+        this.failureClass = Objects.requireNonNull(failureClass, "failureClass");
     }
 
     public String failureCode() {
         return failureCode;
     }
 
-    public boolean retryable() {
-        return retryable;
+    public TextClassificationFailureClass failureClass() {
+        return failureClass;
     }
 }

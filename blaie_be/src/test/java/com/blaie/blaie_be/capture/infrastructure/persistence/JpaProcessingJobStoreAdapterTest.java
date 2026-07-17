@@ -3,6 +3,7 @@ package com.blaie.blaie_be.capture.infrastructure.persistence;
 import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -53,6 +54,9 @@ class JpaProcessingJobStoreAdapterTest {
         fixture.adapter.recoverStale(NOW);
 
         assertThat(finalAttempt.status()).isEqualTo("dead");
+        assertThat(finalAttempt.lastFailureClass())
+                .isEqualTo(TextClassificationFailureClass.SYSTEM_RETRYABLE);
+        assertThat(finalAttempt.manualRetryAllowed()).isTrue();
         assertThat(capture.processingStatus()).isEqualTo("failed");
         assertThat(capture.failureCode()).isEqualTo("job_lease_expired");
     }
@@ -101,7 +105,11 @@ class JpaProcessingJobStoreAdapterTest {
         CaptureEntity capture = CaptureEntity.processing(UUID.randomUUID(), "Slow provider response");
         ProcessingJobEntity job = ProcessingJobEntity.queued(capture, 4, NOW, NOW.plusSeconds(30));
         assertThat(job.claim(1, "worker-1", NOW, NOW.plusSeconds(30))).isTrue();
-        job.scheduleRetry("job_lease_expired", NOW.plusSeconds(31));
+        job.scheduleRetry(
+                "job_lease_expired",
+                TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                NOW.plusSeconds(31)
+        );
         job.dispatch(NOW.plusSeconds(31), NOW.plusSeconds(61));
         assertThat(job.claim(2, "worker-2", NOW.plusSeconds(31), NOW.plusSeconds(61))).isTrue();
         Fixture fixture = fixture(List.of());
@@ -140,7 +148,11 @@ class JpaProcessingJobStoreAdapterTest {
                     NOW.minusSeconds(30)
             )).isTrue();
             if (attempt < attempts) {
-                job.scheduleRetry("provider_unavailable", NOW.minusSeconds(50));
+                job.scheduleRetry(
+                        "ai_provider_unavailable",
+                        TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                        NOW.minusSeconds(50)
+                );
                 job.dispatch(NOW.minusSeconds(50), NOW.minusSeconds(20));
             }
         }

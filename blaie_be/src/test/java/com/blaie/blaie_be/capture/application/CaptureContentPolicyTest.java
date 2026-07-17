@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -17,7 +18,7 @@ class CaptureContentPolicyTest {
     }
 
     @Test
-    void credentialLikeTextIsBlockedWithoutRetry() {
+    void credentialLikeTextIsContentTerminalWithoutAnyRetry() {
         assertThatThrownBy(() -> policy.validate("save sk-abcdefghijklmnopqrstuvwxyz123456"))
                 .isInstanceOf(TextClassificationException.class)
                 .satisfies(exception -> {
@@ -25,7 +26,10 @@ class CaptureContentPolicyTest {
                             (TextClassificationException) exception;
                     assertThat(classificationException.failureCode())
                             .isEqualTo("sensitive_credential_detected");
-                    assertThat(classificationException.retryable()).isFalse();
+                    assertThat(classificationException.failureClass())
+                            .isEqualTo(TextClassificationFailureClass.CONTENT_TERMINAL);
+                    assertThat(classificationException.failureClass().automaticRetryAllowed()).isFalse();
+                    assertThat(classificationException.failureClass().manualRetryAllowed()).isFalse();
                 });
     }
 }

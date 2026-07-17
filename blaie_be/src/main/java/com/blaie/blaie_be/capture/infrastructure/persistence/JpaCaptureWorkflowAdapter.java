@@ -131,7 +131,8 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
         CaptureEntity capture = captureRepository.findLockedByIdAndUserId(captureId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_NOT_FOUND));
         if (!ProcessingStatus.FAILED.value().equals(capture.processingStatus())
-                || !ProcessingJobStatus.DEAD.value().equals(job.status())) {
+                || !ProcessingJobStatus.DEAD.value().equals(job.status())
+                || !job.manualRetryAllowed()) {
             throw new AppException(ErrorCode.CAPTURE_NOT_RETRYABLE);
         }
 
@@ -176,7 +177,8 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
                 .toList();
         boolean canRetry = ProcessingStatus.FAILED.value().equals(capture.processingStatus())
                 && job != null
-                && ProcessingJobStatus.DEAD.value().equals(job.status());
+                && ProcessingJobStatus.DEAD.value().equals(job.status())
+                && job.manualRetryAllowed();
         return new CaptureResult(
                 capture.id(),
                 capture.originalText(),

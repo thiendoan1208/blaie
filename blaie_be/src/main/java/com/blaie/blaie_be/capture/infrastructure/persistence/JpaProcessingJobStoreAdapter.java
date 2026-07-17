@@ -8,6 +8,7 @@ import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -129,6 +130,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             int attemptCount,
             int retryGeneration,
             String errorCode,
+            TextClassificationFailureClass failureClass,
             Instant availableAt,
             Instant now
     ) {
@@ -136,7 +138,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
         if (job == null || !job.ownsLease(workerId, attemptCount, retryGeneration)) {
             return false;
         }
-        job.scheduleRetry(errorCode, availableAt);
+        job.scheduleRetry(errorCode, failureClass, availableAt);
         return true;
     }
 
@@ -148,6 +150,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             int attemptCount,
             int retryGeneration,
             String errorCode,
+            TextClassificationFailureClass failureClass,
             Instant now
     ) {
         ProcessingJobEntity job = jobRepository.findLockedById(jobId).orElse(null);
@@ -156,7 +159,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
         }
         CaptureEntity capture = captureRepository.findLockedById(job.captureId())
                 .orElseThrow(() -> new IllegalStateException("Capture for processing job is missing"));
-        job.dead(errorCode, now);
+        job.dead(errorCode, failureClass, now);
         if (!ProcessingStatus.COMPLETED.value().equals(capture.processingStatus())) {
             capture.fail(errorCode);
             captureItemRepository.deleteByCaptureId(capture.id());
@@ -173,10 +176,18 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             CaptureEntity capture = captureRepository.findLockedById(job.captureId())
                     .orElseThrow(() -> new IllegalStateException("Capture for processing job is missing"));
             if (job.attemptCount() < job.maxAttempts()) {
-                job.scheduleRetry(STALE_JOB_ERROR, now.plus(settings.retryDelay(job.attemptCount())));
+                job.scheduleRetry(
+                        STALE_JOB_ERROR,
+                        TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                        now.plus(settings.retryDelay(job.attemptCount()))
+                );
                 recovered.add(new RecoveredJobResult(job.id(), job.captureId(), false));
             } else {
-                job.dead(STALE_JOB_ERROR, now);
+                job.dead(
+                        STALE_JOB_ERROR,
+                        TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                        now
+                );
                 if (!ProcessingStatus.COMPLETED.value().equals(capture.processingStatus())) {
                     capture.fail(STALE_JOB_ERROR);
                     captureItemRepository.deleteByCaptureId(capture.id());

@@ -7,6 +7,7 @@ import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
@@ -93,11 +94,15 @@ public class CaptureJobProcessor {
             );
             return true;
         } catch (TextClassificationException exception) {
-            handleFailure(job, workerId, safeErrorCode(exception.failureCode()), exception.retryable());
+            Failure failure = safeFailure(exception.failureCode(), exception.failureClass());
+            handleFailure(job, workerId, failure);
             return true;
         } catch (RuntimeException exception) {
             log.error("Unexpected text capture classification failure for job {}", job.id(), exception);
-            handleFailure(job, workerId, UNEXPECTED_ERROR, true);
+            handleFailure(job, workerId, new Failure(
+                    UNEXPECTED_ERROR,
+                    TextClassificationFailureClass.SYSTEM_RETRYABLE
+            ));
             return true;
         } finally {
             heartbeat.stop();
@@ -107,17 +112,18 @@ public class CaptureJobProcessor {
     private void handleFailure(
             ProcessingJobResult job,
             String workerId,
-            String errorCode,
-            boolean retryable
+            Failure failure
     ) {
         Instant now = clock.instant();
-        if (!retryable || job.attemptCount() >= job.maxAttempts()) {
+        if (!failure.failureClass().automaticRetryAllowed()
+                || job.attemptCount() >= job.maxAttempts()) {
             boolean markedDead = jobStore.markDead(
                     job.id(),
                     workerId,
                     job.attemptCount(),
                     job.retryGeneration(),
-                    errorCode,
+                    failure.errorCode(),
+                    failure.failureClass(),
                     now
             );
             if (!markedDead) {
@@ -126,7 +132,7 @@ public class CaptureJobProcessor {
             }
             log.warn(
                     "Capture job marked dead: jobId={}, captureId={}, attempt={}, errorCode={}",
-                    job.id(), job.captureId(), job.attemptCount(), errorCode
+                    job.id(), job.captureId(), job.attemptCount(), failure.errorCode()
             );
             return;
         }
@@ -136,7 +142,8 @@ public class CaptureJobProcessor {
                 workerId,
                 job.attemptCount(),
                 job.retryGeneration(),
-                errorCode,
+                failure.errorCode(),
+                failure.failureClass(),
                 retryAt,
                 now
         );
@@ -146,14 +153,28 @@ public class CaptureJobProcessor {
         }
         log.warn(
                 "Capture job retry scheduled: jobId={}, captureId={}, attempt={}, errorCode={}, availableAt={}",
-                job.id(), job.captureId(), job.attemptCount(), errorCode, retryAt
+                job.id(), job.captureId(), job.attemptCount(), failure.errorCode(), retryAt
         );
     }
 
-    private String safeErrorCode(String errorCode) {
-        if (errorCode == null || !errorCode.matches("[a-z0-9_]{1,100}")) {
-            return UNEXPECTED_ERROR;
+    private Failure safeFailure(
+            String errorCode,
+            TextClassificationFailureClass failureClass
+    ) {
+        if (errorCode == null
+                || !errorCode.matches("[a-z0-9_]{1,100}")
+                || failureClass == null) {
+            return new Failure(
+                    UNEXPECTED_ERROR,
+                    TextClassificationFailureClass.SYSTEM_RETRYABLE
+            );
         }
-        return errorCode;
+        return new Failure(errorCode, failureClass);
+    }
+
+    private record Failure(
+            String errorCode,
+            TextClassificationFailureClass failureClass
+    ) {
     }
 }

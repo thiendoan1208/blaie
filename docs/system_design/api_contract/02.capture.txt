@@ -75,8 +75,16 @@ Response 202:
 GET /api/v1/captures/{captureId}
 
 Returns the current user's capture. When completed, items contains every classified Inbox item. When failed,
-failureCode is a safe application code and canRetry is true. This read remains available when asynchronous
-acceptance is disabled.
+failureCode is a safe application code. canRetry is true only when the durable processing job is dead and its
+terminal failure policy explicitly permits a manual retry; failed does not imply retryable. This read remains
+available when asynchronous acceptance is disabled.
+
+Examples:
+- Provider timeout/429/5xx or invalid structured output exhausted its automatic attempts: canRetry = true.
+- Provider configuration/rejection failure: canRetry = true so the user can retry after the provider is fixed.
+- Sensitive credential or content-policy rejection: canRetry = false because replaying the same original text is
+  unsafe or deterministically fails again.
+- A failed legacy capture without a processing job: canRetry = false.
 
 ----------------------------------------------------------------------
 
@@ -90,9 +98,15 @@ available when asynchronous acceptance is disabled.
 
 POST /api/v1/captures/{captureId}/retry
 
-Requeues a failed capture owned by the current user. The same capture id and original text are reused. The
-capture becomes processing and the existing logical job starts a new retry generation. If asynchronous acceptance
+Requeues a failed capture owned by the current user only when its durable terminal policy permits manual retry.
+The same capture id and original text are reused. The capture becomes processing, canRetry becomes false and the
+existing logical job starts a new retry generation. The policy is checked while the capture/job rows are locked;
+a rejected retry does not delete items, mutate retryGeneration or publish another job. If asynchronous acceptance
 is disabled, reject with CAPTURE_PROCESSING_UNAVAILABLE before changing capture or job state.
+
+A dead job whose failure is content-terminal (for example sensitive_credential_detected) cannot be retried with
+the same original text and returns CAPTURE_NOT_RETRYABLE. Missing/foreign captures continue to return the same
+CAPTURE_NOT_FOUND response, so retry policy does not disclose ownership.
 
 Response 202: Capture response with processingStatus = processing.
 
@@ -100,7 +114,8 @@ Errors:
   400  IDEMPOTENCY_KEY_REQUIRED | IDEMPOTENCY_KEY_INVALID
   403  EMAIL_NOT_VERIFIED
   404  CAPTURE_NOT_FOUND
-  409  IDEMPOTENCY_KEY_REUSED | CAPTURE_NOT_RETRYABLE
+  409  IDEMPOTENCY_KEY_REUSED
+       CAPTURE_NOT_RETRYABLE - capture/job is not terminal or its terminal policy forbids manual retry
   422  VALIDATION_ERROR
   429  RATE_LIMITED
   503  CAPTURE_PROCESSING_UNAVAILABLE - deployment is not accepting new asynchronous capture work

@@ -1,5 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -54,6 +55,9 @@ public class ProcessingJobEntity {
 
     @Column(name = "last_error_code", length = 100)
     private String lastErrorCode;
+
+    @Column(name = "last_failure_class", length = 32)
+    private String lastFailureClass;
 
     @Column(name = "last_dispatched_at")
     private Instant lastDispatchedAt;
@@ -144,16 +148,22 @@ public class ProcessingJobEntity {
         leaseOwner = null;
         leaseExpiresAt = null;
         lastErrorCode = null;
+        lastFailureClass = null;
         completedAt = now;
         nextDispatchAt = null;
     }
 
-    public void scheduleRetry(String errorCode, Instant retryAt) {
+    public void scheduleRetry(
+            String errorCode,
+            TextClassificationFailureClass failureClass,
+            Instant retryAt
+    ) {
         status = "retry_wait";
         availableAt = retryAt;
         leaseOwner = null;
         leaseExpiresAt = null;
         lastErrorCode = errorCode;
+        lastFailureClass = Objects.requireNonNull(failureClass, "failureClass").value();
         completedAt = null;
         nextDispatchAt = null;
     }
@@ -163,11 +173,16 @@ public class ProcessingJobEntity {
         recordDispatch(now, nextDispatchAt);
     }
 
-    public void dead(String errorCode, Instant now) {
+    public void dead(
+            String errorCode,
+            TextClassificationFailureClass failureClass,
+            Instant now
+    ) {
         status = "dead";
         leaseOwner = null;
         leaseExpiresAt = null;
         lastErrorCode = errorCode;
+        lastFailureClass = Objects.requireNonNull(failureClass, "failureClass").value();
         completedAt = now;
         nextDispatchAt = null;
     }
@@ -180,6 +195,7 @@ public class ProcessingJobEntity {
         leaseOwner = null;
         leaseExpiresAt = null;
         lastErrorCode = null;
+        lastFailureClass = null;
         completedAt = null;
         recordDispatch(now, nextDispatchAt);
     }
@@ -239,5 +255,44 @@ public class ProcessingJobEntity {
 
     public Instant nextDispatchAt() {
         return nextDispatchAt;
+    }
+
+    public String lastErrorCode() {
+        return lastErrorCode;
+    }
+
+    public TextClassificationFailureClass lastFailureClass() {
+        if (lastErrorCode == null) {
+            return null;
+        }
+        TextClassificationFailureClass knownClass = knownFailureClass(lastErrorCode);
+        if (knownClass != null) {
+            return knownClass;
+        }
+        if (lastFailureClass != null) {
+            return TextClassificationFailureClass.fromValue(lastFailureClass);
+        }
+        return TextClassificationFailureClass.SYSTEM_RETRYABLE;
+    }
+
+    public boolean manualRetryAllowed() {
+        TextClassificationFailureClass failureClass = lastFailureClass();
+        return "dead".equals(status)
+                && failureClass != null
+                && failureClass.manualRetryAllowed();
+    }
+
+    private TextClassificationFailureClass knownFailureClass(String errorCode) {
+        return switch (errorCode) {
+            case "sensitive_credential_detected", "content_policy_blocked" ->
+                    TextClassificationFailureClass.CONTENT_TERMINAL;
+            case "ai_not_configured", "ai_provider_not_configured", "ai_provider_rejected" ->
+                    TextClassificationFailureClass.PROVIDER_TERMINAL;
+            case "ai_provider_unavailable", "ai_invalid_response" ->
+                    TextClassificationFailureClass.PROVIDER_RETRYABLE;
+            case "job_lease_expired", "unexpected_classification_error" ->
+                    TextClassificationFailureClass.SYSTEM_RETRYABLE;
+            default -> null;
+        };
     }
 }

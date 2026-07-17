@@ -5,6 +5,7 @@ import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import com.blaie.blaie_be.core.request.RequestContextFilter;
 import java.util.Map;
 import java.util.UUID;
@@ -83,6 +84,7 @@ class InboxWebFlowTest {
         jdbcTemplate.execute("delete from refresh_tokens");
         jdbcTemplate.execute("delete from auth_identities");
         jdbcTemplate.execute("delete from users");
+        ClassifierTestConfiguration.ATTEMPTS.clear();
     }
 
     @Test
@@ -231,8 +233,8 @@ class InboxWebFlowTest {
     }
 
     @Test
-    void ownerCanManuallyRetryADeadCaptureWithoutCreatingAnotherCapture() throws Exception {
-        String accessToken = registeredAndVerifiedAccessToken(uniqueValue("inbox-manual-retry"));
+    void sensitiveCredentialFailureCannotBeManuallyRetried() throws Exception {
+        String accessToken = registeredAndVerifiedAccessToken(uniqueValue("secret-no-retry"));
         String text = "Store sk-abcdefghijklmnopqrstuvwxyz123456";
 
         MvcResult capture = mockMvc.perform(post("/api/v1/captures/text")
@@ -246,13 +248,73 @@ class InboxWebFlowTest {
                 .replaceAll(".*\\\"id\\\":\\\"([^\\\"]+)\\\".*", "$1");
         awaitCaptureStatus(captureId, "failed");
 
+        mockMvc.perform(get("/api/v1/captures/{captureId}", captureId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.processingStatus").value("failed"))
+                .andExpect(jsonPath("$.data.failureCode").value("sensitive_credential_detected"))
+                .andExpect(jsonPath("$.data.canRetry").value(false));
+
+        Integer generationBeforeRetry = jdbcTemplate.queryForObject(
+                "select retry_generation from processing_jobs where capture_id = ?",
+                Integer.class,
+                UUID.fromString(captureId)
+        );
+        mockMvc.perform(post("/api/v1/captures/{captureId}/retry", captureId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CAPTURE_NOT_RETRYABLE"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select retry_generation from processing_jobs where capture_id = ?",
+                Integer.class,
+                UUID.fromString(captureId)
+        )).isEqualTo(generationBeforeRetry);
+        assertThat(jdbcTemplate.queryForObject(
+                "select processing_status from captures where id = ?",
+                String.class,
+                UUID.fromString(captureId)
+        )).isEqualTo("failed");
+    }
+
+    @Test
+    void ownerCanRetryProviderTerminalFailureAfterProviderIsCorrected() throws Exception {
+        String accessToken = registeredAndVerifiedAccessToken(uniqueValue("provider-retry"));
+        String text = "MANUAL_RETRY_ONCE_" + UUID.randomUUID();
+
+        MvcResult capture = mockMvc.perform(post("/api/v1/captures/text")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"" + text + "\"}"))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        String captureId = capture.getResponse().getContentAsString()
+                .replaceAll(".*\\\"id\\\":\\\"([^\\\"]+)\\\".*", "$1");
+        awaitCaptureStatus(captureId, "failed");
+
+        mockMvc.perform(get("/api/v1/captures/{captureId}", captureId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.processingStatus").value("failed"))
+                .andExpect(jsonPath("$.data.failureCode").value("ai_not_configured"))
+                .andExpect(jsonPath("$.data.canRetry").value(true));
+
         mockMvc.perform(post("/api/v1/captures/{captureId}/retry", captureId)
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.id").value(captureId))
-                .andExpect(jsonPath("$.data.processingStatus").value("processing"));
+                .andExpect(jsonPath("$.data.processingStatus").value("processing"))
+                .andExpect(jsonPath("$.data.canRetry").value(false));
 
-        awaitCaptureStatus(captureId, "failed");
+        awaitCaptureStatus(captureId, "completed");
+        mockMvc.perform(get("/api/v1/captures/{captureId}", captureId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.processingStatus").value("completed"))
+                .andExpect(jsonPath("$.data.canRetry").value(false))
+                .andExpect(jsonPath("$.data.items[0].category").value("task"));
+
         assertThat(jdbcTemplate.queryForObject(
                 "select retry_generation from processing_jobs where capture_id = ?",
                 Integer.class,
@@ -349,7 +411,16 @@ class InboxWebFlowTest {
                     throw new TextClassificationException(
                             "ai_provider_unavailable",
                             "simulated retryable provider failure",
-                            true
+                            TextClassificationFailureClass.PROVIDER_RETRYABLE
+                    );
+                }
+                if (text.startsWith("MANUAL_RETRY_ONCE_")
+                        && ATTEMPTS.computeIfAbsent(text, ignored -> new java.util.concurrent.atomic.AtomicInteger())
+                        .incrementAndGet() == 1) {
+                    throw new TextClassificationException(
+                            "ai_not_configured",
+                            "simulated provider configuration failure",
+                            TextClassificationFailureClass.PROVIDER_TERMINAL
                     );
                 }
                 java.util.List<ClassifiedTextItem> items = "CANCELLED_INPUT".equals(text)

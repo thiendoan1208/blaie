@@ -20,12 +20,41 @@ create duplicate captures.
 - Automatic retries use backoff; leased processing jobs are recovered after the lease expires.
 - HTTP Idempotency-Key prevents duplicate captures when a response is lost.
 - Raw capture text stays in PostgreSQL and is never included in the Redis message.
-- A provider router selects the configured provider and can try ordered fallback providers after retryable errors.
+- A provider router selects the configured provider and can try ordered fallback providers when the failure class
+  permits provider fallback. Provider fallback and automatic job retry are independent policy decisions.
 - Credential-like secrets are rejected before any provider call and are not automatically retried.
-- Provider timeout/429/5xx and invalid structured output are retryable; configuration and policy errors are terminal.
+- Provider timeout/429/5xx and invalid structured output permit fallback and automatic retry. Provider-local
+  configuration/rejection failures permit fallback but are terminal for the current job attempt. Content-policy
+  failures stop fallback and are terminal.
 - Capture submit/retry rate limits use hashed user id + IP and fail closed when Redis is unavailable.
 - Operational logs include job/capture ids, attempts, safe error codes, provider/model and latency, never raw text.
 - Quota/payment usage accounting is explicitly deferred. Capture-specific Redis rate limiting is included.
+
+## Failure and retry semantics
+
+Text classification failures use a closed failure taxonomy instead of one overloaded retryable boolean. Each class
+decides three different questions: whether the router may try the next provider, whether the job may retry
+automatically, and whether a user may manually replay a dead job later.
+
+| Failure class | Typical examples | Provider fallback | Automatic retry | Manual retry after dead |
+| --- | --- | --- | --- | --- |
+| CONTENT_TERMINAL | credential detected, content policy blocked | no | no | no |
+| PROVIDER_TERMINAL | provider key/configuration missing, provider-local 4xx rejection | yes | no | yes, after the provider/configuration is fixed |
+| PROVIDER_RETRYABLE | timeout, 408/429/5xx, invalid or truncated structured output | yes | yes with backoff | yes after attempts are exhausted |
+| SYSTEM_RETRYABLE | unexpected processing/infrastructure error, expired final lease | no | yes with backoff | yes after attempts are exhausted |
+
+The safe failure code remains the public diagnostic value, while the failure class is the execution policy. The
+latest terminal failure class is persisted on processing_jobs instead of inferring retryability merely from
+capture.processing_status = failed. API canRetry is true only for an owned failed capture whose job is dead and
+whose effective failure class permits manual retry. Starting a permitted retry clears the active failure metadata
+while the new retry generation runs. Replaying content-terminal input is rejected with CAPTURE_NOT_RETRYABLE and
+causes no state change or publication.
+
+During the rolling upgrade, known safe failure codes take precedence and map deterministically to a failure class;
+existing jobs are backfilled with the same mapping. A V12 binary can still omit the nullable class column. For an
+unknown code without stored class, the compatibility fallback is SYSTEM_RETRYABLE so an infrastructure failure
+does not become permanently stuck. Once V12 binaries are drained, a later migration may make the failure metadata
+strictly non-null for terminal jobs. Failed legacy captures without a durable job remain non-retryable.
 
 ## Durable dispatch and recovery
 

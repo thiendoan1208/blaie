@@ -9,6 +9,7 @@ import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -53,11 +54,17 @@ class CaptureJobProcessorTest {
     void transientFailureSchedulesBackoffWhileAttemptsRemain() {
         FakeJobStore store = new FakeJobStore(job(1, 4));
         CaptureJobProcessor processor = processor(store, text -> {
-            throw new TextClassificationException("ai_provider_unavailable", "safe internal detail");
+            throw new TextClassificationException(
+                    "ai_provider_unavailable",
+                    "safe internal detail",
+                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+            );
         }, new FakeHeartbeat());
 
         assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
         assertThat(store.retryError).isEqualTo("ai_provider_unavailable");
+        assertThat(store.retryFailureClass)
+                .isEqualTo(TextClassificationFailureClass.PROVIDER_RETRYABLE);
         assertThat(store.retryAt).isEqualTo(NOW.plusSeconds(2));
         assertThat(store.retryWorkerId).isEqualTo("worker-1");
         assertThat(store.retryAttemptCount).isEqualTo(store.job.attemptCount());
@@ -69,15 +76,85 @@ class CaptureJobProcessorTest {
     void finalFailureMarksJobDead() {
         FakeJobStore store = new FakeJobStore(job(4, 4));
         CaptureJobProcessor processor = processor(store, text -> {
-            throw new TextClassificationException("ai_invalid_response", "invalid response");
+            throw new TextClassificationException(
+                    "ai_invalid_response",
+                    "invalid response",
+                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+            );
         }, new FakeHeartbeat());
 
         assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
         assertThat(store.deadError).isEqualTo("ai_invalid_response");
+        assertThat(store.deadFailureClass)
+                .isEqualTo(TextClassificationFailureClass.PROVIDER_RETRYABLE);
         assertThat(store.deadWorkerId).isEqualTo("worker-1");
         assertThat(store.deadAttemptCount).isEqualTo(store.job.attemptCount());
         assertThat(store.deadRetryGeneration).isEqualTo(store.job.retryGeneration());
         assertThat(store.retryAt).isNull();
+    }
+
+    @Test
+    void providerTerminalFailureStopsAutomaticRetriesButAllowsPolicyAwareManualRetry() {
+        FakeJobStore store = new FakeJobStore(job(1, 4));
+        CaptureJobProcessor processor = processor(store, text -> {
+            throw new TextClassificationException(
+                    "ai_provider_rejected",
+                    "provider configuration was rejected",
+                    TextClassificationFailureClass.PROVIDER_TERMINAL
+            );
+        }, new FakeHeartbeat());
+
+        assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
+        assertThat(store.deadError).isEqualTo("ai_provider_rejected");
+        assertThat(store.deadFailureClass)
+                .isEqualTo(TextClassificationFailureClass.PROVIDER_TERMINAL);
+        assertThat(store.deadFailureClass.manualRetryAllowed()).isTrue();
+        assertThat(store.retryAt).isNull();
+    }
+
+    @Test
+    void credentialPolicyFailureIsTerminalAndCannotBeManuallyRetried() {
+        FakeJobStore store = new FakeJobStore(job(
+                "save sk-abcdefghijklmnopqrstuvwxyz123456",
+                1,
+                4
+        ));
+        CaptureJobProcessor processor = processor(
+                store,
+                text -> {
+                    throw new AssertionError("classifier must not receive credential-like text");
+                },
+                new FakeHeartbeat()
+        );
+
+        assertThat(processor.process(
+                store.job.id(),
+                store.job.dispatchGeneration(),
+                "worker-1"
+        )).isTrue();
+        assertThat(store.deadError).isEqualTo("sensitive_credential_detected");
+        assertThat(store.deadFailureClass)
+                .isEqualTo(TextClassificationFailureClass.CONTENT_TERMINAL);
+        assertThat(store.deadFailureClass.manualRetryAllowed()).isFalse();
+        assertThat(store.retryAt).isNull();
+    }
+
+    @Test
+    void invalidFailureCodeFallsBackToSafeSystemRetryableFailure() {
+        FakeJobStore store = new FakeJobStore(job(1, 4));
+        CaptureJobProcessor processor = processor(store, text -> {
+            throw new TextClassificationException(
+                    "UNSAFE PROVIDER ERROR",
+                    "unsafe detail",
+                    TextClassificationFailureClass.CONTENT_TERMINAL
+            );
+        }, new FakeHeartbeat());
+
+        assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
+        assertThat(store.retryError).isEqualTo("unexpected_classification_error");
+        assertThat(store.retryFailureClass)
+                .isEqualTo(TextClassificationFailureClass.SYSTEM_RETRYABLE);
+        assertThat(store.deadError).isNull();
     }
 
     @Test
@@ -149,10 +226,14 @@ class CaptureJobProcessorTest {
     }
 
     private ProcessingJobResult job(int attemptCount, int maxAttempts) {
+        return job("Buy milk", attemptCount, maxAttempts);
+    }
+
+    private ProcessingJobResult job(String originalText, int attemptCount, int maxAttempts) {
         return new ProcessingJobResult(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
-                "Buy milk",
+                originalText,
                 ProcessingJobStatus.PROCESSING,
                 attemptCount,
                 maxAttempts,
@@ -173,11 +254,13 @@ class CaptureJobProcessorTest {
         private int completedAttemptCount;
         private int completedRetryGeneration;
         private String retryError;
+        private TextClassificationFailureClass retryFailureClass;
         private Instant retryAt;
         private String retryWorkerId;
         private int retryAttemptCount;
         private int retryGeneration;
         private String deadError;
+        private TextClassificationFailureClass deadFailureClass;
         private String deadWorkerId;
         private int deadAttemptCount;
         private int deadRetryGeneration;
@@ -234,6 +317,7 @@ class CaptureJobProcessorTest {
                 int attemptCount,
                 int retryGeneration,
                 String errorCode,
+                TextClassificationFailureClass failureClass,
                 Instant availableAt,
                 Instant now
         ) {
@@ -241,6 +325,7 @@ class CaptureJobProcessorTest {
             retryAttemptCount = attemptCount;
             this.retryGeneration = retryGeneration;
             retryError = errorCode;
+            retryFailureClass = failureClass;
             retryAt = availableAt;
             return true;
         }
@@ -252,12 +337,14 @@ class CaptureJobProcessorTest {
                 int attemptCount,
                 int retryGeneration,
                 String errorCode,
+                TextClassificationFailureClass failureClass,
                 Instant now
         ) {
             deadWorkerId = workerId;
             deadAttemptCount = attemptCount;
             deadRetryGeneration = retryGeneration;
             deadError = errorCode;
+            deadFailureClass = failureClass;
             return true;
         }
 

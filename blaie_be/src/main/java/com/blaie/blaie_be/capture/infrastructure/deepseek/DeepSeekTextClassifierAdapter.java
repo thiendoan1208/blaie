@@ -5,11 +5,13 @@ import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -52,21 +54,33 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     public DeepSeekTextClassifierAdapter(
             DeepSeekProperties properties,
             RestClient.Builder restClientBuilder,
             ObjectMapper objectMapper
     ) {
-        this.properties = properties;
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.timeout());
         requestFactory.setReadTimeout(properties.timeout());
-        this.restClient = restClientBuilder
+        RestClient configuredRestClient = restClientBuilder
                 .baseUrl(properties.baseUrl())
                 .requestFactory(requestFactory)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + properties.apiKey())
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();
+        this.properties = properties;
+        this.restClient = configuredRestClient;
+        this.objectMapper = objectMapper;
+    }
+
+    DeepSeekTextClassifierAdapter(
+            DeepSeekProperties properties,
+            RestClient restClient,
+            ObjectMapper objectMapper
+    ) {
+        this.properties = properties;
+        this.restClient = restClient;
         this.objectMapper = objectMapper;
     }
 
@@ -81,7 +95,7 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
             throw new TextClassificationException(
                     "ai_not_configured",
                     "DeepSeek API key is not configured",
-                    false
+                    TextClassificationFailureClass.PROVIDER_TERMINAL
             );
         }
 
@@ -115,17 +129,39 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
             throw new TextClassificationException(
                     retryable ? "ai_provider_unavailable" : "ai_provider_rejected",
                     "DeepSeek request was rejected",
-                    retryable,
+                    retryable
+                            ? TextClassificationFailureClass.PROVIDER_RETRYABLE
+                            : TextClassificationFailureClass.PROVIDER_TERMINAL,
                     exception
             );
         } catch (RestClientException exception) {
-            throw new TextClassificationException("ai_provider_unavailable", "DeepSeek request failed", exception);
+            throw new TextClassificationException(
+                    "ai_provider_unavailable",
+                    "DeepSeek request failed",
+                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    exception
+            );
         } catch (RuntimeException exception) {
-            throw new TextClassificationException("ai_invalid_response", "DeepSeek response was invalid", exception);
+            throw new TextClassificationException(
+                    "ai_invalid_response",
+                    "DeepSeek response was invalid",
+                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    exception
+            );
         }
     }
 
     private CaptureAnalysis parseAnalysis(String content, String finishReason) {
+        if ("content_filter".equalsIgnoreCase(finishReason)) {
+            throw new TextClassificationException(
+                    "content_policy_blocked",
+                    "Capture was blocked by the provider content policy",
+                    TextClassificationFailureClass.CONTENT_TERMINAL
+            );
+        }
+        if (finishReason != null && !finishReason.isBlank() && !"stop".equalsIgnoreCase(finishReason)) {
+            throw invalidResponse("non-terminal finish reason", finishReason);
+        }
         if (content == null || content.isBlank()) {
             throw invalidResponse("empty content", finishReason);
         }
@@ -160,13 +196,22 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
         } catch (TextClassificationException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw new TextClassificationException("ai_invalid_response", "DeepSeek category was invalid", exception);
+            throw new TextClassificationException(
+                    "ai_invalid_response",
+                    "DeepSeek category was invalid",
+                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    exception
+            );
         }
     }
 
     private TextClassificationException invalidResponse(String reason, String finishReason) {
         log.warn("DeepSeek classification response rejected: reason={}, finishReason={}", reason, finishReason);
-        return new TextClassificationException("ai_invalid_response", "DeepSeek response was invalid");
+        return new TextClassificationException(
+                "ai_invalid_response",
+                "DeepSeek response was invalid",
+                TextClassificationFailureClass.PROVIDER_RETRYABLE
+        );
     }
 
     private record CompletionResponse(List<Choice> choices) {

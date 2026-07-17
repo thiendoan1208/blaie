@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ public class CaptureContentPolicy {
             throw new TextClassificationException(
                     "sensitive_credential_detected",
                     "Capture contains a credential-like secret",
-                    false
+                    TextClassificationFailureClass.CONTENT_TERMINAL
             );
         }
     }
