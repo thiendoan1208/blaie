@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.JobLeaseHeartbeatPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
@@ -18,11 +19,41 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class CaptureJobProcessorTest {
     private static final Instant NOW = Instant.parse("2026-07-16T12:00:00Z");
+
+    @Test
+    void claimedJobOriginOverridesTransportFallbackAndNestedContextIsRestored() {
+        FakeJobStore store = new FakeJobStore(job(1, 4));
+        CaptureAnalysis analysis = new CaptureAnalysis(List.of(), "test", "model", "v1");
+        CaptureJobProcessor processor = processor(store, text -> {
+            assertThat(MDC.get("requestId")).isEqualTo("processor-test-request");
+            assertThat(MDC.get("jobId")).isEqualTo(store.job.id().toString());
+            assertThat(MDC.get("captureId")).isEqualTo(store.job.captureId().toString());
+            assertThat(MDC.get("attempt")).isEqualTo("1");
+            assertThat(MDC.get("eventId")).isEqualTo("transport-event");
+            return analysis;
+        }, new FakeHeartbeat());
+        MDC.put("requestId", "transport-fallback-request");
+        MDC.put("eventId", "transport-event");
+
+        try {
+            assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
+            assertThat(MDC.get("requestId")).isEqualTo("transport-fallback-request");
+            assertThat(MDC.get("eventId")).isEqualTo("transport-event");
+            assertThat(MDC.get("jobId")).isNull();
+            assertThat(MDC.get("captureId")).isNull();
+        } finally {
+            MDC.clear();
+        }
+    }
 
     @Test
     void successfulJobCompletesExactlyOnce() {
@@ -174,10 +205,40 @@ class CaptureJobProcessorTest {
         assertThat(heartbeat.stopCalls).isEqualTo(1);
     }
 
+    @Test
+    void telemetryOnlyCountsTheCommittedRetryTransition() {
+        FakeJobStore store = new FakeJobStore(job(1, 4));
+        CaptureTelemetryPort telemetry = mock(CaptureTelemetryPort.class);
+        CaptureJobProcessor processor = processor(store, text -> {
+            throw new TextClassificationException(
+                    "ai_provider_unavailable",
+                    "provider unavailable",
+                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+            );
+        }, new FakeHeartbeat(), telemetry);
+
+        assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
+
+        verify(telemetry).incrementRetry(CaptureTelemetryPort.RetrySource.AUTOMATIC);
+        verify(telemetry).recordJobDuration(
+                any(Duration.class),
+                org.mockito.ArgumentMatchers.eq(CaptureTelemetryPort.JobOutcome.RETRY_SCHEDULED)
+        );
+    }
+
     private CaptureJobProcessor processor(
             FakeJobStore store,
             TextClassifierPort classifier,
             JobLeaseHeartbeatPort heartbeat
+    ) {
+        return processor(store, classifier, heartbeat, mock(CaptureTelemetryPort.class));
+    }
+
+    private CaptureJobProcessor processor(
+            FakeJobStore store,
+            TextClassifierPort classifier,
+            JobLeaseHeartbeatPort heartbeat,
+            CaptureTelemetryPort telemetry
     ) {
         CaptureProcessingSettingsPort settings = new CaptureProcessingSettingsPort() {
             @Override
@@ -241,7 +302,8 @@ class CaptureJobProcessorTest {
                 new CaptureContentPolicy(),
                 settings,
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                heartbeat
+                heartbeat,
+                telemetry
         );
     }
 
@@ -253,6 +315,7 @@ class CaptureJobProcessorTest {
         return new ProcessingJobResult(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
+                "processor-test-request",
                 originalText,
                 ProcessingJobStatus.PROCESSING,
                 attemptCount,

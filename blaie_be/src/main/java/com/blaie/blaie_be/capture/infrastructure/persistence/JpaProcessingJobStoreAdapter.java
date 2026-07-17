@@ -5,6 +5,7 @@ import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
+import com.blaie.blaie_be.capture.application.result.RecoveredJobResult.RecoveryOutcome;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
@@ -181,7 +182,12 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
                         TextClassificationFailureClass.SYSTEM_RETRYABLE,
                         now.plus(settings.retryDelay(job.attemptCount()))
                 );
-                recovered.add(new RecoveredJobResult(job.id(), job.captureId(), false));
+                recovered.add(new RecoveredJobResult(
+                        job.id(),
+                        job.captureId(),
+                        RecoveryOutcome.RETRY_SCHEDULED,
+                        TextClassificationFailureClass.SYSTEM_RETRYABLE
+                ));
             } else {
                 job.dead(
                         STALE_JOB_ERROR,
@@ -192,7 +198,12 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
                     capture.fail(STALE_JOB_ERROR);
                     captureItemRepository.deleteByCaptureId(capture.id());
                 }
-                recovered.add(new RecoveredJobResult(job.id(), job.captureId(), false));
+                recovered.add(new RecoveredJobResult(
+                        job.id(),
+                        job.captureId(),
+                        RecoveryOutcome.DEAD,
+                        TextClassificationFailureClass.SYSTEM_RETRYABLE
+                ));
             }
         }
         return List.copyOf(recovered);
@@ -225,7 +236,8 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
                 UUID.randomUUID(),
                 job.id(),
                 job.captureId(),
-                job.dispatchGeneration()
+                job.dispatchGeneration(),
+                job.originRequestId()
         ));
     }
 
@@ -233,6 +245,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
         return new ProcessingJobResult(
                 job.id(),
                 job.captureId(),
+                job.originRequestId(),
                 originalText,
                 ProcessingJobStatus.fromValue(job.status()),
                 job.attemptCount(),

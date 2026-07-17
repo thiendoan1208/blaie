@@ -16,13 +16,38 @@ Use structured logging and requestId/jobId correlation.
 
 Backend API:
 
-- Create or forward X-Request-ID.
+- Create or forward X-Request-ID after validating a bounded safe character set.
 - Include requestId in response header.
 - Log method, path, userId if available, status, latencyMs, errorCode.
 
 Worker:
 
-- Log jobId, itemId, userId, sourceType, processing status, retry count, errorCode.
+- Persist the original HTTP request ID on `processing_jobs` so correlation survives outbox
+  resubmission, Redis loss/reconciliation, process restart and delayed execution.
+- Carry requestId, eventId, jobId, captureId and dispatchGeneration through the transactional
+  event and Redis wake-up record. Older outbox/Redis records without requestId fall back to a
+  safe event/job ID and remain processable.
+- Restore the persisted requestId after the database claim, making PostgreSQL authoritative
+  when transport metadata is missing or stale.
+- Add a unique providerAttemptId for each real provider route attempt.
+- Log jobId, captureId, attempts/generations, processing state and safe errorCode. Do not put
+  original text, provider payloads or credentials in correlation context.
+
+Context propagation:
+
+- HTTP, outbox publisher, Redis worker, claimed job and provider attempt each use a scoped MDC
+  context that restores the caller's previous values on exit. Background execution must not
+  call a global `MDC.clear()` that can erase an outer context.
+- This decision provides durable log correlation. It does not claim end-to-end distributed
+  tracing; OpenTelemetry trace/span propagation can be added later without changing the
+  persisted request ID contract.
+
+Metrics:
+
+- Correlation identifiers never become metric labels. Micrometer labels are restricted to
+  bounded states, outcomes, failure classes, sources and configured provider IDs.
+- Admin mutations log actor ID, request ID, job ID, action and a safe state transition. Durable
+  admin audit storage and its retention policy are handled by the privacy/retention work.
 
 Error response:
 

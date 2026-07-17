@@ -7,9 +7,24 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ProcessingJobEntityTest {
     private static final Instant NOW = Instant.parse("2026-07-17T12:00:00Z");
+
+    @Test
+    void queuedJobRequiresASafeOriginRequestId() {
+        CaptureEntity capture = CaptureEntity.processing(UUID.randomUUID(), "Buy milk");
+
+        assertThat(queuedJob(capture).originRequestId()).isEqualTo("entity-test-request");
+        assertThatThrownBy(() -> ProcessingJobEntity.queued(
+                capture,
+                4,
+                "unsafe request id",
+                NOW,
+                NOW.plusSeconds(30)
+        )).isInstanceOf(IllegalArgumentException.class);
+    }
 
     @Test
     void onlyCurrentLeaseOwnerCanExtendProcessingJobLease() {
@@ -134,6 +149,6 @@ class ProcessingJobEntityTest {
     }
 
     private ProcessingJobEntity queuedJob(CaptureEntity capture) {
-        return ProcessingJobEntity.queued(capture, 4, NOW, NOW.plusSeconds(30));
+        return ProcessingJobEntity.queued(capture, 4, "entity-test-request", NOW, NOW.plusSeconds(30));
     }
 }

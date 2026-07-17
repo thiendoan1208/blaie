@@ -21,6 +21,32 @@ public interface ProcessingJobRepository extends JpaRepository<ProcessingJobEnti
     Optional<ProcessingJobEntity> findLockedByCaptureIdAndJobType(UUID captureId, String jobType);
 
     @Query(value = """
+            SELECT *
+            FROM processing_jobs
+            WHERE (:status IS NULL OR status = :status)
+              AND (
+                    CAST(:stuck AS BOOLEAN) = FALSE
+                    OR (status = 'queued' AND (next_dispatch_at IS NULL OR next_dispatch_at <= :now))
+                    OR (status = 'retry_wait' AND available_at <= :now)
+                    OR (status = 'processing' AND lease_expires_at <= :now)
+              )
+              AND (
+                    CAST(:cursorCreatedAt AS TIMESTAMPTZ) IS NULL
+                    OR created_at < :cursorCreatedAt
+                    OR (created_at = :cursorCreatedAt AND id < :cursorId)
+              )
+            ORDER BY created_at DESC, id DESC
+            """, nativeQuery = true)
+    List<ProcessingJobEntity> findAdminPage(
+            @Param("status") String status,
+            @Param("stuck") boolean stuck,
+            @Param("now") Instant now,
+            @Param("cursorCreatedAt") Instant cursorCreatedAt,
+            @Param("cursorId") UUID cursorId,
+            Pageable pageable
+    );
+
+    @Query(value = """
             SELECT CAST(id AS INTEGER)
             FROM capture_admission_mutex
             WHERE id = 1

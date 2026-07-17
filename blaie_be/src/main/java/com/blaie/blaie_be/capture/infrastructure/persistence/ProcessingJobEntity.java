@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.core.request.RequestIdPolicy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -28,6 +29,9 @@ public class ProcessingJobEntity {
 
     @Column(name = "job_type", nullable = false, length = 50)
     private String jobType;
+
+    @Column(name = "origin_request_id", nullable = false, length = 128)
+    private String originRequestId;
 
     @Column(nullable = false, length = 20)
     private String status;
@@ -82,6 +86,7 @@ public class ProcessingJobEntity {
     public static ProcessingJobEntity queued(
             CaptureEntity capture,
             int maxAttempts,
+            String originRequestId,
             Instant now,
             Instant nextDispatchAt
     ) {
@@ -90,6 +95,10 @@ public class ProcessingJobEntity {
         job.captureId = capture.id();
         job.userId = capture.userId();
         job.jobType = "text_classification";
+        if (!RequestIdPolicy.isValid(originRequestId)) {
+            throw new IllegalArgumentException("originRequestId is invalid");
+        }
+        job.originRequestId = originRequestId;
         job.status = "queued";
         job.attemptCount = 0;
         job.maxAttempts = maxAttempts;
@@ -217,8 +226,16 @@ public class ProcessingJobEntity {
         return captureId;
     }
 
+    public UUID userId() {
+        return userId;
+    }
+
     public String jobType() {
         return jobType;
+    }
+
+    public String originRequestId() {
+        return originRequestId;
     }
 
     public String status() {
@@ -249,6 +266,10 @@ public class ProcessingJobEntity {
         return leaseExpiresAt;
     }
 
+    public String leaseOwner() {
+        return leaseOwner;
+    }
+
     public Instant lastDispatchedAt() {
         return lastDispatchedAt;
     }
@@ -259,6 +280,18 @@ public class ProcessingJobEntity {
 
     public String lastErrorCode() {
         return lastErrorCode;
+    }
+
+    public Instant createdAt() {
+        return createdAt;
+    }
+
+    public Instant updatedAt() {
+        return updatedAt;
+    }
+
+    public Instant completedAt() {
+        return completedAt;
     }
 
     public TextClassificationFailureClass lastFailureClass() {

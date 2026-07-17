@@ -1,0 +1,241 @@
+groups:
+  - name: blaie-capture-recording
+    interval: 30s
+    rules:
+      - record: blaie:capture_active_jobs
+        expr: |
+          max(
+            capture_queue_depth{state="queued"}
+            and on (job, instance) (capture_observability_source_up{source="db"} == 1)
+          )
+          + max(
+            capture_queue_depth{state="retry_wait"}
+            and on (job, instance) (capture_observability_source_up{source="db"} == 1)
+          )
+          + max(
+            capture_queue_depth{state="processing"}
+            and on (job, instance) (capture_observability_source_up{source="db"} == 1)
+          )
+
+      - record: blaie:capture_provider_error_ratio_5m
+        expr: |
+          sum by (provider) (rate(capture_provider_errors_total[5m]))
+          /
+          clamp_min(
+            sum by (provider) (rate(capture_provider_duration_seconds_count[5m])),
+            0.001
+          )
+
+      - record: blaie:capture_provider_calls_5m
+        expr: |
+          sum by (provider) (increase(capture_provider_duration_seconds_count[5m]))
+
+  - name: blaie-capture-alerts
+    interval: 30s
+    rules:
+      - alert: BlaieCaptureMetricsMissing
+        expr: absent(capture_observability_source_up{source="db"})
+        for: 2m
+        labels:
+          severity: critical
+          component: capture-processing
+        annotations:
+          summary: Blaie capture-processing metrics are missing
+          description: No DB observability-source metric has been scraped for two minutes.
+          runbook: docs/runbooks/capture-processing.md#metrics-target-or-observability-sampler-unavailable
+
+      - alert: BlaieCaptureDbSamplerDown
+        expr: min(capture_observability_source_up{source="db"}) < 1
+        for: 2m
+        labels:
+          severity: critical
+          component: capture-processing
+        annotations:
+          summary: Capture observability cannot read PostgreSQL
+          description: DB-derived queue, lease and outbox gauges must be treated as stale.
+          runbook: docs/runbooks/capture-processing.md#metrics-target-or-observability-sampler-unavailable
+
+      - alert: BlaieCaptureRedisSamplerDown
+        expr: min(capture_observability_source_up{source="redis"}) < 1
+        for: 2m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: Capture observability cannot read Redis
+          description: Redis Stream and provider-concurrency gauges must be treated as stale.
+          runbook: docs/runbooks/capture-processing.md#metrics-target-or-observability-sampler-unavailable
+
+      - alert: BlaieCaptureDbMetricsStale
+        expr: time() - min(capture_observability_source_last_success_seconds{source="db"}) > 90
+        for: 2m
+        labels:
+          severity: critical
+          component: capture-processing
+        annotations:
+          summary: Capture PostgreSQL gauges have not refreshed
+          description: The most recent successful DB observation is more than 90 seconds old.
+          runbook: docs/runbooks/capture-processing.md#metrics-target-or-observability-sampler-unavailable
+
+      - alert: BlaieCaptureRedisMetricsStale
+        expr: time() - min(capture_observability_source_last_success_seconds{source="redis"}) > 90
+        for: 2m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: Capture Redis gauges have not refreshed
+          description: The most recent successful Redis observation is more than 90 seconds old.
+          runbook: docs/runbooks/capture-processing.md#metrics-target-or-observability-sampler-unavailable
+
+      - alert: BlaieCaptureOldestQueuedJobOverSla
+        expr: |
+          max(
+            capture_oldest_queued_age_seconds
+            and on (job, instance) (capture_observability_source_up{source="db"} == 1)
+          ) > 300
+        for: 2m
+        labels:
+          severity: critical
+          component: capture-processing
+        annotations:
+          summary: Oldest queued capture job exceeds the default SLA
+          description: Oldest queued work has exceeded five minutes and admission should already be protecting the system.
+          runbook: docs/runbooks/capture-processing.md#oldest-queued-job-or-queue-depth-is-high
+
+      - alert: BlaieCaptureActiveQueueHigh
+        expr: blaie:capture_active_jobs > 800
+        for: 5m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: Capture active-job depth exceeds 80 percent of the default limit
+          description: Active work is above 800 jobs. Tune this threshold whenever BLAIE_CAPTURE_MAX_ACTIVE_JOBS_TOTAL changes.
+          runbook: docs/runbooks/capture-processing.md#oldest-queued-job-or-queue-depth-is-high
+
+      - alert: BlaieCaptureNoCompletionsWithBacklog
+        expr: |
+          blaie:capture_active_jobs > 0
+          and
+          (sum(increase(capture_job_duration_seconds_count{outcome="completed"}[10m])) or vector(0)) < 1
+        for: 5m
+        labels:
+          severity: critical
+          component: capture-processing
+        annotations:
+          summary: Capture processing has backlog but no completions
+          description: Active work exists and no job completed during the last ten minutes.
+          runbook: docs/runbooks/capture-processing.md#no-completions-while-active-work-exists
+
+      - alert: BlaieCaptureOutboxPublicationOld
+        expr: |
+          max(
+            capture_outbox_oldest_age_seconds
+            and on (job, instance) (capture_observability_source_up{source="db"} == 1)
+          ) > 60
+        for: 2m
+        labels:
+          severity: critical
+          component: capture-processing
+        annotations:
+          summary: Capture transactional outbox is not draining
+          description: The oldest incomplete capture publication is more than 60 seconds old.
+          runbook: docs/runbooks/capture-processing.md#outbox-publication-is-old
+
+      - alert: BlaieCaptureDeadJobsIncreasing
+        expr: sum(increase(capture_dead_total[10m])) >= 5
+        for: 1m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: Capture dead jobs increased rapidly
+          description: At least five jobs became dead in ten minutes. Inspect failure_class before replaying anything.
+          runbook: docs/runbooks/capture-processing.md#dead-jobs-increase
+
+      - alert: BlaieCaptureProviderErrorRatioHigh
+        expr: |
+          blaie:capture_provider_error_ratio_5m > 0.25
+          and on (provider)
+          blaie:capture_provider_calls_5m >= 10
+        for: 5m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: AI provider error ratio is high
+          description: Provider {{ $labels.provider }} has exceeded a 25 percent error ratio with at least ten calls in five minutes.
+          runbook: docs/runbooks/capture-processing.md#dead-jobs-increase
+
+      - alert: BlaieCaptureProviderConcurrencySaturated
+        expr: |
+          max by (provider) (
+            capture_provider_concurrency_usage
+            and on (job, instance) (capture_observability_source_up{source="redis"} == 1)
+          )
+          /
+          clamp_min(max by (provider) (capture_provider_concurrency_limit), 1)
+          >= 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: AI provider concurrency is saturated
+          description: Provider {{ $labels.provider }} has used at least 90 percent of its global permits for five minutes.
+          runbook: docs/runbooks/capture-processing.md#oldest-queued-job-or-queue-depth-is-high
+
+      - alert: BlaieCaptureProviderConcurrencyWaitHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (provider, le) (
+              rate(capture_provider_concurrency_wait_seconds_bucket{outcome="acquired"}[5m])
+            )
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: AI provider permit wait is high
+          description: Provider {{ $labels.provider }} p95 permit wait is above five seconds.
+          runbook: docs/runbooks/capture-processing.md#oldest-queued-job-or-queue-depth-is-high
+
+      - alert: BlaieCaptureRedisPendingHigh
+        expr: |
+          max(
+            capture_redis_stream_pending
+            and on (job, instance) (capture_observability_source_up{source="redis"} == 1)
+          ) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: Capture Redis Stream pending count is high
+          description: More than 100 wake-up records have remained pending for five minutes.
+          runbook: docs/runbooks/capture-processing.md#redis-pending-work-grows
+
+      - alert: BlaieCaptureStaleRecoverySpike
+        expr: sum(increase(capture_stale_recovered_total[10m])) >= 3
+        for: 1m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: Multiple capture leases required stale recovery
+          description: At least three expired processing leases were recovered in ten minutes.
+          runbook: docs/runbooks/capture-processing.md#no-completions-while-active-work-exists
+
+      - alert: BlaieCaptureQueuedRedispatchSpike
+        expr: sum(increase(capture_queued_redispatched_total[10m])) >= 10
+        for: 1m
+        labels:
+          severity: warning
+          component: capture-processing
+        annotations:
+          summary: Capture queued-job reconciliation is redispatching frequently
+          description: At least ten queued jobs needed a replacement Redis wake-up record in ten minutes.
+          runbook: docs/runbooks/capture-processing.md#redis-pending-work-grows

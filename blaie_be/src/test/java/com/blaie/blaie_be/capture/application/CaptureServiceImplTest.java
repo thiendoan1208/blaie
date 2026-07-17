@@ -2,6 +2,7 @@ package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.CaptureItemStorePort;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.application.result.CaptureItemResult;
 import com.blaie.blaie_be.capture.application.result.CaptureResult;
@@ -11,6 +12,8 @@ import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.security.CurrentUser;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
+import com.blaie.blaie_be.core.request.RequestContext;
+import com.blaie.blaie_be.core.request.RequestContextHolder;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,6 +27,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class CaptureServiceImplTest {
     private static final Instant NOW = Instant.parse("2026-07-16T12:00:00Z");
@@ -35,10 +40,16 @@ class CaptureServiceImplTest {
         InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
         CaptureService service = service(new InMemoryCaptureItemStore(), workflowStore);
 
-        CaptureResult result = runAs(userId, () -> service.captureText(
-                "  Meeting at 5 PM and go running  ",
-                IDEMPOTENCY_KEY.toString()
-        ));
+        RequestContextHolder.set(new RequestContext("capture-request-123", "POST", "/api/v1/captures/text", null));
+        CaptureResult result;
+        try {
+            result = runAs(userId, () -> service.captureText(
+                    "  Meeting at 5 PM and go running  ",
+                    IDEMPOTENCY_KEY.toString()
+            ));
+        } finally {
+            RequestContextHolder.clear();
+        }
 
         assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.PROCESSING);
         assertThat(result.items()).isEmpty();
@@ -46,6 +57,7 @@ class CaptureServiceImplTest {
         assertThat(workflowStore.originalText).isEqualTo("Meeting at 5 PM and go running");
         assertThat(workflowStore.idempotencyKey).isEqualTo(IDEMPOTENCY_KEY);
         assertThat(workflowStore.requestHash).hasSize(64);
+        assertThat(workflowStore.originRequestId).isEqualTo("capture-request-123");
         assertThat(workflowStore.now).isEqualTo(NOW);
         assertThat(workflowStore.expiresAt).isEqualTo(NOW.plus(Duration.ofHours(24)));
     }
@@ -115,6 +127,27 @@ class CaptureServiceImplTest {
         assertThat(workflowStore.retryCalls).isZero();
     }
 
+    @Test
+    void successfulUserRetryIncrementsManualRetryTelemetry() {
+        UUID userId = UUID.randomUUID();
+        InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
+        CaptureTelemetryPort telemetry = mock(CaptureTelemetryPort.class);
+        CaptureService service = service(
+                new InMemoryCaptureItemStore(),
+                workflowStore,
+                true,
+                telemetry
+        );
+        CaptureResult capture = runAs(
+                userId,
+                () -> service.captureText("Retry me", IDEMPOTENCY_KEY.toString())
+        );
+
+        runAs(userId, () -> service.retry(capture.id()));
+
+        verify(telemetry).incrementRetry(CaptureTelemetryPort.RetrySource.MANUAL);
+    }
+
     private CaptureService service(CaptureItemStorePort itemStore, CaptureWorkflowStorePort workflowStore) {
         return service(itemStore, workflowStore, true);
     }
@@ -123,6 +156,20 @@ class CaptureServiceImplTest {
             CaptureItemStorePort itemStore,
             CaptureWorkflowStorePort workflowStore,
             boolean acceptAsyncEnabled
+    ) {
+        return service(
+                itemStore,
+                workflowStore,
+                acceptAsyncEnabled,
+                mock(CaptureTelemetryPort.class)
+        );
+    }
+
+    private CaptureService service(
+            CaptureItemStorePort itemStore,
+            CaptureWorkflowStorePort workflowStore,
+            boolean acceptAsyncEnabled,
+            CaptureTelemetryPort telemetry
     ) {
         CaptureProcessingSettingsPort settings = new CaptureProcessingSettingsPort() {
             @Override
@@ -184,7 +231,8 @@ class CaptureServiceImplTest {
                 itemStore,
                 workflowStore,
                 settings,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                telemetry
         );
     }
 
@@ -198,6 +246,7 @@ class CaptureServiceImplTest {
         private String originalText;
         private UUID idempotencyKey;
         private String requestHash;
+        private String originRequestId;
         private Instant now;
         private Instant expiresAt;
         private int startCalls;
@@ -209,6 +258,7 @@ class CaptureServiceImplTest {
                 String originalText,
                 UUID idempotencyKey,
                 String requestHash,
+                String originRequestId,
                 Instant now,
                 Instant idempotencyExpiresAt,
                 int maxAttempts
@@ -218,6 +268,7 @@ class CaptureServiceImplTest {
             this.originalText = originalText;
             this.idempotencyKey = idempotencyKey;
             this.requestHash = requestHash;
+            this.originRequestId = originRequestId;
             this.now = now;
             this.expiresAt = idempotencyExpiresAt;
             CaptureResult result = new CaptureResult(

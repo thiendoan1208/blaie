@@ -1,7 +1,10 @@
 package com.blaie.blaie_be.capture.infrastructure.ai;
 
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.ConcurrencyWaitOutcome;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -51,16 +54,19 @@ public class RedisProviderConcurrencyLimiter implements ProviderConcurrencyLimit
     private final StringRedisTemplate redisTemplate;
     private final AiProviderConcurrencyProperties properties;
     private final TaskScheduler renewalScheduler;
+    private final CaptureTelemetryPort telemetry;
 
     public RedisProviderConcurrencyLimiter(
             StringRedisTemplate redisTemplate,
             AiProviderConcurrencyProperties properties,
             @Qualifier(AiProviderConcurrencyConfiguration.RENEWAL_SCHEDULER)
-            TaskScheduler renewalScheduler
+            TaskScheduler renewalScheduler,
+            CaptureTelemetryPort telemetry
     ) {
         this.redisTemplate = redisTemplate;
         this.properties = properties;
         this.renewalScheduler = renewalScheduler;
+        this.telemetry = telemetry;
     }
 
     @Override
@@ -68,14 +74,15 @@ public class RedisProviderConcurrencyLimiter implements ProviderConcurrencyLimit
         if (!properties.enabled()) {
             return NO_OP_PERMIT;
         }
+        long startedAtNanos = System.nanoTime();
         if (Thread.currentThread().isInterrupted()) {
+            recordWait(startedAtNanos, providerId, ConcurrencyWaitOutcome.INTERRUPTED);
             throw interrupted(providerId, null);
         }
 
         String key = properties.keyFor(providerId);
         String ownerToken = UUID.randomUUID().toString();
         int limit = properties.limitFor(providerId);
-        long startedAtNanos = System.nanoTime();
         while (true) {
             List<?> result;
             try {
@@ -87,9 +94,17 @@ public class RedisProviderConcurrencyLimiter implements ProviderConcurrencyLimit
                         String.valueOf(properties.leaseDuration().toMillis())
                 );
             } catch (RuntimeException exception) {
+                recordWait(startedAtNanos, providerId, ConcurrencyWaitOutcome.FAILED);
                 throw backendUnavailable(providerId, exception);
             }
-            if (longAt(result, 0, providerId) == 1L) {
+            long acquired;
+            try {
+                acquired = longAt(result, 0, providerId);
+            } catch (RuntimeException exception) {
+                recordWait(startedAtNanos, providerId, ConcurrencyWaitOutcome.FAILED);
+                throw exception;
+            }
+            if (acquired == 1L) {
                 long waitMillis = (System.nanoTime() - startedAtNanos) / 1_000_000;
                 log.debug(
                         "AI provider concurrency permit acquired: provider={}, limit={}, waitMs={}",
@@ -100,9 +115,11 @@ public class RedisProviderConcurrencyLimiter implements ProviderConcurrencyLimit
                 RedisPermit permit = new RedisPermit(providerId, key, ownerToken);
                 try {
                     permit.startRenewal();
+                    recordWait(startedAtNanos, providerId, ConcurrencyWaitOutcome.ACQUIRED);
                     return permit;
                 } catch (RuntimeException exception) {
                     permit.close();
+                    recordWait(startedAtNanos, providerId, ConcurrencyWaitOutcome.FAILED);
                     throw renewalUnavailable(providerId, exception);
                 }
             }
@@ -110,9 +127,22 @@ public class RedisProviderConcurrencyLimiter implements ProviderConcurrencyLimit
                 Thread.sleep(properties.pollInterval().toMillis());
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
+                recordWait(startedAtNanos, providerId, ConcurrencyWaitOutcome.INTERRUPTED);
                 throw interrupted(providerId, exception);
             }
         }
+    }
+
+    private void recordWait(
+            long startedAtNanos,
+            String providerId,
+            ConcurrencyWaitOutcome outcome
+    ) {
+        telemetry.recordProviderConcurrencyWait(
+                Duration.ofNanos(System.nanoTime() - startedAtNanos),
+                providerId,
+                outcome
+        );
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

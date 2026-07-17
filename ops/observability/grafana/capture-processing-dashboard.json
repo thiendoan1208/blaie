@@ -1,0 +1,452 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": ["blaie", "capture-processing"],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Durable text-capture queue, worker, AI provider, outbox and Redis Stream health. Global state gauges are aggregated with max across app instances.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "doc",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Capture processing runbook",
+      "tooltip": "Open the repository runbook",
+      "type": "link",
+      "url": "docs/runbooks/capture-processing.md"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Queued + retry_wait + processing leases. Each gauge observes global state, so max is used across replicas.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 800},
+              {"color": "red", "value": 1000}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max(capture_queue_depth{state=\"queued\"} and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1)) + max(capture_queue_depth{state=\"retry_wait\"} and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1)) + max(capture_queue_depth{state=\"processing\"} and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1))",
+          "legendFormat": "active jobs",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Active jobs",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Age of the oldest queued job. The default admission threshold is five minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 120},
+              {"color": "red", "value": 300}
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 4, "y": 0},
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max(capture_oldest_queued_age_seconds and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1))",
+          "legendFormat": "oldest queued",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest queued age",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Incomplete TextCaptureQueuedEvent publications.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 10}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 8, "y": 0},
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max(capture_outbox_backlog and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1))",
+          "legendFormat": "incomplete publications",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Outbox backlog",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Age of the oldest incomplete capture publication.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 30},
+              {"color": "red", "value": 60}
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 12, "y": 0},
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max(capture_outbox_oldest_age_seconds and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1))",
+          "legendFormat": "oldest incomplete",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest outbox age",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "1 means the sampler can refresh; 0 means related gauges may be stale.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 0,
+          "mappings": [
+            {
+              "options": {
+                "0": {"color": "red", "index": 1, "text": "DOWN"},
+                "1": {"color": "green", "index": 0, "text": "UP"}
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 1}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 0},
+      "id": 5,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "min by (source) (capture_observability_source_up)",
+          "legendFormat": "{{source}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Observability sources",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Durable active-job depth by database state. Active leases separately show the processing subset whose lease has not expired.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 15, "lineWidth": 2}, "unit": "short"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "id": 6,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "max by (state) (capture_queue_depth and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1))", "legendFormat": "{{state}}", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "max(capture_active_leases and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1))", "legendFormat": "active leases", "range": true, "refId": "B"}
+      ],
+      "title": "Active job depth by state",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Terminal throughput and retry/dead transitions. Counters are summed across workers.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2}, "unit": "ops"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "id": 7,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum(rate(capture_job_duration_seconds_count{outcome=\"completed\"}[$__rate_interval]))", "legendFormat": "completed/s", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "sum by (source) (rate(capture_retry_total[$__rate_interval]))", "legendFormat": "retry {{source}}/s", "range": true, "refId": "B"},
+        {"editorMode": "code", "expr": "sum by (failure_class) (rate(capture_dead_total[$__rate_interval]))", "legendFormat": "dead {{failure_class}}/s", "range": true, "refId": "C"}
+      ],
+      "title": "Completion, retry and dead rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "End-to-end worker attempt latency. Histogram buckets are configured by the application.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 8, "lineWidth": 2}, "unit": "s"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+      "id": 8,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(capture_job_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p95", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "histogram_quantile(0.99, sum by (le) (rate(capture_job_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p99", "range": true, "refId": "B"},
+        {"editorMode": "code", "expr": "sum(rate(capture_job_duration_seconds_sum[$__rate_interval])) / clamp_min(sum(rate(capture_job_duration_seconds_count[$__rate_interval])), 0.001)", "legendFormat": "average", "range": true, "refId": "C"}
+      ],
+      "title": "Job duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "External AI call latency by provider.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 8, "lineWidth": 2}, "unit": "s"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+      "id": 9,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (provider, le) (rate(capture_provider_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "{{provider}} p95", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "histogram_quantile(0.99, sum by (provider, le) (rate(capture_provider_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "{{provider}} p99", "range": true, "refId": "B"},
+        {"editorMode": "code", "expr": "sum by (provider) (rate(capture_provider_duration_seconds_sum[$__rate_interval])) / clamp_min(sum by (provider) (rate(capture_provider_duration_seconds_count[$__rate_interval])), 0.001)", "legendFormat": "{{provider}} average", "range": true, "refId": "C"}
+      ],
+      "title": "Provider duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Provider failures use bounded failure_class labels; raw error messages are never labels.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2}, "unit": "percentunit"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
+      "id": 10,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (provider) (rate(capture_provider_errors_total[$__rate_interval])) / clamp_min(sum by (provider) (rate(capture_provider_duration_seconds_count[$__rate_interval])), 0.001)",
+          "legendFormat": "{{provider}} error ratio",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Provider error ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Global Redis-leased permit usage and configured limit. max avoids multiplying the same distributed value by replica count.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2}, "unit": "short"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21},
+      "id": 11,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "max by (provider) (capture_provider_concurrency_usage and on(job, instance) (capture_observability_source_up{source=\"redis\"} == 1))", "legendFormat": "{{provider}} usage", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "max by (provider) (capture_provider_concurrency_limit)", "legendFormat": "{{provider}} limit", "range": true, "refId": "B"}
+      ],
+      "title": "Provider concurrency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Time workers wait for a distributed provider permit.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 8, "lineWidth": 2}, "unit": "s"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+      "id": 12,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (provider, le) (rate(capture_provider_concurrency_wait_seconds_bucket{outcome=\"acquired\"}[$__rate_interval])))", "legendFormat": "{{provider}} p95", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "histogram_quantile(0.99, sum by (provider, le) (rate(capture_provider_concurrency_wait_seconds_bucket{outcome=\"acquired\"}[$__rate_interval])))", "legendFormat": "{{provider}} p99", "range": true, "refId": "B"}
+      ],
+      "title": "Provider permit wait",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Redis Stream transport health. Pending records may be in-flight; sustained growth needs triage.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2}, "unit": "short"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+      "id": 13,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "max(capture_redis_stream_pending and on(job, instance) (capture_observability_source_up{source=\"redis\"} == 1))", "legendFormat": "pending", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "max(capture_redis_stream_length and on(job, instance) (capture_observability_source_up{source=\"redis\"} == 1))", "legendFormat": "stream length", "range": true, "refId": "B"}
+      ],
+      "title": "Redis Stream",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Recovery activity is expected occasionally; sustained increases signal worker/transport instability.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2}, "unit": "ops"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 37},
+      "id": 14,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum(rate(capture_stale_recovered_total[$__rate_interval]))", "legendFormat": "stale leases recovered/s", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "sum(rate(capture_queued_redispatched_total[$__rate_interval]))", "legendFormat": "queued redispatched/s", "range": true, "refId": "B"}
+      ],
+      "title": "Recovery activity",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["blaie", "capture-processing", "inbox"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Blaie - Capture processing",
+  "uid": "blaie-capture-processing",
+  "version": 1,
+  "weekStart": ""
+}

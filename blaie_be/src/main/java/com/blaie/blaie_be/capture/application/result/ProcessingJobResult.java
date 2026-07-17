@@ -7,6 +7,7 @@ import java.util.UUID;
 public record ProcessingJobResult(
         UUID id,
         UUID captureId,
+        String originRequestId,
         String originalText,
         ProcessingJobStatus status,
         int attemptCount,

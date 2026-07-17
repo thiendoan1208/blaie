@@ -2,6 +2,10 @@ package com.blaie.blaie_be.capture.infrastructure.async;
 
 import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
+import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
+import com.blaie.blaie_be.capture.application.result.RecoveredJobResult.RecoveryOutcome;
+import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -41,6 +45,43 @@ class CaptureJobRecoverySchedulerTest {
     }
 
     @Test
+    void recordsRetryAndDeadMetricsFromCommittedStaleRecoveryOutcomes() {
+        CaptureProcessingProperties properties = new CaptureProcessingProperties();
+        ProcessingJobStorePort jobStore = mock(ProcessingJobStorePort.class);
+        CaptureTelemetryPort telemetry = mock(CaptureTelemetryPort.class);
+        when(jobStore.recoverStale(NOW)).thenReturn(List.of(
+                new RecoveredJobResult(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        RecoveryOutcome.RETRY_SCHEDULED,
+                        TextClassificationFailureClass.SYSTEM_RETRYABLE
+                ),
+                new RecoveredJobResult(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        RecoveryOutcome.DEAD,
+                        TextClassificationFailureClass.SYSTEM_RETRYABLE
+                )
+        ));
+        CaptureJobRecoveryScheduler scheduler = new CaptureJobRecoveryScheduler(
+                jobStore,
+                mock(IncompleteEventPublications.class),
+                properties,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                telemetry
+        );
+
+        scheduler.recoverJobs();
+
+        verify(telemetry).incrementStaleRecovered(2);
+        verify(telemetry).incrementRetry(CaptureTelemetryPort.RetrySource.STALE_RECOVERY);
+        verify(telemetry).incrementDead(
+                CaptureTelemetryPort.DeadSource.STALE_RECOVERY,
+                TextClassificationFailureClass.SYSTEM_RETRYABLE
+        );
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void outboxRecoveryOnlyResubmitsOldCaptureQueueEvents() {
         CaptureProcessingProperties properties = new CaptureProcessingProperties();
@@ -70,7 +111,8 @@ class CaptureJobRecoverySchedulerTest {
                 jobStore,
                 publications,
                 properties,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                mock(CaptureTelemetryPort.class)
         );
     }
 
@@ -86,7 +128,8 @@ class CaptureJobRecoverySchedulerTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
-                1
+                1,
+                "recovery-test-request"
         );
     }
 }

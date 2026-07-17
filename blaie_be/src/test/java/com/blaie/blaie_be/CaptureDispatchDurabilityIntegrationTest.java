@@ -111,6 +111,7 @@ class CaptureDispatchDurabilityIntegrationTest {
                 TEXT,
                 UUID.randomUUID(),
                 "0".repeat(64),
+                "dispatch-durability-request",
                 now,
                 now.plus(Duration.ofHours(24)),
                 properties.maxAttempts()
@@ -120,6 +121,11 @@ class CaptureDispatchDurabilityIntegrationTest {
                 UUID.class,
                 capture.id()
         );
+        assertThat(jdbcTemplate.queryForObject(
+                "select origin_request_id from processing_jobs where id = ?",
+                String.class,
+                jobId
+        )).isEqualTo("dispatch-durability-request");
 
         await(() -> streamRecords().size() == 1 && completedPublications() == 1);
         assertThat(redisTemplate.delete(properties.streamKey())).isTrue();
@@ -137,6 +143,8 @@ class CaptureDispatchDurabilityIntegrationTest {
 
         MapRecord<String, String, String> redispatched = streamRecords().getFirst();
         assertThat(redispatched.getValue().get("dispatchGeneration")).isEqualTo("2");
+        assertThat(redispatched.getValue().get("originRequestId"))
+                .isEqualTo("dispatch-durability-request");
         redisTemplate.opsForStream().add(
                 StreamRecords.<String, String, String>mapBacked(Map.of(
                         "eventId", UUID.randomUUID().toString(),

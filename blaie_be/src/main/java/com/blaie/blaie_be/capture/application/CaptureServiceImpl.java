@@ -2,12 +2,15 @@ package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.CaptureItemStorePort;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
 import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.application.result.CaptureItemResult;
 import com.blaie.blaie_be.capture.application.result.CaptureResult;
 import com.blaie.blaie_be.capture.application.result.InboxPageResult;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
+import com.blaie.blaie_be.core.request.RequestContextHolder;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -29,17 +32,20 @@ public class CaptureServiceImpl implements CaptureService {
     private final CaptureWorkflowStorePort workflowStore;
     private final CaptureProcessingSettingsPort settings;
     private final Clock clock;
+    private final CaptureTelemetryPort telemetry;
 
     public CaptureServiceImpl(
             CaptureItemStorePort captureItemStore,
             CaptureWorkflowStorePort workflowStore,
             CaptureProcessingSettingsPort settings,
-            Clock clock
+            Clock clock,
+            CaptureTelemetryPort telemetry
     ) {
         this.captureItemStore = captureItemStore;
         this.workflowStore = workflowStore;
         this.settings = settings;
         this.clock = clock;
+        this.telemetry = telemetry;
     }
 
     @Override
@@ -53,6 +59,7 @@ public class CaptureServiceImpl implements CaptureService {
                 originalText,
                 key,
                 requestHash(originalText),
+                RequestContextHolder.currentRequestId().orElseGet(() -> UUID.randomUUID().toString()),
                 now,
                 now.plus(settings.idempotencyTtl()),
                 settings.maxAttempts()
@@ -73,7 +80,9 @@ public class CaptureServiceImpl implements CaptureService {
     @Override
     public CaptureResult retry(UUID captureId) {
         requireAsyncAcceptance();
-        return workflowStore.retryOwned(captureId, currentUserId(), clock.instant());
+        CaptureResult result = workflowStore.retryOwned(captureId, currentUserId(), clock.instant());
+        telemetry.incrementRetry(RetrySource.MANUAL);
+        return result;
     }
 
     private void requireAsyncAcceptance() {

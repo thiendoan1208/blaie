@@ -1,126 +1,74 @@
-﻿API Contract — 12. Admin
+API Contract - 12. Admin operations
 
 Base path: /api/v1/admin
 
-Tất cả endpoints trong nhóm này yêu cầu:
-  1. Đã đăng nhập (JWT hợp lệ).
-  2. User có role = ADMIN.
+This contract covers the operational endpoints for durable text-capture processing. User-management and product
+analytics endpoints are not part of the current implementation.
 
-Nếu thiếu một trong hai điều kiện trên:
-  401  UNAUTHORIZED  — Chưa đăng nhập.
-  403  FORBIDDEN     — Đã đăng nhập nhưng không phải admin.
+Authentication and authorization:
+- A valid authenticated session and a verified email are required.
+- The current server-side user must be an administrator. The client never submits an admin role or user id.
+- Read endpoints require admin.read. Mutation endpoints require admin.job.manage. The current implementation grants
+  both permissions to users whose server-side admin flag is true.
+- Missing/invalid authentication returns 401 UNAUTHORIZED. An authenticated non-admin returns 403 FORBIDDEN.
+- Cookie-authenticated mutations require the normal CSRF token. Bearer-only requests do not use cookie CSRF.
 
-----------------------------------------------------------------------
+Data-safety rules:
+- Responses contain operational metadata only. They never return Capture.originalText, classified item content,
+  provider request/response bodies, stack traces, secrets, or event_publication.serialized_event.
+- lastErrorCode and lastFailureClass are the safe persisted failure metadata, not raw exception messages.
+- Admin mutations emit a structured operation log containing the admin user id, request id, job id, action and
+  state transition. Persistent audit-log storage is a later privacy/retention decision.
 
-1. User Management
+Actual job state machine:
+  queued -> processing -> completed
+  processing -> retry_wait -> queued
+  queued | processing | retry_wait -> dead
+  dead -> queued                         admin/user requeue when policy permits
 
-----------------------------------------------------------------------
-
-GET /api/v1/admin/users
-
-Mô tả: Lấy danh sách toàn bộ user trong hệ thống. Dùng cho vận hành, debug.
-
-Auth required:
-  Web admin: HttpOnly auth cookie with admin permission
-  Mobile admin: Authorization: Bearer <access_token> with admin permission
-
-Query params:
-  status — string (optional). Filter theo: active | disabled.
-  cursor — string (optional).
-  limit  — number (optional, default 20, max 100).
-
-Response 200:
-{
-  "data": [
-    {
-      "id": "uuid",
-      "name": "Nguyen Van A",
-      "email": "user@example.com",
-      "status": "active",
-      "captureItemCount": 42,
-      "createdAt": "2026-06-01T00:00:00Z"
-    },
-    {
-      "id": "uuid",
-      "name": "Tran Thi B",
-      "email": "userb@example.com",
-      "status": "disabled",
-      "captureItemCount": 8,
-      "createdAt": "2026-06-05T00:00:00Z"
-    }
-  ],
-  "meta": {
-    "nextCursor": "eyJpZCI6IjUwIn0",
-    "hasMore": true,
-    "limit": 20
-  }
-}
+Valid job statuses are queued, processing, retry_wait, completed and dead. Capture statuses remain processing,
+completed and failed. pending and failed are not processing-job statuses.
 
 ----------------------------------------------------------------------
 
-PATCH /api/v1/admin/users/:id/disable
-
-Mô tả: Vô hiệu hóa tài khoản user. User bị disable sẽ không thể đăng nhập.
-       Hành động này được log trong audit log.
-
-Auth required:
-  Web admin: HttpOnly auth cookie with admin permission
-  Mobile admin: Authorization: Bearer <access_token> with admin permission
-
-Path params:
-  id — uuid của user cần disable.
-
-Request: Không có body.
-
-Response 200:
-{
-  "data": {
-    "id": "uuid",
-    "name": "Nguyen Van A",
-    "email": "user@example.com",
-    "status": "disabled",
-    "createdAt": "2026-06-01T00:00:00Z"
-  }
-}
-
-Errors:
-  404  NOT_FOUND  USER_NOT_FOUND    — User không tồn tại.
-  409  CONFLICT   ALREADY_DISABLED  — User đã bị disable trước đó.
-  409  CONFLICT   CANNOT_DISABLE_ADMIN — Không thể disable tài khoản admin khác.
-
-----------------------------------------------------------------------
-
-2. Processing Job Management
-
-----------------------------------------------------------------------
+1. List capture processing jobs
 
 GET /api/v1/admin/jobs
 
-Mô tả: Lấy danh sách processing job, filter theo status. Dùng để theo dõi hàng chờ AI.
-
-Auth required:
-  Web admin: HttpOnly auth cookie with admin permission
-  Mobile admin: Authorization: Bearer <access_token> with admin permission
-
 Query params:
-  status — string (optional). Filter theo: pending | processing | completed | failed.
-  cursor — string (optional).
-  limit  — number (optional, default 20, max 100).
+  status  - optional: queued | processing | retry_wait | completed | dead
+  stuck   - optional boolean, default false. When true, return active jobs whose control timestamp is due:
+            queued with nextDispatchAt <= now, retry_wait with availableAt <= now, or processing with
+            leaseExpiresAt <= now. A result can be transient until the next recovery cycle.
+  cursor  - optional opaque cursor returned by the previous page
+  limit   - optional, default 20, min 1, max 100
+
+status and stuck may be combined. Results are stable-keyset paginated in descending createdAt/id order.
 
 Response 200:
 {
   "data": [
     {
       "id": "uuid",
-      "itemId": "uuid",
+      "captureId": "uuid",
       "userId": "uuid",
-      "userEmail": "user@example.com",
-      "sourceType": "text",
-      "status": "failed",
-      "retryCount": 2,
-      "errorMessage": "AI provider timeout after 10s",
-      "createdAt": "2026-06-14T10:00:00Z",
-      "updatedAt": "2026-06-14T10:01:30Z"
+      "jobType": "text_classification",
+      "status": "dead",
+      "attemptCount": 4,
+      "maxAttempts": 4,
+      "retryGeneration": 0,
+      "dispatchGeneration": 4,
+      "correlationId": "request-id-from-the-original-submit",
+      "availableAt": "2026-07-17T15:01:00Z",
+      "leaseExpiresAt": null,
+      "lastErrorCode": "ai_provider_unavailable",
+      "lastFailureClass": "provider_retryable",
+      "manualRetryAllowed": true,
+      "lastDispatchedAt": "2026-07-17T15:00:00Z",
+      "nextDispatchAt": null,
+      "createdAt": "2026-07-17T14:58:00Z",
+      "updatedAt": "2026-07-17T15:01:10Z",
+      "completedAt": "2026-07-17T15:01:10Z"
     }
   ],
   "meta": {
@@ -130,112 +78,161 @@ Response 200:
   }
 }
 
+Errors:
+  401  UNAUTHORIZED
+  403  EMAIL_NOT_VERIFIED | FORBIDDEN
+  422  VALIDATION_ERROR - invalid status, stuck, cursor or limit
+
 ----------------------------------------------------------------------
 
-GET /api/v1/admin/jobs/:id
+2. Get one capture processing job
 
-Mô tả: Lấy chi tiết đầy đủ một processing job cụ thể, bao gồm stack trace lỗi nếu có.
-       Dùng để debug khi job thất bại.
+GET /api/v1/admin/jobs/{jobId}
 
-Auth required:
-  Web admin: HttpOnly auth cookie with admin permission
-  Mobile admin: Authorization: Bearer <access_token> with admin permission
-
-Path params:
-  id — uuid của processing job.
+Returns the same safe operational job schema as the list endpoint. It does not return raw capture text, provider
+payloads, stack traces or serialized outbox data.
 
 Response 200:
 {
+  "data": { ...safe job fields from section 1... }
+}
+
+Errors:
+  401  UNAUTHORIZED
+  403  EMAIL_NOT_VERIFIED | FORBIDDEN
+  404  PROCESSING_JOB_NOT_FOUND
+  422  VALIDATION_ERROR - malformed jobId
+
+----------------------------------------------------------------------
+
+3. Requeue a dead job
+
+POST /api/v1/admin/jobs/{jobId}/requeue
+
+Request body: none
+
+Behavior:
+- Lock the job and capture and require status = dead.
+- Require the persisted failure policy to permit manual retry. Content-terminal failures such as detected
+  credentials or blocked content cannot be replayed by an admin.
+- Apply the same serialized per-user/global/oldest-queue admission guard as a user retry. Admin access does not
+  bypass backpressure.
+- In one database transaction, restart the same capture, increment the job retry generation and record a new
+  transactional outbox publication. No second capture is created.
+- Concurrent or repeated requeue calls permit one transition only. Losing calls return 409 and create no duplicate
+  publication.
+
+Response 202:
+{
   "data": {
-    "id": "uuid",
-    "itemId": "uuid",
-    "userId": "uuid",
-    "userEmail": "user@example.com",
-    "sourceType": "image",
-    "status": "failed",
-    "retryCount": 3,
-    "errorMessage": "AI provider returned 503 Service Unavailable",
-    "errorStack": "Error: AI provider returned 503...\n  at AiProcessingService.processImage (...)\n  at ...",
-    "payload": {
-      "itemId": "uuid",
-      "sourceType": "image",
-      "fileUrl": "https://storage.blaie.app/..."
-    },
-    "createdAt": "2026-06-14T10:00:00Z",
-    "updatedAt": "2026-06-14T10:03:00Z"
+    ...safe job fields from section 1...,
+    "status": "queued",
+    "attemptCount": 0,
+    "lastErrorCode": null,
+    "lastFailureClass": null,
+    "manualRetryAllowed": false
   }
 }
 
 Errors:
-  404  NOT_FOUND  JOB_NOT_FOUND  — Job không tồn tại.
+  401  UNAUTHORIZED
+  403  EMAIL_NOT_VERIFIED | FORBIDDEN
+  404  PROCESSING_JOB_NOT_FOUND
+  409  PROCESSING_JOB_REQUEUE_NOT_ALLOWED - job is not dead or terminal policy forbids replay
+  429  TOO_MANY_ACTIVE_JOBS
+  422  VALIDATION_ERROR - malformed jobId
+  503  CAPTURE_PROCESSING_UNAVAILABLE | CAPTURE_PROCESSING_OVERLOADED
+
+429/503 backpressure responses include Retry-After and leave the capture, job and outbox unchanged.
 
 ----------------------------------------------------------------------
 
-POST /api/v1/admin/jobs/:id/retry
+4. Mark an active job dead
 
-Mô tả: Admin retry một processing job đang ở trạng thái "failed".
-       Đặt job về "pending" và đẩy lại vào queue. Hành động này được log trong audit log.
+POST /api/v1/admin/jobs/{jobId}/mark-dead
 
-Auth required:
-  Web admin: HttpOnly auth cookie with admin permission
-  Mobile admin: Authorization: Bearer <access_token> with admin permission
+Request body: none
 
-Path params:
-  id — uuid của processing job.
-
-Request: Không có body.
+Behavior:
+- Lock the job and capture and require the job to be queued, processing or retry_wait while its capture is still
+  processing.
+- Transition the job to dead with safe code operator_marked_dead and failure class system_retryable. Transition the
+  capture to failed and remove any partial items in the same transaction.
+- Clear lease ownership. A worker that was already calling the provider is fenced and cannot commit a stale result.
+- A later requeue is allowed because operator_marked_dead is not a content-policy failure.
+- completed and already-dead jobs return 409. Concurrent terminal operations permit only one state transition.
 
 Response 200:
 {
   "data": {
-    "id": "uuid",
-    "itemId": "uuid",
-    "status": "pending",
-    "retryCount": 4,
-    "updatedAt": "2026-06-14T11:00:00Z"
+    ...safe job fields from section 1...,
+    "status": "dead",
+    "lastErrorCode": "operator_marked_dead",
+    "lastFailureClass": "system_retryable",
+    "manualRetryAllowed": true
   }
 }
 
 Errors:
-  404  NOT_FOUND  JOB_NOT_FOUND      — Job không tồn tại.
-  409  CONFLICT   RETRY_NOT_ALLOWED  — Job không ở trạng thái "failed", không thể retry.
+  401  UNAUTHORIZED
+  403  EMAIL_NOT_VERIFIED | FORBIDDEN
+  404  PROCESSING_JOB_NOT_FOUND
+  409  PROCESSING_JOB_MARK_DEAD_NOT_ALLOWED
+  422  VALIDATION_ERROR - malformed jobId
 
 ----------------------------------------------------------------------
 
-3. Analytics
+5. Inspect the capture outbox backlog
 
-----------------------------------------------------------------------
+GET /api/v1/admin/outbox/summary
 
-GET /api/v1/admin/analytics
+The summary covers incomplete TextCaptureQueuedEvent publications for listener
+capture-text-job-redis-publisher only. It is safe for dashboards and incident triage and never deserializes or
+returns event payloads.
 
-Mô tả: Lấy các chỉ số vận hành cơ bản của hệ thống.
-
-Auth required:
-  Web admin: HttpOnly auth cookie with admin permission
-  Mobile admin: Authorization: Bearer <access_token> with admin permission
-
-Response 200:
+Response 200 when no backlog exists:
 {
   "data": {
-    "totalUsers": 120,
-    "activeUsers": 115,
-    "disabledUsers": 5,
-    "totalCaptureItems": 3842,
-    "totalProcessedItems": 3790,
-    "totalFailedJobs": 52,
-    "failureRatePercent": 1.35,
-    "last24hCaptures": 148,
-    "categoryDistribution": {
-      "task": 1420,
-      "calendar_event": 430,
-      "reminder": 510,
-      "information": 450
-    },
-    "processingStatusDistribution": {
-      "pending": 10,
-      "processing": 3,
-      "completed": 3777,
-      "failed": 52
-    }
+    "backlogCount": 0,
+    "oldestPublicationAt": null,
+    "oldestAgeSeconds": 0,
+    "lastResubmissionAt": null,
+    "maxCompletionAttempts": 0
   }
 }
+
+Response 200 with a backlog:
+{
+  "data": {
+    "backlogCount": 3,
+    "oldestPublicationAt": "2026-07-17T15:00:00Z",
+    "oldestAgeSeconds": 95,
+    "lastResubmissionAt": "2026-07-17T15:01:20Z",
+    "maxCompletionAttempts": 4
+  }
+}
+
+Errors:
+  401  UNAUTHORIZED
+  403  EMAIL_NOT_VERIFIED | FORBIDDEN
+
+There is intentionally no generic purge endpoint. The recovery loop resubmits incomplete publications. Marking a
+Spring Modulith publication complete without proving the durable job is terminal can lose work. Malformed Redis
+records are already acknowledged and deleted by the worker; valid duplicate records are harmless because the
+PostgreSQL claim is generation-fenced.
+
+----------------------------------------------------------------------
+
+6. Runtime pause policy
+
+Commit 5 does not add an in-memory pause endpoint because it would be inconsistent across multiple app instances.
+
+- Pause new admission cluster-wide by setting BLAIE_CAPTURE_ACCEPT_ASYNC_ENABLED=false on every API writer and
+  rolling/restarting those nodes. New submit/retry requests then return CAPTURE_PROCESSING_UNAVAILABLE before any
+  write while existing jobs continue.
+- Pause all provider work by draining workers, setting BLAIE_CAPTURE_WORKER_ENABLED=false and gracefully restarting
+  every worker node. Durable queued/retry work remains in PostgreSQL.
+- Never set BLAIE_AI_CONCURRENCY_ENABLED=false to pause a provider. That disables the distributed cost guard.
+- A distributed per-provider runtime pause belongs with provider health/circuit-breaker/manual override work.
+
+The operational sequence and rollback steps are defined in docs/runbooks/capture-processing.md.

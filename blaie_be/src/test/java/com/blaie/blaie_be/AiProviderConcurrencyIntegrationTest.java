@@ -3,6 +3,7 @@ package com.blaie.blaie_be;
 import com.blaie.blaie_be.capture.infrastructure.ai.AiProviderConcurrencyProperties;
 import com.blaie.blaie_be.capture.infrastructure.ai.ProviderConcurrencyLimiter;
 import com.blaie.blaie_be.capture.infrastructure.ai.RedisProviderConcurrencyLimiter;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -41,14 +42,17 @@ class AiProviderConcurrencyIntegrationTest {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @Autowired
+    private CaptureTelemetryPort telemetry;
+
     @Test
     void renewedPermitStaysOwnedBeyondItsOriginalLeaseAndCloseUnblocksTheWaiter() throws Exception {
         AiProviderConcurrencyProperties properties = properties(Duration.ofMillis(300));
         ThreadPoolTaskScheduler renewalScheduler = scheduler("test-ai-renewal-");
         RedisProviderConcurrencyLimiter firstLimiter =
-                new RedisProviderConcurrencyLimiter(redisTemplate, properties, renewalScheduler);
+                new RedisProviderConcurrencyLimiter(redisTemplate, properties, renewalScheduler, telemetry);
         RedisProviderConcurrencyLimiter secondLimiter =
-                new RedisProviderConcurrencyLimiter(redisTemplate, properties, renewalScheduler);
+                new RedisProviderConcurrencyLimiter(redisTemplate, properties, renewalScheduler, telemetry);
         ProviderConcurrencyLimiter.Permit firstPermit = firstLimiter.acquire("deepseek");
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -74,9 +78,9 @@ class AiProviderConcurrencyIntegrationTest {
         ThreadPoolTaskScheduler crashedScheduler = scheduler("test-ai-crashed-renewal-");
         ThreadPoolTaskScheduler liveScheduler = scheduler("test-ai-live-renewal-");
         RedisProviderConcurrencyLimiter crashedLimiter =
-                new RedisProviderConcurrencyLimiter(redisTemplate, properties, crashedScheduler);
+                new RedisProviderConcurrencyLimiter(redisTemplate, properties, crashedScheduler, telemetry);
         RedisProviderConcurrencyLimiter liveLimiter =
-                new RedisProviderConcurrencyLimiter(redisTemplate, properties, liveScheduler);
+                new RedisProviderConcurrencyLimiter(redisTemplate, properties, liveScheduler, telemetry);
         ProviderConcurrencyLimiter.Permit expiredPermit = crashedLimiter.acquire("deepseek");
         crashedScheduler.shutdown();
 

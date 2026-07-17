@@ -3,8 +3,9 @@ API Contract - 02. Capture text (asynchronous processing)
 Base path: /api/v1/captures
 
 Text capture is accepted synchronously and classified asynchronously. PostgreSQL is the source of truth for
-captures, jobs and Inbox items. Redis Stream only transports job identifiers. A capture never uses a pending
-status: processing means accepted and not terminal; completed and failed are terminal.
+captures, jobs and Inbox items. Redis Stream only transports job identifiers and bounded correlation metadata,
+never user text. A capture never uses a pending status: processing means accepted and not terminal; completed and
+failed are terminal.
 
 Capture state machine:
   processing -> completed | failed
@@ -12,7 +13,7 @@ Capture state machine:
 Job state machine:
   queued -> processing -> completed
   processing -> retry_wait -> queued
-  processing | retry_wait -> dead
+  queued | processing | retry_wait -> dead
 
 Durability and delivery semantics:
 - PostgreSQL processing_jobs is authoritative. Redis Stream is only an at-least-once wake-up transport.
@@ -24,6 +25,9 @@ Durability and delivery semantics:
   different gap: a queued database job whose already-published Redis record was later lost.
 - After the database result transaction commits, the worker acknowledges and deletes that exact Redis record.
   Producers do not apply stream MAXLEN trimming because it could remove unprocessed work.
+- The accepted HTTP X-Request-ID is validated, persisted on processing_jobs and propagated through the outbox,
+  Redis record, worker and provider-attempt log context. Older records without this field fall back to event/job ID;
+  missing correlation metadata never prevents the durable job from executing.
 
 Authentication and ownership:
 - The user must be authenticated and email verified.

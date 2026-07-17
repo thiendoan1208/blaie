@@ -1,6 +1,9 @@
 package com.blaie.blaie_be.capture.infrastructure.async;
 
 import com.blaie.blaie_be.capture.application.CaptureJobProcessor;
+import com.blaie.blaie_be.core.request.MdcContextScope;
+import com.blaie.blaie_be.core.request.RequestIdPolicy;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -178,19 +181,67 @@ public class RedisCaptureJobWorker {
             String jobId,
             String dispatchGeneration
     ) {
+        UUID parsedJobId;
+        int parsedDispatchGeneration;
         try {
-            if (processor.process(
-                    UUID.fromString(jobId),
-                    Integer.parseInt(dispatchGeneration),
-                    properties.consumerName()
-            )) {
-                messageFinalizer.acknowledgeAndDelete(record.getId());
+            parsedJobId = UUID.fromString(jobId);
+            parsedDispatchGeneration = Integer.parseInt(dispatchGeneration);
+            if (parsedDispatchGeneration < 1) {
+                throw new IllegalArgumentException("dispatch generation must be positive");
             }
         } catch (IllegalArgumentException exception) {
             log.warn("Discarding malformed capture job message {}", record.getId());
             messageFinalizer.acknowledgeAndDelete(record.getId());
-        } catch (RuntimeException exception) {
-            log.error("Capture job message {} could not be processed", record.getId(), exception);
+            return;
+        }
+
+        Map<String, String> context = messageContext(
+                record,
+                parsedJobId.toString(),
+                Integer.toString(parsedDispatchGeneration)
+        );
+        try (MdcContextScope ignored = MdcContextScope.replace(context)) {
+            try {
+                if (processor.process(
+                        parsedJobId,
+                        parsedDispatchGeneration,
+                        properties.consumerName()
+                )) {
+                    messageFinalizer.acknowledgeAndDelete(record.getId());
+                }
+            } catch (RuntimeException exception) {
+                log.error("Capture job message {} could not be processed", record.getId(), exception);
+            }
+        }
+    }
+
+    private Map<String, String> messageContext(
+            MapRecord<String, String, String> record,
+            String jobId,
+            String dispatchGeneration
+    ) {
+        Map<String, String> context = new HashMap<>();
+        context.put("jobId", jobId);
+        context.put("dispatchGeneration", dispatchGeneration);
+        context.put("workerId", properties.consumerName());
+        putUuid(context, "eventId", record.getValue().get("eventId"));
+        putUuid(context, "captureId", record.getValue().get("captureId"));
+        String originRequestId = record.getValue().get("originRequestId");
+        if (!RequestIdPolicy.isValid(originRequestId)) {
+            originRequestId = context.getOrDefault("eventId", jobId);
+        }
+        context.put("requestId", originRequestId);
+        return Map.copyOf(context);
+    }
+
+    private void putUuid(Map<String, String> context, String key, String value) {
+        if (value == null) {
+            return;
+        }
+        try {
+            context.put(key, UUID.fromString(value).toString());
+        } catch (IllegalArgumentException ignored) {
+            // Optional correlation metadata must never prevent a durable job from running.
         }
     }
 

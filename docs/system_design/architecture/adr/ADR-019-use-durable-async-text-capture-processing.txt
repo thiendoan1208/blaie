@@ -34,6 +34,12 @@ create duplicate captures.
 - Redis provides a distributed leased semaphore per AI provider. Semaphore saturation waits for that provider and
   does not itself trigger fallback or consume another provider attempt.
 - Operational logs include job/capture ids, attempts, safe error codes, provider/model and latency, never raw text.
+- The original request ID is persisted with the job and propagated through outbox, Redis, worker and provider-attempt
+  MDC contexts. Event/job IDs provide backward-compatible fallbacks for records created before this field existed.
+- Micrometer exposes bounded capture/job/provider/recovery gauges, counters and timers. Prometheus/Grafana assets,
+  alert rules and an operational runbook are versioned with the application.
+- Secured admin operations can inspect safe job/outbox metadata, requeue policy-permitted dead jobs and fence active
+  jobs as dead. They never return raw capture text, provider payloads, stack traces or serialized outbox events.
 - Quota/payment usage accounting is explicitly deferred. Capture-specific Redis rate limiting is included.
 
 ## Failure and retry semantics
@@ -78,11 +84,13 @@ Outbox recovery is intentionally attempted before queued reconciliation becomes 
 delay must therefore be greater than outbox_recovery_age. This avoids both repair loops immediately producing the
 same wake-up record while still allowing eventual recovery when the Redis record itself is lost.
 
-Each Redis record carries jobId, captureId, eventId and dispatchGeneration, never the raw user text. A worker may
-claim the PostgreSQL job only when it is still queued and the message dispatchGeneration equals the current job
-generation. This database compare-and-set is the idempotency boundary: duplicate or superseded Redis messages
-cannot run the AI attempt again. Attempt ownership is also fenced by worker id, attempt count and retry generation,
-so a worker whose lease expired cannot commit over a newer attempt.
+Each Redis record carries jobId, captureId, eventId, dispatchGeneration and the bounded original request ID, never
+the raw user text. The same request ID is persisted on processing_jobs, so PostgreSQL restores authoritative
+correlation after a queued redispatch or when an older Redis message lacks the field. A worker may claim the
+PostgreSQL job only when it is still queued and the message dispatchGeneration equals the current job generation.
+This database compare-and-set is the idempotency boundary: duplicate or superseded Redis messages cannot run the AI
+attempt again. Attempt ownership is also fenced by worker id, attempt count and retry generation, so a worker whose
+lease expired cannot commit over a newer attempt.
 
 Delivery is at least once. After a terminal processing transaction or a harmless duplicate has been resolved, the
 worker performs XACK followed by XDEL for that exact record inside one Redis Lua script. The server-side operation
@@ -173,8 +181,41 @@ continue to use the failure taxonomy and ordered fallback policy above. An acqui
 treated as SYSTEM_RETRYABLE so an unbounded provider call is never started. A transient renewal failure is retried
 on the next scheduled tick; if Redis reports that ownership is already lost, further renewal stops and the incident
 is logged. The base lease should still exceed the normal provider timeout as a second safety margin against a
-prolonged Redis or scheduler outage. Permit usage/wait/renewal metrics and dynamic provider health are deferred to
-the observability and multi-provider commits.
+prolonged Redis or scheduler outage. Commit 5 exposes configured permit limits, current global usage and bounded
+wait outcomes. Renewal failures remain safe structured logs; circuit state, dynamic provider health and richer
+renewal telemetry belong to the multi-provider production work.
+
+## Observability and operations
+
+Operational snapshots read PostgreSQL and Redis on a dedicated scheduler, then expose in-memory gauges. A
+Prometheus scrape therefore does not run database or Redis queries on the scrape thread. Source-up and last-success
+gauges make retained values explicitly stale when a snapshot source is unavailable.
+
+The minimum contract covers durable active-job depth by queued/retry_wait/processing state, oldest queued age,
+active unexpired leases, outbox backlog and oldest publication, Redis Stream pending/length, job and provider
+duration, provider failures, retries, dead jobs, stale recovery, queued redispatch and provider concurrency
+usage/wait. Labels are closed/bounded values; userId, captureId, jobId, requestId, raw errors and content are
+forbidden as labels. Global DB/Redis gauges are duplicated by replicas. A query first filters each gauge by the
+matching `(job, instance)` source-up series, then aggregates with `max`; this prevents a failed sampler's retained
+last-good value from winning while avoiding replica-count inflation. Fleet source health uses `min by (source)` when
+any unhealthy sampler must remain visible. Per-process counters/timers are aggregated with `sum`/`rate`.
+
+The active-job recording used for admission/backlog monitoring sums all three durable active-state depths. It does
+not use active leases as the processing count: a processing row with an expired lease is still active for admission
+and remains durable backlog until stale-job recovery changes its state. The separate active-lease gauge shows only
+currently unexpired worker ownership and is useful for diagnosing worker/recovery health.
+
+Actuator exposes only health and Prometheus on a separate management port bound to loopback by default. Production
+may bind that port to a private management interface protected by network policy. It must never expose env,
+configprops, beans, mappings, heap dumps or application metrics to ordinary public API traffic.
+
+Admin read operations require `admin.read`; requeue/mark-dead require `admin.job.manage` and normal cookie CSRF
+rules. Requeue uses the same serialized admission guard as user retry and records a new transactional outbox event
+inside the state-change transaction. Mark-dead clears/fences the active lease so an older worker cannot commit.
+Runtime pause is deliberately deployment-wide startup configuration, not an unsafe per-instance in-memory switch.
+The committed runbook defines drain/restart/rollback procedures. Generic outbox purge is omitted because completing
+an unproven publication can lose durable work; malformed Redis records are already finalized and valid duplicates
+are database-fenced.
 
 Rate-limit Redis subjects no longer use a plain digest. A secret-keyed HMAC prevents offline enumeration of
 low-entropy identifiers if Redis keys are exposed. Production should provide a dedicated

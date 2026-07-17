@@ -1,17 +1,27 @@
 package com.blaie.blaie_be.capture.infrastructure.ai;
 
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.ProviderOutcome;
 import com.blaie.blaie_be.capture.application.port.TextClassifierProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 class AiProviderRouterTest {
     private static final ProviderConcurrencyLimiter NO_OP_LIMITER = providerId -> () -> { };
@@ -265,6 +275,85 @@ class AiProviderRouterTest {
         assertThat(providerCalls).hasValue(0);
     }
 
+    @Test
+    void recordsEachActualProviderAttemptButNotConcurrencyAcquisitionFailures() {
+        CaptureTelemetryPort telemetry = mock(CaptureTelemetryPort.class);
+        TextClassificationException primaryFailure = failure(
+                "ai_provider_unavailable",
+                TextClassificationFailureClass.PROVIDER_RETRYABLE
+        );
+        AiProviderRouter router = router(
+                List.of(
+                        failingProvider("primary", primaryFailure),
+                        provider("fallback", text -> analysis("fallback"))
+                ),
+                NO_OP_LIMITER,
+                telemetry,
+                "primary",
+                "fallback"
+        );
+
+        router.classify("Buy milk");
+
+        verify(telemetry).recordProviderDuration(any(Duration.class), eq("primary"), eq(ProviderOutcome.FAILURE));
+        verify(telemetry).recordProviderDuration(any(Duration.class), eq("fallback"), eq(ProviderOutcome.SUCCESS));
+        verify(telemetry).incrementProviderError(
+                "primary",
+                TextClassificationFailureClass.PROVIDER_RETRYABLE
+        );
+        verify(telemetry, never()).incrementProviderError(
+                "fallback",
+                TextClassificationFailureClass.PROVIDER_RETRYABLE
+        );
+    }
+
+    @Test
+    void eachFallbackAttemptGetsAnIsolatedProviderAttemptIdWithoutLosingJobContext() {
+        List<String> attempts = new ArrayList<>();
+        AiProviderRouter router = router(
+                List.of(
+                        provider("primary", text -> {
+                            attempts.add(MDC.get("provider") + ":" + MDC.get("providerAttemptId"));
+                            assertThat(MDC.get("requestId")).isEqualTo("root-request");
+                            assertThat(MDC.get("jobId")).isEqualTo("job-123");
+                            throw failure(
+                                    "ai_provider_unavailable",
+                                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+                            );
+                        }),
+                        provider("fallback", text -> {
+                            attempts.add(MDC.get("provider") + ":" + MDC.get("providerAttemptId"));
+                            assertThat(MDC.get("requestId")).isEqualTo("root-request");
+                            assertThat(MDC.get("jobId")).isEqualTo("job-123");
+                            return analysis("fallback");
+                        })
+                ),
+                "primary",
+                "fallback"
+        );
+        MDC.put("requestId", "root-request");
+        MDC.put("jobId", "job-123");
+
+        try {
+            router.classify("Buy milk");
+
+            assertThat(attempts).hasSize(2);
+            assertThat(attempts.get(0)).startsWith("primary:");
+            assertThat(attempts.get(1)).startsWith("fallback:");
+            String primaryAttemptId = attempts.get(0).substring("primary:".length());
+            String fallbackAttemptId = attempts.get(1).substring("fallback:".length());
+            assertThatCode(() -> java.util.UUID.fromString(primaryAttemptId)).doesNotThrowAnyException();
+            assertThatCode(() -> java.util.UUID.fromString(fallbackAttemptId)).doesNotThrowAnyException();
+            assertThat(primaryAttemptId).isNotEqualTo(fallbackAttemptId);
+            assertThat(MDC.get("provider")).isNull();
+            assertThat(MDC.get("providerAttemptId")).isNull();
+            assertThat(MDC.get("requestId")).isEqualTo("root-request");
+            assertThat(MDC.get("jobId")).isEqualTo("job-123");
+        } finally {
+            MDC.clear();
+        }
+    }
+
     private AiProviderRouter router(
             List<TextClassifierProvider> providers,
             String primary,
@@ -279,10 +368,20 @@ class AiProviderRouterTest {
             String primary,
             String... fallbacks
     ) {
+        return router(providers, limiter, mock(CaptureTelemetryPort.class), primary, fallbacks);
+    }
+
+    private AiProviderRouter router(
+            List<TextClassifierProvider> providers,
+            ProviderConcurrencyLimiter limiter,
+            CaptureTelemetryPort telemetry,
+            String primary,
+            String... fallbacks
+    ) {
         AiProviderProperties properties = new AiProviderProperties();
         properties.setProvider(primary);
         properties.setFallbackProviders(List.of(fallbacks));
-        return new AiProviderRouter(providers, properties, limiter);
+        return new AiProviderRouter(providers, properties, limiter, telemetry);
     }
 
     private CaptureAnalysis analysis(String provider) {

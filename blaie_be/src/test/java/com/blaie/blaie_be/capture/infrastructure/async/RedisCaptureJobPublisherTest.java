@@ -2,6 +2,7 @@ package com.blaie.blaie_be.capture.infrastructure.async;
 
 import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
 import java.util.UUID;
+import org.slf4j.MDC;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.connection.RedisStreamCommands.XAddOptions;
@@ -32,12 +33,26 @@ class RedisCaptureJobPublisherTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
-                4
+                4,
+                "publisher-request-123"
         );
         doReturn(streams).when(redisTemplate).opsForStream();
-        when(streams.add(any(MapRecord.class))).thenReturn(RecordId.of("1-0"));
+        MDC.put("existing", "preserved");
+        when(streams.add(any(MapRecord.class))).thenAnswer(invocation -> {
+            assertThat(MDC.get("requestId")).isEqualTo(event.originRequestId());
+            assertThat(MDC.get("eventId")).isEqualTo(event.eventId().toString());
+            assertThat(MDC.get("jobId")).isEqualTo(event.jobId().toString());
+            assertThat(MDC.get("captureId")).isEqualTo(event.captureId().toString());
+            return RecordId.of("1-0");
+        });
 
-        new RedisCaptureJobPublisher(redisTemplate, properties).publish(event);
+        try {
+            new RedisCaptureJobPublisher(redisTemplate, properties).publish(event);
+        } finally {
+            assertThat(MDC.get("existing")).isEqualTo("preserved");
+            assertThat(MDC.get("requestId")).isNull();
+            MDC.clear();
+        }
 
         @SuppressWarnings("unchecked")
         org.mockito.ArgumentCaptor<MapRecord<String, String, String>> recordCaptor =
@@ -49,7 +64,8 @@ class RedisCaptureJobPublisherTest {
                 "eventId", event.eventId().toString(),
                 "jobId", event.jobId().toString(),
                 "captureId", event.captureId().toString(),
-                "dispatchGeneration", "4"
+                "dispatchGeneration", "4",
+                "originRequestId", event.originRequestId()
         ));
         verify(streams, never()).add(any(Record.class), any(XAddOptions.class));
     }
@@ -65,13 +81,36 @@ class RedisCaptureJobPublisherTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
-                1
+                1,
+                "publisher-failure-request"
         );
         doReturn(streams).when(redisTemplate).opsForStream();
         when(streams.add(any(MapRecord.class))).thenThrow(failure);
 
         RedisCaptureJobPublisher publisher = new RedisCaptureJobPublisher(redisTemplate, properties);
 
-        assertThatThrownBy(() -> publisher.publish(event)).isSameAs(failure);
+        MDC.put("existing", "preserved");
+        try {
+            assertThatThrownBy(() -> publisher.publish(event)).isSameAs(failure);
+            assertThat(MDC.get("existing")).isEqualTo("preserved");
+            assertThat(MDC.get("requestId")).isNull();
+        } finally {
+            MDC.clear();
+        }
+    }
+
+    @Test
+    void missingLegacyOriginRequestIdFallsBackToEventId() {
+        UUID eventId = UUID.randomUUID();
+
+        TextCaptureQueuedEvent event = new TextCaptureQueuedEvent(
+                eventId,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                1,
+                null
+        );
+
+        assertThat(event.originRequestId()).isEqualTo(eventId.toString());
     }
 }

@@ -12,6 +12,7 @@ public interface CaptureWorkflowStorePort {
             String originalText,
             UUID idempotencyKey,
             String requestHash,
+            String originRequestId,
             Instant now,
             Instant idempotencyExpiresAt,
             int maxAttempts

@@ -2,6 +2,8 @@ package com.blaie.blaie_be.capture.infrastructure.persistence;
 
 import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
+import com.blaie.blaie_be.capture.application.result.RecoveredJobResult.RecoveryOutcome;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.time.Duration;
@@ -36,12 +38,14 @@ class JpaProcessingJobStoreAdapterTest {
         when(fixture.captureRepository.findLockedById(firstCapture.id())).thenReturn(Optional.of(firstCapture));
         when(fixture.captureRepository.findLockedById(thirdCapture.id())).thenReturn(Optional.of(thirdCapture));
 
-        fixture.adapter.recoverStale(NOW);
+        List<RecoveredJobResult> recovered = fixture.adapter.recoverStale(NOW);
 
         assertThat(firstAttempt.status()).isEqualTo("retry_wait");
         assertThat(firstAttempt.availableAt()).isEqualTo(NOW.plusSeconds(5));
         assertThat(thirdAttempt.status()).isEqualTo("retry_wait");
         assertThat(thirdAttempt.availableAt()).isEqualTo(NOW.plusSeconds(45));
+        assertThat(recovered).extracting(RecoveredJobResult::outcome)
+                .containsOnly(RecoveryOutcome.RETRY_SCHEDULED);
     }
 
     @Test
@@ -51,7 +55,7 @@ class JpaProcessingJobStoreAdapterTest {
         Fixture fixture = fixture(List.of(finalAttempt));
         when(fixture.captureRepository.findLockedById(capture.id())).thenReturn(Optional.of(capture));
 
-        fixture.adapter.recoverStale(NOW);
+        List<RecoveredJobResult> recovered = fixture.adapter.recoverStale(NOW);
 
         assertThat(finalAttempt.status()).isEqualTo("dead");
         assertThat(finalAttempt.lastFailureClass())
@@ -59,6 +63,10 @@ class JpaProcessingJobStoreAdapterTest {
         assertThat(finalAttempt.manualRetryAllowed()).isTrue();
         assertThat(capture.processingStatus()).isEqualTo("failed");
         assertThat(capture.failureCode()).isEqualTo("job_lease_expired");
+        assertThat(recovered).singleElement().satisfies(result -> {
+            assertThat(result.outcome()).isEqualTo(RecoveryOutcome.DEAD);
+            assertThat(result.failureClass()).isEqualTo(TextClassificationFailureClass.SYSTEM_RETRYABLE);
+        });
     }
 
     @Test
@@ -67,6 +75,7 @@ class JpaProcessingJobStoreAdapterTest {
         ProcessingJobEntity job = ProcessingJobEntity.queued(
                 capture,
                 4,
+                "redispatch-test-request",
                 NOW.minusSeconds(30),
                 NOW
         );
@@ -103,7 +112,9 @@ class JpaProcessingJobStoreAdapterTest {
     @Test
     void staleWorkerResultCannotCompleteANewerAttempt() {
         CaptureEntity capture = CaptureEntity.processing(UUID.randomUUID(), "Slow provider response");
-        ProcessingJobEntity job = ProcessingJobEntity.queued(capture, 4, NOW, NOW.plusSeconds(30));
+        ProcessingJobEntity job = ProcessingJobEntity.queued(
+                capture, 4, "stale-result-request", NOW, NOW.plusSeconds(30)
+        );
         assertThat(job.claim(1, "worker-1", NOW, NOW.plusSeconds(30))).isTrue();
         job.scheduleRetry(
                 "job_lease_expired",
@@ -137,6 +148,7 @@ class JpaProcessingJobStoreAdapterTest {
         ProcessingJobEntity job = ProcessingJobEntity.queued(
                 capture,
                 maxAttempts,
+                "processing-store-test-request",
                 firstDispatch,
                 firstDispatch.plusSeconds(30)
         );

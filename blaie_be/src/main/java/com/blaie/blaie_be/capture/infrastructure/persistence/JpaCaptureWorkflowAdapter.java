@@ -56,6 +56,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
             String originalText,
             UUID idempotencyKey,
             String requestHash,
+            String originRequestId,
             Instant now,
             Instant idempotencyExpiresAt,
             int maxAttempts
@@ -98,6 +99,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
                 ProcessingJobEntity.queued(
                         capture,
                         maxAttempts,
+                        originRequestId,
                         now,
                         now.plus(settings.dispatchRetryDelay(1))
                 )
@@ -165,7 +167,8 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
                 UUID.randomUUID(),
                 job.id(),
                 job.captureId(),
-                job.dispatchGeneration()
+                job.dispatchGeneration(),
+                job.originRequestId()
         ));
     }
 

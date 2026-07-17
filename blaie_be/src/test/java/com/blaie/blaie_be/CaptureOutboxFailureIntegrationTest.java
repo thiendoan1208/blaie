@@ -97,6 +97,7 @@ class CaptureOutboxFailureIntegrationTest {
                 "Publish this after Redis recovers",
                 UUID.randomUUID(),
                 "1".repeat(64),
+                "outbox-failure-request",
                 now,
                 now.plus(Duration.ofHours(24)),
                 properties.maxAttempts()
@@ -104,6 +105,10 @@ class CaptureOutboxFailureIntegrationTest {
 
         verify(streams, timeout(5_000)).add(any());
         await(() -> publicationCount(false) == 1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select serialized_event from event_publication where completion_date is null",
+                String.class
+        )).contains("\"originRequestId\":\"outbox-failure-request\"");
         assertThat(jdbcTemplate.queryForObject(
                 "select status from processing_jobs",
                 String.class

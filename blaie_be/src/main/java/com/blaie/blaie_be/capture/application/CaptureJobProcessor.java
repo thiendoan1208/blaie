@@ -1,6 +1,10 @@
 package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.DeadSource;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.JobOutcome;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
 import com.blaie.blaie_be.capture.application.port.JobLeaseHeartbeatPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
@@ -8,8 +12,11 @@ import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.core.request.MdcContextScope;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -27,6 +34,7 @@ public class CaptureJobProcessor {
     private final CaptureProcessingSettingsPort settings;
     private final Clock clock;
     private final JobLeaseHeartbeatPort heartbeatPort;
+    private final CaptureTelemetryPort telemetry;
 
     public CaptureJobProcessor(
             ProcessingJobStorePort jobStore,
@@ -34,7 +42,8 @@ public class CaptureJobProcessor {
             CaptureContentPolicy contentPolicy,
             CaptureProcessingSettingsPort settings,
             Clock clock,
-            JobLeaseHeartbeatPort heartbeatPort
+            JobLeaseHeartbeatPort heartbeatPort,
+            CaptureTelemetryPort telemetry
     ) {
         this.jobStore = jobStore;
         this.classifier = classifier;
@@ -42,6 +51,7 @@ public class CaptureJobProcessor {
         this.settings = settings;
         this.clock = clock;
         this.heartbeatPort = heartbeatPort;
+        this.telemetry = telemetry;
     }
 
     public boolean process(UUID jobId, int dispatchGeneration, String workerId) {
@@ -58,6 +68,19 @@ public class CaptureJobProcessor {
         }
 
         ProcessingJobResult job = claimed.get();
+        try (MdcContextScope ignored = MdcContextScope.overlay(Map.of(
+                "requestId", job.originRequestId(),
+                "jobId", job.id().toString(),
+                "captureId", job.captureId().toString(),
+                "attempt", Integer.toString(job.attemptCount()),
+                "retryGeneration", Integer.toString(job.retryGeneration()),
+                "dispatchGeneration", Integer.toString(job.dispatchGeneration())
+        ))) {
+            return processClaimed(job, workerId);
+        }
+    }
+
+    private boolean processClaimed(ProcessingJobResult job, String workerId) {
         JobLeaseHeartbeatPort.ActiveHeartbeat heartbeat = heartbeatPort.start(
                 job.id(),
                 workerId,
@@ -65,6 +88,7 @@ public class CaptureJobProcessor {
                 job.retryGeneration()
         );
         long startedAtNanos = System.nanoTime();
+        JobOutcome outcome = JobOutcome.STALE_DISCARDED;
         try {
             contentPolicy.validate(job.originalText());
             CaptureAnalysis analysis = classifier.classify(job.originalText());
@@ -83,6 +107,7 @@ public class CaptureJobProcessor {
                 );
                 return true;
             }
+            outcome = JobOutcome.COMPLETED;
             log.info(
                     "Capture job completed: jobId={}, captureId={}, attempt={}, provider={}, model={}, durationMs={}",
                     job.id(),
@@ -95,21 +120,25 @@ public class CaptureJobProcessor {
             return true;
         } catch (TextClassificationException exception) {
             Failure failure = safeFailure(exception.failureCode(), exception.failureClass());
-            handleFailure(job, workerId, failure);
+            outcome = handleFailure(job, workerId, failure);
             return true;
         } catch (RuntimeException exception) {
             log.error("Unexpected text capture classification failure for job {}", job.id(), exception);
-            handleFailure(job, workerId, new Failure(
+            outcome = handleFailure(job, workerId, new Failure(
                     UNEXPECTED_ERROR,
                     TextClassificationFailureClass.SYSTEM_RETRYABLE
             ));
             return true;
         } finally {
             heartbeat.stop();
+            telemetry.recordJobDuration(
+                    Duration.ofNanos(System.nanoTime() - startedAtNanos),
+                    outcome
+            );
         }
     }
 
-    private void handleFailure(
+    private JobOutcome handleFailure(
             ProcessingJobResult job,
             String workerId,
             Failure failure
@@ -128,13 +157,14 @@ public class CaptureJobProcessor {
             );
             if (!markedDead) {
                 log.info("Discarded stale capture failure: jobId={}, attempt={}", job.id(), job.attemptCount());
-                return;
+                return JobOutcome.STALE_DISCARDED;
             }
+            telemetry.incrementDead(DeadSource.WORKER, failure.failureClass());
             log.warn(
                     "Capture job marked dead: jobId={}, captureId={}, attempt={}, errorCode={}",
                     job.id(), job.captureId(), job.attemptCount(), failure.errorCode()
             );
-            return;
+            return JobOutcome.DEAD;
         }
         Instant retryAt = now.plus(settings.retryDelay(job.attemptCount()));
         boolean scheduled = jobStore.scheduleRetry(
@@ -149,12 +179,14 @@ public class CaptureJobProcessor {
         );
         if (!scheduled) {
             log.info("Discarded stale capture retry: jobId={}, attempt={}", job.id(), job.attemptCount());
-            return;
+            return JobOutcome.STALE_DISCARDED;
         }
+        telemetry.incrementRetry(RetrySource.AUTOMATIC);
         log.warn(
                 "Capture job retry scheduled: jobId={}, captureId={}, attempt={}, errorCode={}, availableAt={}",
                 job.id(), job.captureId(), job.attemptCount(), failure.errorCode(), retryAt
         );
+        return JobOutcome.RETRY_SCHEDULED;
     }
 
     private Failure safeFailure(

@@ -1,5 +1,7 @@
 package com.blaie.blaie_be.capture.infrastructure.ai;
 
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.ConcurrencyWaitOutcome;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import java.time.Duration;
@@ -182,6 +184,29 @@ class RedisProviderConcurrencyLimiterTest {
     }
 
     @Test
+    void recordsAProviderPermitWaitExactlyOnceWhenAcquired() {
+        AiProviderConcurrencyProperties properties = properties();
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        CaptureTelemetryPort telemetry = mock(CaptureTelemetryPort.class);
+        doReturn(List.of(1L, 1L)).when(redisTemplate).execute(
+                eq(RedisProviderConcurrencyLimiter.ACQUIRE),
+                eq(List.of(properties.keyFor("deepseek"))),
+                any(String.class),
+                eq("1"),
+                eq("30000")
+        );
+        RedisProviderConcurrencyLimiter limiter = limiter(redisTemplate, properties, telemetry);
+
+        limiter.acquire("deepseek").close();
+
+        verify(telemetry).recordProviderConcurrencyWait(
+                any(Duration.class),
+                eq("deepseek"),
+                eq(ConcurrencyWaitOutcome.ACQUIRED)
+        );
+    }
+
+    @Test
     void renewalFailureIsLoggedAndDoesNotEscapeTheSchedulerTask() {
         AiProviderConcurrencyProperties properties = properties();
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
@@ -208,7 +233,12 @@ class RedisProviderConcurrencyLimiterTest {
                         eq("30000")
                 );
         RedisProviderConcurrencyLimiter limiter =
-                new RedisProviderConcurrencyLimiter(redisTemplate, properties, scheduler);
+                new RedisProviderConcurrencyLimiter(
+                        redisTemplate,
+                        properties,
+                        scheduler,
+                        mock(com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.class)
+                );
         ProviderConcurrencyLimiter.Permit permit = limiter.acquire("deepseek");
 
         assertThatCode(() -> renewal.getValue().run()).doesNotThrowAnyException();
@@ -224,6 +254,14 @@ class RedisProviderConcurrencyLimiterTest {
             StringRedisTemplate redisTemplate,
             AiProviderConcurrencyProperties properties
     ) {
+        return limiter(redisTemplate, properties, mock(CaptureTelemetryPort.class));
+    }
+
+    private RedisProviderConcurrencyLimiter limiter(
+            StringRedisTemplate redisTemplate,
+            AiProviderConcurrencyProperties properties,
+            CaptureTelemetryPort telemetry
+    ) {
         TaskScheduler scheduler = mock(TaskScheduler.class);
         ScheduledFuture<?> future = mock(ScheduledFuture.class);
         doReturn(future).when(scheduler).scheduleAtFixedRate(
@@ -231,6 +269,11 @@ class RedisProviderConcurrencyLimiterTest {
                 any(Instant.class),
                 eq(properties.renewalInterval())
         );
-        return new RedisProviderConcurrencyLimiter(redisTemplate, properties, scheduler);
+        return new RedisProviderConcurrencyLimiter(
+                redisTemplate,
+                properties,
+                scheduler,
+                telemetry
+        );
     }
 }
