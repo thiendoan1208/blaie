@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.JobLeaseHeartbeatPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
@@ -26,12 +27,16 @@ class CaptureJobProcessorTest {
     void successfulJobCompletesExactlyOnce() {
         FakeJobStore store = new FakeJobStore(job(1, 4));
         CaptureAnalysis analysis = new CaptureAnalysis(List.of(), "test", "model", "v1");
-        CaptureJobProcessor processor = processor(store, text -> analysis);
+        FakeHeartbeat heartbeat = new FakeHeartbeat();
+        CaptureJobProcessor processor = processor(store, text -> analysis, heartbeat);
 
         assertThat(processor.process(store.job.id(), "worker-1")).isTrue();
         assertThat(store.completedAnalysis).isSameAs(analysis);
         assertThat(store.retryAt).isNull();
         assertThat(store.deadError).isNull();
+        assertThat(heartbeat.startedJobId).isEqualTo(store.job.id());
+        assertThat(heartbeat.startedWorkerId).isEqualTo("worker-1");
+        assertThat(heartbeat.stopCalls).isEqualTo(1);
 
         store.claimed = Optional.empty();
         assertThat(processor.process(store.job.id(), "worker-2")).isTrue();
@@ -43,7 +48,7 @@ class CaptureJobProcessorTest {
         FakeJobStore store = new FakeJobStore(job(1, 4));
         CaptureJobProcessor processor = processor(store, text -> {
             throw new TextClassificationException("ai_provider_unavailable", "safe internal detail");
-        });
+        }, new FakeHeartbeat());
 
         assertThat(processor.process(store.job.id(), "worker-1")).isTrue();
         assertThat(store.retryError).isEqualTo("ai_provider_unavailable");
@@ -56,14 +61,18 @@ class CaptureJobProcessorTest {
         FakeJobStore store = new FakeJobStore(job(4, 4));
         CaptureJobProcessor processor = processor(store, text -> {
             throw new TextClassificationException("ai_invalid_response", "invalid response");
-        });
+        }, new FakeHeartbeat());
 
         assertThat(processor.process(store.job.id(), "worker-1")).isTrue();
         assertThat(store.deadError).isEqualTo("ai_invalid_response");
         assertThat(store.retryAt).isNull();
     }
 
-    private CaptureJobProcessor processor(FakeJobStore store, TextClassifierPort classifier) {
+    private CaptureJobProcessor processor(
+            FakeJobStore store,
+            TextClassifierPort classifier,
+            JobLeaseHeartbeatPort heartbeat
+    ) {
         CaptureProcessingSettingsPort settings = new CaptureProcessingSettingsPort() {
             @Override
             public int maxAttempts() {
@@ -81,6 +90,11 @@ class CaptureJobProcessorTest {
             }
 
             @Override
+            public Duration heartbeatInterval() {
+                return Duration.ofSeconds(10);
+            }
+
+            @Override
             public Duration retryDelay(int failedAttemptCount) {
                 return Duration.ofSeconds(2);
             }
@@ -90,7 +104,8 @@ class CaptureJobProcessorTest {
                 classifier,
                 new CaptureContentPolicy(),
                 settings,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                heartbeat
         );
     }
 
@@ -127,6 +142,11 @@ class CaptureJobProcessorTest {
         }
 
         @Override
+        public boolean extendLease(UUID jobId, String workerId, Instant leaseExpiresAt) {
+            return true;
+        }
+
+        @Override
         public void complete(UUID jobId, CaptureAnalysis analysis, Instant now) {
             completedAnalysis = analysis;
             completeCalls++;
@@ -144,13 +164,26 @@ class CaptureJobProcessorTest {
         }
 
         @Override
-        public List<RecoveredJobResult> recoverStale(Instant now, Duration retryDelay) {
+        public List<RecoveredJobResult> recoverStale(Instant now) {
             return List.of();
         }
 
         @Override
         public int dispatchReadyRetries(Instant now, int limit) {
             return 0;
+        }
+    }
+
+    private static final class FakeHeartbeat implements JobLeaseHeartbeatPort {
+        private UUID startedJobId;
+        private String startedWorkerId;
+        private int stopCalls;
+
+        @Override
+        public ActiveHeartbeat start(UUID jobId, String workerId) {
+            startedJobId = jobId;
+            startedWorkerId = workerId;
+            return () -> stopCalls++;
         }
     }
 }

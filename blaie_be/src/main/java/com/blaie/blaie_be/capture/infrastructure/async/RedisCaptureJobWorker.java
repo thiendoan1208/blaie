@@ -4,9 +4,14 @@ import com.blaie.blaie_be.capture.application.CaptureJobProcessor;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.Consumer;
@@ -19,6 +24,7 @@ import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -35,27 +41,51 @@ public class RedisCaptureJobWorker {
     private final StringRedisTemplate redisTemplate;
     private final CaptureProcessingProperties properties;
     private final CaptureJobProcessor processor;
+    private final ThreadPoolTaskExecutor jobExecutor;
+    private final AtomicBoolean acceptingWork = new AtomicBoolean(true);
     private volatile boolean consumerGroupReady;
 
     public RedisCaptureJobWorker(
             StringRedisTemplate redisTemplate,
             CaptureProcessingProperties properties,
-            CaptureJobProcessor processor
+            CaptureJobProcessor processor,
+            @Qualifier(CaptureAsyncConfiguration.JOB_EXECUTOR) ThreadPoolTaskExecutor jobExecutor
     ) {
         this.redisTemplate = redisTemplate;
         this.properties = properties;
         this.processor = processor;
+        this.jobExecutor = jobExecutor;
     }
 
     @Scheduled(fixedDelayString = "${blaie.capture.processing.poll-interval:1s}")
     public void poll() {
+        if (!acceptingWork.get()) {
+            return;
+        }
         try {
             if (!ensureConsumerGroup()) {
                 return;
             }
             StreamOperations<String, String, String> streams = redisTemplate.opsForStream();
-            processRecords(reclaimStaleRecords(streams), streams);
-            List<MapRecord<String, String, String>> records = readNewRecords(streams);
+            int availableCapacity = availableCapacity();
+            if (availableCapacity == 0) {
+                return;
+            }
+            int reclaimed = processRecords(
+                    reclaimStaleRecords(streams, availableCapacity),
+                    streams
+            );
+            if (reclaimed > 0) {
+                return;
+            }
+            if (!acceptingWork.get()) {
+                return;
+            }
+            availableCapacity = availableCapacity();
+            if (availableCapacity == 0) {
+                return;
+            }
+            List<MapRecord<String, String, String>> records = readNewRecords(streams, availableCapacity);
             processRecords(records, streams);
         } catch (DataAccessException exception) {
             consumerGroupReady = false;
@@ -65,27 +95,34 @@ public class RedisCaptureJobWorker {
         }
     }
 
+    @EventListener(ContextClosedEvent.class)
+    public void stopAcceptingWork() {
+        acceptingWork.set(false);
+    }
+
     @SuppressWarnings("unchecked") // Spring's read API requires a generic varargs StreamOffset array.
     private List<MapRecord<String, String, String>> readNewRecords(
-            StreamOperations<String, String, String> streams
+            StreamOperations<String, String, String> streams,
+            int limit
     ) {
         return streams.read(
                 Consumer.from(properties.consumerGroup(), properties.consumerName()),
                 StreamReadOptions.empty()
-                        .count(properties.batchSize())
+                        .count(limit)
                         .block(properties.readBlock()),
                 StreamOffset.create(properties.streamKey(), ReadOffset.lastConsumed())
         );
     }
 
     private List<MapRecord<String, String, String>> reclaimStaleRecords(
-            StreamOperations<String, String, String> streams
+            StreamOperations<String, String, String> streams,
+            int limit
     ) {
         PendingMessages pending = streams.pending(
                 properties.streamKey(),
                 properties.consumerGroup(),
                 Range.unbounded(),
-                properties.batchSize(),
+                limit,
                 properties.leaseDuration()
         );
         if (pending.isEmpty()) {
@@ -103,29 +140,50 @@ public class RedisCaptureJobWorker {
         );
     }
 
-    private void processRecords(
+    private int processRecords(
             List<MapRecord<String, String, String>> records,
             StreamOperations<String, String, String> streams
     ) {
         if (records == null) {
-            return;
+            return 0;
         }
+        int submitted = 0;
         for (MapRecord<String, String, String> record : records) {
             String jobId = record.getValue().get("jobId");
             if (jobId == null) {
                 streams.acknowledge(properties.streamKey(), properties.consumerGroup(), record.getId());
                 continue;
             }
-            try {
-                if (processor.process(UUID.fromString(jobId), properties.consumerName())) {
-                    streams.acknowledge(properties.streamKey(), properties.consumerGroup(), record.getId());
-                }
-            } catch (IllegalArgumentException exception) {
-                log.warn("Discarding malformed capture job message {}", record.getId());
-                streams.acknowledge(properties.streamKey(), properties.consumerGroup(), record.getId());
-            } catch (RuntimeException exception) {
-                log.error("Capture job message {} could not be processed", record.getId(), exception);
+            if (!acceptingWork.get()) {
+                return submitted;
             }
+            try {
+                jobExecutor.execute(() -> processRecord(record, jobId));
+                submitted++;
+            } catch (TaskRejectedException exception) {
+                log.warn("Capture worker capacity is full; message {} remains pending", record.getId());
+            }
+        }
+        return submitted;
+    }
+
+    private int availableCapacity() {
+        int executionSlots = Math.max(0, jobExecutor.getMaxPoolSize() - jobExecutor.getActiveCount());
+        int queueSlots = jobExecutor.getThreadPoolExecutor().getQueue().remainingCapacity();
+        return Math.min(properties.batchSize(), executionSlots + queueSlots);
+    }
+
+    private void processRecord(MapRecord<String, String, String> record, String jobId) {
+        StreamOperations<String, String, String> streams = redisTemplate.opsForStream();
+        try {
+            if (processor.process(UUID.fromString(jobId), properties.consumerName())) {
+                streams.acknowledge(properties.streamKey(), properties.consumerGroup(), record.getId());
+            }
+        } catch (IllegalArgumentException exception) {
+            log.warn("Discarding malformed capture job message {}", record.getId());
+            streams.acknowledge(properties.streamKey(), properties.consumerGroup(), record.getId());
+        } catch (RuntimeException exception) {
+            log.error("Capture job message {} could not be processed", record.getId(), exception);
         }
     }
 

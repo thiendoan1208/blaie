@@ -40,7 +40,7 @@ public class CaptureJobRecoveryScheduler {
     @Scheduled(fixedDelayString = "${blaie.capture.processing.recovery-interval:2s}")
     public void recoverJobs() {
         Instant now = clock.instant();
-        int staleCount = jobStore.recoverStale(now, properties.retryDelay(1)).size();
+        int staleCount = jobStore.recoverStale(now).size();
         int dispatchedCount = jobStore.dispatchReadyRetries(now, properties.batchSize());
         if (staleCount > 0 || dispatchedCount > 0) {
             log.info(

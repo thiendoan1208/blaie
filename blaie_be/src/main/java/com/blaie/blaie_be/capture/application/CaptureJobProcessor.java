@@ -1,6 +1,7 @@
 package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
+import com.blaie.blaie_be.capture.application.port.JobLeaseHeartbeatPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
@@ -24,19 +25,22 @@ public class CaptureJobProcessor {
     private final CaptureContentPolicy contentPolicy;
     private final CaptureProcessingSettingsPort settings;
     private final Clock clock;
+    private final JobLeaseHeartbeatPort heartbeatPort;
 
     public CaptureJobProcessor(
             ProcessingJobStorePort jobStore,
             TextClassifierPort classifier,
             CaptureContentPolicy contentPolicy,
             CaptureProcessingSettingsPort settings,
-            Clock clock
+            Clock clock,
+            JobLeaseHeartbeatPort heartbeatPort
     ) {
         this.jobStore = jobStore;
         this.classifier = classifier;
         this.contentPolicy = contentPolicy;
         this.settings = settings;
         this.clock = clock;
+        this.heartbeatPort = heartbeatPort;
     }
 
     public boolean process(UUID jobId, String workerId) {
@@ -52,6 +56,7 @@ public class CaptureJobProcessor {
         }
 
         ProcessingJobResult job = claimed.get();
+        JobLeaseHeartbeatPort.ActiveHeartbeat heartbeat = heartbeatPort.start(job.id(), workerId);
         long startedAtNanos = System.nanoTime();
         try {
             contentPolicy.validate(job.originalText());
@@ -74,6 +79,8 @@ public class CaptureJobProcessor {
             log.error("Unexpected text capture classification failure for job {}", job.id(), exception);
             handleFailure(job, UNEXPECTED_ERROR, true);
             return true;
+        } finally {
+            heartbeat.stop();
         }
     }
 

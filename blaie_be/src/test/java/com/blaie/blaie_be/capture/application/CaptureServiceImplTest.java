@@ -111,6 +111,11 @@ class CaptureServiceImplTest {
             }
 
             @Override
+            public Duration heartbeatInterval() {
+                return Duration.ofSeconds(10);
+            }
+
+            @Override
             public Duration retryDelay(int failedAttemptCount) {
                 return Duration.ofSeconds(2);
             }

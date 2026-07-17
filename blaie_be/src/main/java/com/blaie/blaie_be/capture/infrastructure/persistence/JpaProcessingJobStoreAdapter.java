@@ -1,13 +1,13 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
 import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,17 +27,27 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
     private final CaptureRepository captureRepository;
     private final CaptureItemRepository captureItemRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final CaptureProcessingSettingsPort settings;
 
     public JpaProcessingJobStoreAdapter(
             ProcessingJobRepository jobRepository,
             CaptureRepository captureRepository,
             CaptureItemRepository captureItemRepository,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            CaptureProcessingSettingsPort settings
     ) {
         this.jobRepository = jobRepository;
         this.captureRepository = captureRepository;
         this.captureItemRepository = captureItemRepository;
         this.eventPublisher = eventPublisher;
+        this.settings = settings;
+    }
+
+    @Override
+    @Transactional
+    public boolean extendLease(UUID jobId, String workerId, Instant leaseExpiresAt) {
+        ProcessingJobEntity job = jobRepository.findLockedById(jobId).orElse(null);
+        return job != null && job.extendLease(workerId, leaseExpiresAt);
     }
 
     @Override
@@ -123,14 +133,14 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
 
     @Override
     @Transactional
-    public List<RecoveredJobResult> recoverStale(Instant now, Duration retryDelay) {
+    public List<RecoveredJobResult> recoverStale(Instant now) {
         List<ProcessingJobEntity> staleJobs = jobRepository.findStale(now, PageRequest.of(0, 100));
         List<RecoveredJobResult> recovered = new ArrayList<>(staleJobs.size());
         for (ProcessingJobEntity job : staleJobs) {
             CaptureEntity capture = captureRepository.findLockedById(job.captureId())
                     .orElseThrow(() -> new IllegalStateException("Capture for processing job is missing"));
             if (job.attemptCount() < job.maxAttempts()) {
-                job.scheduleRetry(STALE_JOB_ERROR, now.plus(retryDelay));
+                job.scheduleRetry(STALE_JOB_ERROR, now.plus(settings.retryDelay(job.attemptCount())));
                 recovered.add(new RecoveredJobResult(job.id(), job.captureId(), false));
             } else {
                 job.dead(STALE_JOB_ERROR, now);

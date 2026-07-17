@@ -6,6 +6,7 @@ import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
@@ -86,6 +87,14 @@ public class ProcessingJobEntity {
         status = "processing";
         attemptCount++;
         leaseOwner = workerId;
+        leaseExpiresAt = leaseUntil;
+        return true;
+    }
+
+    public boolean extendLease(String workerId, Instant leaseUntil) {
+        if (!"processing".equals(status) || !Objects.equals(leaseOwner, workerId)) {
+            return false;
+        }
         leaseExpiresAt = leaseUntil;
         return true;
     }

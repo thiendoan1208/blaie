@@ -9,5 +9,7 @@ public interface CaptureProcessingSettingsPort {
 
     Duration leaseDuration();
 
+    Duration heartbeatInterval();
+
     Duration retryDelay(int failedAttemptCount);
 }
