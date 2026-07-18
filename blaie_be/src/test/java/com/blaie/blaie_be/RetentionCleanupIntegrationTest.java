@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "blaie.capture.processing.recovery-enabled=false",
         "blaie.auth.access-token-secret=retention-test-access-secret-at-least-32-bytes",
         "blaie.email.provider=log",
+        "blaie.email.verification-ttl=24h",
         "blaie.email.from=Blaie <no-reply@test.local>",
         "blaie.email.web-base-url=http://localhost:3000",
         "blaie.email.api-base-url=http://localhost:8080/api/v1",
