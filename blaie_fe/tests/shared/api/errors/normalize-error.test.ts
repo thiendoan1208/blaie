@@ -47,6 +47,23 @@ describe("normalizeError", () => {
     expect(error.requestId).toBe("request-body");
   });
 
+  it("preserves Retry-After for capture backpressure UX", () => {
+    const error = normalizeError(
+      axiosError({
+        response: {
+          status: 429,
+          headers: { "Retry-After": "45" },
+          data: {
+            code: "RATE_LIMITED",
+            message: "Too many requests",
+          },
+        },
+      }),
+    );
+
+    expect(error.retryAfterSeconds).toBe(45);
+  });
+
   it.each([
     [400, "BAD_REQUEST"],
     [401, "UNAUTHORIZED"],

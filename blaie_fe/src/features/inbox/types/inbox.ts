@@ -14,6 +14,13 @@ export type InboxItem = {
   createdAt: string;
 };
 
+export type InboxPage = {
+  items: InboxItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+};
+
 export type CreateTextCaptureInput = {
   text: string;
   idempotencyKey: string;

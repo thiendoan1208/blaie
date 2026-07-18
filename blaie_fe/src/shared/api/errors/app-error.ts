@@ -22,6 +22,7 @@ type AppErrorOptions = {
   message: string;
   fieldErrors?: Record<string, string[]>;
   requestId?: string;
+  retryAfterSeconds?: number;
   cause?: unknown;
 };
 
@@ -30,15 +31,25 @@ export class AppError extends Error {
   readonly status: number;
   readonly fieldErrors?: Record<string, string[]>;
   readonly requestId?: string;
+  readonly retryAfterSeconds?: number;
   override readonly cause?: unknown;
 
-  constructor({ code, status, message, fieldErrors, requestId, cause }: AppErrorOptions) {
+  constructor({
+    code,
+    status,
+    message,
+    fieldErrors,
+    requestId,
+    retryAfterSeconds,
+    cause,
+  }: AppErrorOptions) {
     super(message);
     this.name = "AppError";
     this.code = code;
     this.status = status;
     this.fieldErrors = fieldErrors;
     this.requestId = requestId;
+    this.retryAfterSeconds = retryAfterSeconds;
     this.cause = cause;
   }
 }

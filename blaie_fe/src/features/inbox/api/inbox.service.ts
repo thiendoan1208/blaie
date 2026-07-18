@@ -4,6 +4,7 @@ import type { ApiResponse } from "@/shared/api/contracts/api-response";
 import type {
   CreateTextCaptureInput,
   InboxItem,
+  InboxPage,
   TextCapture,
 } from "../types/inbox";
 
@@ -40,9 +41,21 @@ export async function retryCapture(captureId: string): Promise<TextCapture> {
   return response.data.data;
 }
 
-export async function getInboxItems(): Promise<InboxItem[]> {
+export async function getInboxItems({
+  cursor,
+  limit = 20,
+}: {
+  cursor: string | null;
+  limit?: number;
+}): Promise<InboxPage> {
   const response = await httpClient.get<ApiResponse<InboxItem[]>>("/inbox", {
-    params: { limit: 20 },
+    params: { cursor: cursor ?? undefined, limit },
   });
-  return response.data.data;
+  const meta = response.data.meta;
+  return {
+    items: response.data.data,
+    nextCursor: meta?.nextCursor ?? null,
+    hasMore: meta?.hasMore ?? false,
+    limit: meta?.limit ?? limit,
+  };
 }

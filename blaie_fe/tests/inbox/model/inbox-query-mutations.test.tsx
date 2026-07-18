@@ -1,0 +1,178 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  createTextCapture,
+  getCapture,
+  getInboxItems,
+  getProcessingCaptures,
+} from "@/features/inbox/api/inbox.service";
+import { useCreateTextCaptureMutation } from "@/features/inbox/model/inbox.mutations";
+import {
+  capturePollingInterval,
+  uniqueInboxItems,
+  useInboxItemsQuery,
+  useProcessingCapturesQuery,
+} from "@/features/inbox/model/inbox.queries";
+import type {
+  InboxItem,
+  InboxPage,
+  TextCapture,
+} from "@/features/inbox/types/inbox";
+import { createAppError } from "@/shared/api/errors/app-error";
+
+vi.mock("@/features/inbox/api/inbox.service", () => ({
+  createTextCapture: vi.fn(),
+  getCapture: vi.fn(),
+  getInboxItems: vi.fn(),
+  getProcessingCaptures: vi.fn(),
+  retryCapture: vi.fn(),
+}));
+
+function capture(status: TextCapture["processingStatus"]): TextCapture {
+  return {
+    id: "capture-1",
+    originalText: "Call mom",
+    processingStatus: status,
+    failureCode: null,
+    canRetry: false,
+    items: [],
+    createdAt: "2026-07-17T10:00:00Z",
+    updatedAt: "2026-07-17T10:00:00Z",
+  };
+}
+
+function item(id: string, text = id): InboxItem {
+  return {
+    id,
+    originalText: text,
+    category: "task",
+    processingStatus: "completed",
+    createdAt: "2026-07-17T10:00:00Z",
+  };
+}
+
+function page(
+  items: InboxItem[],
+  nextCursor: string | null,
+): InboxPage {
+  return {
+    items,
+    nextCursor,
+    hasMore: nextCursor !== null,
+    limit: 20,
+  };
+}
+
+function testQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+}
+
+function wrapper(queryClient: QueryClient) {
+  return function QueryWrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    );
+  };
+}
+
+describe("Inbox queries and mutations", () => {
+  beforeEach(() => {
+    vi.mocked(createTextCapture).mockReset();
+    vi.mocked(getCapture).mockReset();
+    vi.mocked(getInboxItems).mockReset();
+    vi.mocked(getProcessingCaptures).mockReset();
+  });
+
+  it("loads cursor pages and removes duplicate items across page boundaries", async () => {
+    vi.mocked(getInboxItems)
+      .mockResolvedValueOnce(page([item("item-1")], "cursor-2"))
+      .mockResolvedValueOnce(
+        page([item("item-1", "duplicate"), item("item-2")], null),
+      );
+    const queryClient = testQueryClient();
+    const { result } = renderHook(() => useInboxItemsQuery("user-1"), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+    await waitFor(() => expect(result.current.data?.pages).toHaveLength(2));
+
+    expect(getInboxItems).toHaveBeenNthCalledWith(1, {
+      cursor: null,
+      limit: 20,
+    });
+    expect(getInboxItems).toHaveBeenNthCalledWith(2, {
+      cursor: "cursor-2",
+      limit: 20,
+    });
+    expect(uniqueInboxItems(result.current.data).map(({ id }) => id)).toEqual([
+      "item-1",
+      "item-2",
+    ]);
+    expect(result.current.hasNextPage).toBe(false);
+  });
+
+  it("polls only while a capture is processing", () => {
+    expect(capturePollingInterval(capture("processing"))).toBe(1_500);
+    expect(capturePollingInterval(capture("completed"))).toBe(false);
+    expect(capturePollingInterval(capture("failed"))).toBe(false);
+    expect(capturePollingInterval(undefined)).toBe(false);
+  });
+
+  it("enables focus and reconnect recovery for the processing list", async () => {
+    vi.mocked(getProcessingCaptures).mockResolvedValue([]);
+    const queryClient = testQueryClient();
+    renderHook(() => useProcessingCapturesQuery("user-1"), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await waitFor(() => expect(getProcessingCaptures).toHaveBeenCalledOnce());
+    const query = queryClient.getQueryCache().find({
+      queryKey: ["inbox", "user", "user-1", "processing"],
+    });
+    expect(query?.options.refetchOnWindowFocus).toBe(true);
+    expect(query?.options.refetchOnReconnect).toBe(true);
+  });
+
+  it("uses the same idempotency key when React Query retries an ambiguous POST", async () => {
+    const input = {
+      text: "Call mom",
+      idempotencyKey: "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+    };
+    vi.mocked(createTextCapture)
+      .mockRejectedValueOnce(
+        createAppError({
+          code: "NETWORK_ERROR",
+          status: 0,
+          message: "Network unavailable",
+        }),
+      )
+      .mockResolvedValueOnce(capture("processing"));
+    const queryClient = testQueryClient();
+    const { result } = renderHook(
+      () => useCreateTextCaptureMutation("user-1"),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await act(async () => {
+      await result.current.mutateAsync(input);
+    });
+
+    expect(createTextCapture).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(createTextCapture).mock.calls[0]?.[0]).toEqual(input);
+    expect(vi.mocked(createTextCapture).mock.calls[1]?.[0]).toEqual(input);
+  });
+});

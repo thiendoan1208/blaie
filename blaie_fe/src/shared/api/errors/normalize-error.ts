@@ -17,6 +17,39 @@ function requestIdFromHeaders(headers: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function headerFrom(headers: unknown, name: string): string | undefined {
+  if (!headers || typeof headers !== "object") {
+    return undefined;
+  }
+
+  if ("get" in headers && typeof headers.get === "function") {
+    const value = headers.get(name);
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+  }
+
+  const record = headers as Record<string, unknown>;
+  const entry = Object.entries(record).find(
+    ([key]) => key.toLowerCase() === name.toLowerCase(),
+  );
+  return typeof entry?.[1] === "string" && entry[1].length > 0
+    ? entry[1]
+    : undefined;
+}
+
+function retryAfterSecondsFromHeaders(headers: unknown): number | undefined {
+  const value = headerFrom(headers, "retry-after")?.trim();
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.ceil(seconds);
+  }
+
+  const retryAt = Date.parse(value);
+  if (Number.isNaN(retryAt)) return undefined;
+  return Math.max(0, Math.ceil((retryAt - Date.now()) / 1_000));
+}
+
 function fallbackCodeForStatus(status: number): AppErrorCode {
   if (status === 400) return "BAD_REQUEST";
   if (status === 401) return "UNAUTHORIZED";
@@ -45,6 +78,9 @@ export function normalizeError(error: unknown): AppError {
     const status = error.response?.status ?? 0;
     const body = error.response?.data;
     const requestId = body?.requestId ?? requestIdFromHeaders(error.response?.headers);
+    const retryAfterSeconds = retryAfterSecondsFromHeaders(
+      error.response?.headers,
+    );
 
     if (body?.code && body?.message) {
       return createAppError({
@@ -53,6 +89,7 @@ export function normalizeError(error: unknown): AppError {
         message: body.message,
         fieldErrors: body.errors,
         requestId,
+        retryAfterSeconds,
         cause: error,
       });
     }
@@ -62,6 +99,7 @@ export function normalizeError(error: unknown): AppError {
       status,
       message: body?.message ?? error.message,
       requestId,
+      retryAfterSeconds,
       cause: error,
     });
   }

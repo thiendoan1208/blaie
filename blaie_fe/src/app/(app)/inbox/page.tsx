@@ -1,5 +1,5 @@
-import { InboxTestPanel } from "@/features/inbox/ui/inbox-test-panel";
+import { InboxPanel } from "@/features/inbox/ui/inbox-panel";
 
 export default function InboxPage() {
-  return <InboxTestPanel />;
+  return <InboxPanel />;
 }
