@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUser } from "@/features/auth/model/user-context";
 import {
   useCreateTextCaptureMutation,
+  useDeleteCaptureMutation,
   useRetryCaptureMutation,
 } from "@/features/inbox/model/inbox.mutations";
 import {
@@ -26,6 +27,7 @@ vi.mock("@/features/auth/model/user-context", () => ({
 
 vi.mock("@/features/inbox/model/inbox.mutations", () => ({
   useCreateTextCaptureMutation: vi.fn(),
+  useDeleteCaptureMutation: vi.fn(),
   useRetryCaptureMutation: vi.fn(),
 }));
 
@@ -56,12 +58,14 @@ vi.mock("sonner", () => ({
 const refetchInbox = vi.fn().mockResolvedValue(undefined);
 const fetchNextPage = vi.fn().mockResolvedValue(undefined);
 const beginSubmission = vi.fn();
+const discardSubmission = vi.fn();
 const dismissCapture = vi.fn();
 const markCaptureResolved = vi.fn();
 const rememberCapture = vi.fn();
 const rememberRecoveredCapture = vi.fn();
 const createCapture = vi.fn();
 const retryCapture = vi.fn();
+const deleteCapture = vi.fn();
 
 function capture(
   id: string,
@@ -85,6 +89,7 @@ function capture(
 function item(id: string, originalText = id): InboxItem {
   return {
     id,
+    captureId: "capture-1",
     originalText,
     category: "reminder",
     processingStatus: "completed",
@@ -115,6 +120,7 @@ function mockTracking(captureIds: string[] = []) {
     state: { version: 1, captureIds, pendingSubmissions: [] },
     unresolvedSubmissionCount: 0,
     beginSubmission,
+    discardSubmission,
     dismissCapture,
     markCaptureResolved,
     rememberCapture,
@@ -141,6 +147,11 @@ describe("InboxPanel", () => {
     vi.mocked(useRetryCaptureMutation).mockReturnValue({
       isPending: false,
       mutateAsync: retryCapture,
+      variables: undefined,
+    } as never);
+    vi.mocked(useDeleteCaptureMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: deleteCapture,
       variables: undefined,
     } as never);
     beginSubmission.mockResolvedValue({
@@ -176,6 +187,13 @@ describe("InboxPanel", () => {
     expect(screen.getAllByRole("button", { name: "Dismiss capture" })).toHaveLength(2);
     expect(screen.getByText(/provider is temporarily unavailable/i)).toBeInTheDocument();
     expect(screen.queryByText("ai_provider_unavailable")).not.toBeInTheDocument();
+  });
+
+  it("shows the just-in-time privacy disclosure", () => {
+    render(<InboxPanel />);
+
+    expect(screen.getByText(/masks common email, phone, and IP patterns/i)).toBeInTheDocument();
+    expect(screen.getByText(/Names and free-form addresses may still be sent/i)).toBeInTheDocument();
   });
 
   it("restores a failed capture that is no longer in the processing list", () => {
@@ -308,5 +326,44 @@ describe("InboxPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry capture" }));
 
     await waitFor(() => expect(retryCapture).toHaveBeenCalledWith("failed-1"));
+  });
+
+  it("deletes the source capture selected from an Inbox item", async () => {
+    mockInbox([item("item-1", "Delete me")]);
+    deleteCapture.mockResolvedValue(undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<InboxPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Delete source capture for Delete me",
+      }),
+    );
+
+    await waitFor(() => expect(deleteCapture).toHaveBeenCalledWith("capture-1"));
+    expect(dismissCapture).toHaveBeenCalledWith("capture-1");
+  });
+
+  it("discards the persisted submission key after a deterministic privacy rejection", async () => {
+    createCapture.mockRejectedValue(
+      createAppError({
+        code: "CAPTURE_SENSITIVE_CONTENT",
+        status: 422,
+        message: "Capture contains sensitive content",
+      }),
+    );
+    render(<InboxPanel />);
+    fireEvent.change(screen.getByLabelText("Text to classify"), {
+      target: { value: "secret" },
+    });
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Capture text" }).closest("form")!,
+    );
+
+    await waitFor(() =>
+      expect(discardSubmission).toHaveBeenCalledWith(
+        "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+      ),
+    );
   });
 });

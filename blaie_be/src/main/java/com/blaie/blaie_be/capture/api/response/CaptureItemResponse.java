@@ -6,6 +6,7 @@ import java.util.UUID;
 
 public record CaptureItemResponse(
         UUID id,
+        UUID captureId,
         String originalText,
         String category,
         String processingStatus,
@@ -14,6 +15,7 @@ public record CaptureItemResponse(
     public static CaptureItemResponse from(CaptureItemResult item) {
         return new CaptureItemResponse(
                 item.id(),
+                item.captureId(),
                 item.originalText(),
                 item.category() == null ? null : item.category().value(),
                 item.processingStatus().value(),

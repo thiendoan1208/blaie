@@ -41,6 +41,21 @@ function browserStorage(): Storage | null {
   }
 }
 
+export function clearAllInboxTracking(): void {
+  const storage = browserStorage();
+  if (!storage) return;
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < storage.length; index++) {
+      const key = storage.key(index);
+      if (key?.startsWith(`${STORAGE_PREFIX}:`)) keys.push(key);
+    }
+    keys.forEach((key) => storage.removeItem(key));
+  } catch {
+    // Logout still succeeds if browser privacy settings block storage access.
+  }
+}
+
 function isPendingSubmission(value: unknown): value is PendingCaptureSubmission {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
@@ -284,6 +299,24 @@ function removeCapture(
   );
 }
 
+function removeSubmission(
+  userId: string,
+  idempotencyKey: string,
+  now = Date.now(),
+): InboxTrackingState {
+  const state = readInboxTrackingState(userId, now);
+  return writeInboxTrackingState(
+    userId,
+    {
+      ...state,
+      pendingSubmissions: state.pendingSubmissions.filter(
+        (submission) => submission.idempotencyKey !== idempotencyKey,
+      ),
+    },
+    now,
+  );
+}
+
 export function useInboxTracking(userId: string) {
   const [state, setState] = useState<InboxTrackingState>(emptyState);
 
@@ -344,6 +377,13 @@ export function useInboxTracking(userId: string) {
     [userId],
   );
 
+  const discardSubmission = useCallback(
+    (idempotencyKey: string) => {
+      setState(removeSubmission(userId, idempotencyKey));
+    },
+    [userId],
+  );
+
   const unresolvedSubmissionCount = useMemo(
     () =>
       state.pendingSubmissions.filter(
@@ -356,6 +396,7 @@ export function useInboxTracking(userId: string) {
     state,
     unresolvedSubmissionCount,
     beginSubmission,
+    discardSubmission,
     rememberCapture,
     rememberRecoveredCapture,
     markCaptureResolved,

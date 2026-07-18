@@ -95,6 +95,7 @@ class AdminCaptureOperationsWebTest {
                 .addFilters(requestContextFilter)
                 .apply(springSecurity())
                 .build();
+        jdbcTemplate.execute("delete from audit_events");
         jdbcTemplate.execute("delete from event_publication");
         jdbcTemplate.execute("delete from capture_items");
         jdbcTemplate.execute("delete from capture_idempotency_keys");
@@ -419,6 +420,51 @@ class AdminCaptureOperationsWebTest {
         assertNoPrivateData(result);
     }
 
+    @Test
+    void auditEventsRequireAdminAndUseSafeSignedPagination() throws Exception {
+        UserAccess regular = user(false, "audit-regular");
+        UserAccess admin = user(true, "audit-admin");
+        Instant base = Instant.now().minusSeconds(60);
+        insertAudit("capture.delete", "capture", UUID.randomUUID().toString(), "success", base.plusSeconds(3));
+        insertAudit("capture.read", "capture", UUID.randomUUID().toString(), "not_found", base.plusSeconds(2));
+        insertAudit("inbox.list", "inbox", regular.id().toString(), "success", base.plusSeconds(1));
+
+        MvcResult firstPage = mockMvc.perform(get("/api/v1/admin/audit-events")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
+                        .queryParam("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].action").value("capture.delete"))
+                .andExpect(jsonPath("$.data[0].originalText").doesNotExist())
+                .andExpect(jsonPath("$.meta.hasMore").value(true))
+                .andExpect(jsonPath("$.meta.nextCursor").isNotEmpty())
+                .andReturn();
+        assertNoPrivateData(firstPage);
+
+        String cursor = objectMapper.readTree(firstPage.getResponse().getContentAsString())
+                .path("meta")
+                .path("nextCursor")
+                .asString();
+        mockMvc.perform(get("/api/v1/admin/audit-events")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
+                        .queryParam("limit", "2")
+                        .queryParam("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.meta.hasMore").value(false));
+
+        mockMvc.perform(get("/api/v1/admin/audit-events")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
+                        .queryParam("cursor", cursor + "tampered"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        mockMvc.perform(get("/api/v1/admin/audit-events")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(regular.token())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
     private UserAccess user(boolean admin, String username) {
         UUID userId = UUID.randomUUID();
         jdbcTemplate.update(
@@ -550,6 +596,30 @@ class AdminCaptureOperationsWebTest {
                 completed ? "COMPLETED" : "FAILED",
                 timestamp(completed ? null : publicationDate.plusSeconds(5)),
                 completed ? 1 : 2
+        );
+    }
+
+    private void insertAudit(
+            String action,
+            String resourceType,
+            String resourceId,
+            String outcome,
+            Instant occurredAt
+    ) {
+        jdbcTemplate.update("""
+                insert into audit_events (
+                    id, actor_id, actor_admin, action, resource_type, resource_id,
+                    outcome, request_id, occurred_at, deduplication_bucket
+                ) values (?, ?, true, ?, ?, ?, ?, ?, ?, null)
+                """,
+                UUID.randomUUID(),
+                UUID.randomUUID().toString(),
+                action,
+                resourceType,
+                resourceId,
+                outcome,
+                "audit-test-request",
+                timestamp(occurredAt)
         );
     }
 

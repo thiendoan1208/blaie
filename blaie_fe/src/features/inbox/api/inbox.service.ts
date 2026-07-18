@@ -41,6 +41,10 @@ export async function retryCapture(captureId: string): Promise<TextCapture> {
   return response.data.data;
 }
 
+export async function deleteCapture(captureId: string): Promise<void> {
+  await httpClient.delete(`/captures/${captureId}`);
+}
+
 export async function getInboxItems({
   cursor,
   limit = 20,

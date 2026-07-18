@@ -1,0 +1,106 @@
+Capture data privacy and retention policy
+
+Status: Active for the current text Inbox
+Architecture decision: ADR-020
+
+## What Blaie stores
+
+- The original text Capture and its classified Inbox items are stored in PostgreSQL until the owner explicitly
+  deletes the source Capture.
+- A processing job and idempotency record belong to the source Capture. Deleting the Capture also deletes those
+  records and every Inbox item produced from it.
+- Redis, outbox messages, metrics, logs and access-audit events must not contain raw Capture or classified text.
+- Browser recovery storage contains only user-scoped Capture ids, idempotency keys, timestamps and a SHA-256 hash
+  of normalized input, never the raw input. Records expire after 24 hours and all Inbox recovery/query state is
+  cleared whenever local sign-out settles, including when the server logout request fails. A hash is not encryption
+  and short/predictable input could be guessed by dictionary comparison, so this storage remains private application
+  data.
+
+## Before persistence and before the AI provider
+
+1. The API applies sensitive-content admission before any workflow row is written. It blocks recognized private
+   keys/credential-like tokens, JWTs, credentialed database URLs, valid payment-card numbers, US SSN patterns and
+   reserved Blaie privacy-placeholder input. A rejection returns 422 CAPTURE_SENSITIVE_CONTENT.
+2. Accepted original text is stored so the user can recover and inspect it.
+3. Immediately before the provider call, mask_structured replaces recognized emails, international/North-American
+   phone numbers and IPv4 addresses with request-unique placeholders.
+4. A placeholder returned in an active record must be preserved exactly once. A canceled/inactive clause may be
+   omitted with its placeholder. The backend rejects altered, duplicated or injected placeholders before any
+   result is stored, then restores exact original values in valid results.
+
+This is data minimization, not anonymization. Names, free-form addresses, IPv6 and identifiers outside the supported
+patterns may still be sent to the configured provider. Detection is pattern-based and can have false positives or
+false negatives. Users are told not to submit passwords, API keys, payment cards or government identifiers.
+
+The BLAIE_CAPTURE_PII_MODE=allow override must not be enabled in production without a recorded product/privacy/legal
+approval. Before production, the selected provider also needs an approved DPA/terms decision covering data region,
+retention, training use, subprocessors and deletion behavior.
+
+## User deletion
+
+DELETE /api/v1/captures/{captureId}:
+
+- gets user ownership only from authenticated server context;
+- returns the same 404 for a missing or foreign Capture;
+- hard-deletes the source Capture, all sibling Inbox items, processing job and idempotency record transactionally;
+- prevents an in-flight worker from committing a stale provider result; and
+- does not recall a provider request that was already transmitted.
+
+Identifier-only audit and completed outbox metadata can remain until their retention cutoff. Backup-erasure and
+account-wide deletion are not implemented by this endpoint and require a future explicit product/compliance flow.
+
+## Retention matrix and configuration
+
+| Category | Default | Configuration | Automatic cleanup |
+| --- | --- | --- | --- |
+| Expired idempotency records | expires_at, currently 24h | capture idempotency TTL | yes |
+| Completed outbox rows | 7d | BLAIE_RETENTION_COMPLETED_OUTBOX | yes |
+| Completed processing jobs | 90d | BLAIE_RETENTION_COMPLETED_JOBS | yes |
+| Audit events | 365d | BLAIE_RETENTION_AUDIT_EVENTS | yes |
+| Raw Captures and Inbox items | owner deletion | none in this phase | no |
+| Dead jobs | owner deletion | none | no; retained for manual retry |
+| Active jobs | until terminal | none | never while active |
+| Incomplete outbox rows | until completed | none | never while incomplete |
+
+The scheduler defaults to once per hour, batch size 500 and at most 10 batches per category per run. These are
+configured with BLAIE_RETENTION_CLEANUP_INTERVAL, BLAIE_RETENTION_BATCH_SIZE and
+BLAIE_RETENTION_MAX_BATCHES_PER_RUN. Cleanup uses database row locking with SKIP LOCKED and is safe to run on more
+than one application instance. Set BLAIE_RETENTION_ENABLED=false only during a controlled operational intervention.
+
+## Access audit
+
+Current coverage:
+
+- Capture list, read, retry and delete;
+- Inbox list and item read;
+- admin job list, read, requeue and mark-dead;
+- admin outbox summary and audit-event list.
+
+Stored fields are actor id/admin flag, action, resource type/id, outcome, request id and timestamp. Audit events do
+not store content, IP address, user agent, provider payload, exception or outbox payload. Mutations and unsuccessful
+access attempts are always recorded; repeated successful read/list events deduplicate within the default 15-minute
+actor/action/resource bucket.
+
+Audit persistence is best-effort and fail-open, and is not atomic with the business transaction. It supports
+operational/security investigation but must not be presented as compliance-grade non-repudiation until audit-store
+failure alerting, broader system coverage and the required compliance controls are in place.
+
+## Cursor keys
+
+Inbox, admin-job and audit-list cursors are HMAC-signed and audience-specific. Inbox cursors are also user-bound.
+The signature protects integrity, not confidentiality; cursor payloads contain only pagination metadata.
+
+Production must use a dedicated BLAIE_CURSOR_HMAC_SECRET. To rotate, move the old key id/secret into the previous
+pair, deploy a new active pair, keep both through the longest supported pagination session, then remove the old
+pair. Do not reuse or expose either secret to clients.
+
+## Production gates not solved by application code
+
+- HTTPS for all application/provider traffic.
+- Database volume and backup encryption at rest, private network access and tested restore procedures.
+- Provider DPA/region/retention/training decision and deletion escalation path.
+- Backup-erasure and account-wide delete/export policy.
+- KMS/envelope-key rotation and recovery design before application-level field encryption.
+- Monitoring/alerting for audit write failures and retention scheduler failures.
+- A general authenticated API/WAF rate-limit backstop for audited read/delete routes. Capture submit/retry limits do
+  not currently bound hostile random-resource reads that would each create an unsuccessful audit event.

@@ -10,6 +10,8 @@ import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
+import com.blaie.blaie_be.core.cursor.CursorProperties;
+import com.blaie.blaie_be.core.cursor.SignedCursorCodec;
 import com.blaie.blaie_be.core.security.CurrentUser;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
 import com.blaie.blaie_be.core.request.RequestContext;
@@ -148,6 +150,60 @@ class CaptureServiceImplTest {
         verify(telemetry).incrementRetry(CaptureTelemetryPort.RetrySource.MANUAL);
     }
 
+    @Test
+    void sensitiveContentIsRejectedBeforePersistence() {
+        InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
+        CaptureService service = service(new InMemoryCaptureItemStore(), workflowStore);
+
+        assertThatThrownBy(() -> runAs(UUID.randomUUID(), () -> service.captureText(
+                "Store sk-abcdefghijklmnopqrstuvwxyz123456",
+                IDEMPOTENCY_KEY.toString()
+        )))
+                .isInstanceOfSatisfying(AppException.class, exception ->
+                        assertThat(exception.errorCode()).isEqualTo(ErrorCode.CAPTURE_SENSITIVE_CONTENT));
+        assertThat(workflowStore.startCalls).isZero();
+    }
+
+    @Test
+    void deleteAlwaysUsesAuthenticatedOwner() {
+        UUID ownerId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
+        CaptureService service = service(new InMemoryCaptureItemStore(), workflowStore);
+        CaptureResult created = runAs(ownerId, () -> service.captureText("Private", IDEMPOTENCY_KEY.toString()));
+
+        assertThatThrownBy(() -> runAs(otherId, () -> {
+            service.delete(created.id());
+            return null;
+        })).isInstanceOfSatisfying(AppException.class, exception ->
+                assertThat(exception.errorCode()).isEqualTo(ErrorCode.CAPTURE_NOT_FOUND));
+
+        runAs(ownerId, () -> {
+            service.delete(created.id());
+            return null;
+        });
+        assertThat(workflowStore.findOwned(created.id(), ownerId)).isEmpty();
+    }
+
+    @Test
+    void signedInboxCursorIsBoundToTheAuthenticatedUser() {
+        UUID ownerId = UUID.randomUUID();
+        InMemoryCaptureItemStore itemStore = new InMemoryCaptureItemStore();
+        CaptureItemResult first = itemStore.add(ownerId, "First");
+        itemStore.add(ownerId, "Second");
+        CaptureService service = service(itemStore, new InMemoryWorkflowStore());
+
+        String cursor = runAs(ownerId, () -> service.inbox(null, 1)).nextCursor();
+        assertThat(cursor).startsWith("v1.");
+        runAs(ownerId, () -> service.inbox(cursor, 1));
+        assertThat(itemStore.lastCreatedAt).isEqualTo(first.createdAt());
+        assertThat(itemStore.lastItemId).isEqualTo(first.id());
+
+        assertThatThrownBy(() -> runAs(UUID.randomUUID(), () -> service.inbox(cursor, 1)))
+                .isInstanceOfSatisfying(AppException.class, exception ->
+                        assertThat(exception.errorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
+    }
+
     private CaptureService service(CaptureItemStorePort itemStore, CaptureWorkflowStorePort workflowStore) {
         return service(itemStore, workflowStore, true);
     }
@@ -232,8 +288,17 @@ class CaptureServiceImplTest {
                 workflowStore,
                 settings,
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                telemetry
+                telemetry,
+                cursorCodec(),
+                new CaptureContentPolicy()
         );
+    }
+
+    private SignedCursorCodec cursorCodec() {
+        CursorProperties properties = new CursorProperties();
+        properties.setActiveKeyId("v1");
+        properties.setActiveSecret("capture-service-test-cursor-secret-1234567890");
+        return new SignedCursorCodec(properties);
     }
 
     private <T> T runAs(UUID userId, java.util.function.Supplier<T> supplier) {
@@ -307,6 +372,13 @@ class CaptureServiceImplTest {
             retryCalls++;
             return findOwned(captureId, userId).orElseThrow();
         }
+
+        @Override
+        public void deleteOwned(UUID captureId, UUID userId) {
+            boolean removed = captures.removeIf(capture ->
+                    capture.userId().equals(userId) && capture.result().id().equals(captureId));
+            if (!removed) throw new AppException(ErrorCode.CAPTURE_NOT_FOUND);
+        }
     }
 
     private record OwnedCapture(UUID userId, CaptureResult result) {
@@ -314,9 +386,12 @@ class CaptureServiceImplTest {
 
     private static final class InMemoryCaptureItemStore implements CaptureItemStorePort {
         private final List<OwnedItem> items = new ArrayList<>();
+        private Instant lastCreatedAt;
+        private UUID lastItemId;
 
         private CaptureItemResult add(UUID userId, String text) {
             CaptureItemResult result = new CaptureItemResult(
+                    UUID.randomUUID(),
                     UUID.randomUUID(),
                     text,
                     CaptureCategory.INFORMATION,
@@ -343,6 +418,8 @@ class CaptureServiceImplTest {
 
         @Override
         public List<CaptureItemResult> findPageAfter(UUID userId, Instant createdAt, UUID itemId, int limit) {
+            lastCreatedAt = createdAt;
+            lastItemId = itemId;
             return findFirstPage(userId, limit);
         }
     }

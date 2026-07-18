@@ -27,6 +27,10 @@ public enum ErrorCode {
     CAPTURE_NOT_FOUND(HttpStatus.NOT_FOUND, "Capture not found"),
     CAPTURE_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "Inbox item not found"),
     CAPTURE_NOT_RETRYABLE(HttpStatus.CONFLICT, "Capture cannot be retried"),
+    CAPTURE_SENSITIVE_CONTENT(
+            HttpStatus.UNPROCESSABLE_CONTENT,
+            "Capture contains sensitive content that cannot be stored"
+    ),
     PROCESSING_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "Processing job not found"),
     PROCESSING_JOB_REQUEUE_NOT_ALLOWED(
             HttpStatus.CONFLICT,

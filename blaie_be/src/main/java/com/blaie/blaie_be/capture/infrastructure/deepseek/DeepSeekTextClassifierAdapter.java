@@ -25,7 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
     private static final Logger log = LoggerFactory.getLogger(DeepSeekTextClassifierAdapter.class);
-    static final String PROMPT_VERSION = "v4";
+    static final String PROMPT_VERSION = "v5";
     static final String SYSTEM_PROMPT = """
             Split one personal Inbox capture into every independent record the user expressed, then classify each record.
             Return JSON only, exactly in this shape when active records exist:
@@ -47,6 +47,8 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
 
 
             Keep text concise, preserve dates/times and language, and never invent facts.
+            In every emitted record, preserve each __BLAIE_PII_ token from that record exactly. Never alter, expand,
+            duplicate, invent, or infer its hidden value. A token may be omitted only with a clause that is not emitted.
             Do not add markdown, explanations, or extra keys.
             """;
 

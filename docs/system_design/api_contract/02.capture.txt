@@ -32,8 +32,16 @@ Durability and delivery semantics:
 Authentication and ownership:
 - The user must be authenticated and email verified.
 - user_id always comes from the current authenticated user. Clients cannot submit userId.
-- Every read and retry query filters by both resource id and current user id.
+- Every read, retry and delete query filters by both resource id and current user id.
 - A missing or foreign capture returns the same CAPTURE_NOT_FOUND response.
+
+Privacy boundary:
+- PostgreSQL keeps the original text until the owner deletes the Capture.
+- Recognized credentials/secrets, Luhn-valid payment-card numbers and US SSN patterns are rejected before any
+  Capture, idempotency key, job or outbox event is persisted.
+- Common email, phone and IPv4 patterns are replaced with request-unique placeholders before the external AI call
+  and restored only after exact placeholder validation. Names and free-form addresses may still reach the provider.
+- Raw text is never included in Redis messages, outbox payloads, operational logs, metrics or access-audit events.
 
 ----------------------------------------------------------------------
 
@@ -50,6 +58,8 @@ Request:
 
 Behavior:
 - Validate auth, email verification, capture acceptance, rate limit, body and idempotency key.
+- Apply the sensitive-content policy before persistence. Deterministically blocked content returns
+  CAPTURE_SENSITIVE_CONTENT and creates no durable workflow state.
 - If asynchronous capture acceptance is disabled for deployment/drain mode, reject with
   CAPTURE_PROCESSING_UNAVAILABLE before creating a capture, job or idempotency record.
 - The rate-limit subject combines HMAC-SHA-256 pseudonyms of the current user id and client IP. If its Redis backend
@@ -63,6 +73,9 @@ Behavior:
 - After admission succeeds, create the processing capture, queued processing job, idempotency record and
   transactional application event in the same database transaction.
 - Do not call the AI provider in the HTTP request.
+- The worker masks supported structured PII patterns before the provider call. Returned placeholders must remain
+  exact and unique; canceled/inactive clauses may omit their placeholders. Invalid placeholder use is treated as an
+  invalid structured AI response and the untrusted output is never persisted.
 - Reusing the same key with the same normalized request returns the existing capture.
 - Reusing the same key with another request returns IDEMPOTENCY_KEY_REUSED.
 
@@ -125,6 +138,18 @@ CAPTURE_NOT_FOUND response, so retry policy does not disclose ownership.
 
 Response 202: Capture response with processingStatus = processing.
 
+----------------------------------------------------------------------
+
+DELETE /api/v1/captures/{captureId}
+
+Hard-deletes one Capture owned by the current user and cascades its Inbox items, durable processing job and
+idempotency record in the same transaction. A missing/foreign id returns CAPTURE_NOT_FOUND. Deleting while a worker
+is active fences its later result; it cannot recreate the deleted Capture or Inbox items. A provider request already
+sent cannot be recalled. Safe audit/outbox metadata can remain until its separate retention cutoff and contains no
+raw Capture text.
+
+Response 204: no body.
+
 Errors:
   400  IDEMPOTENCY_KEY_REQUIRED | IDEMPOTENCY_KEY_INVALID
   403  EMAIL_NOT_VERIFIED
@@ -132,6 +157,7 @@ Errors:
   409  IDEMPOTENCY_KEY_REUSED
        CAPTURE_NOT_RETRYABLE - capture/job is not terminal or its terminal policy forbids manual retry
   422  VALIDATION_ERROR
+       CAPTURE_SENSITIVE_CONTENT - recognized credential, secret, payment-card or SSN-like content was rejected
   429  RATE_LIMITED
        TOO_MANY_ACTIVE_JOBS - the current user already has the configured number of active jobs
   503  CAPTURE_PROCESSING_UNAVAILABLE - deployment is not accepting new asynchronous capture work

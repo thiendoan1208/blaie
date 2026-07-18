@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  clearAllInboxTracking,
   getOrCreatePendingSubmission,
   hashCaptureText,
   readInboxTrackingState,
@@ -68,6 +69,16 @@ describe("Inbox capture tracking", () => {
     expect(secondUser.idempotencyKey).not.toBe(firstUser.idempotencyKey);
     expect(readInboxTrackingState("user-1").pendingSubmissions).toHaveLength(1);
     expect(readInboxTrackingState("user-2").pendingSubmissions).toHaveLength(1);
+  });
+
+  it("clears all private tracking records on logout", async () => {
+    await getOrCreatePendingSubmission("user-1", "Private one");
+    await getOrCreatePendingSubmission("user-2", "Private two");
+
+    clearAllInboxTracking();
+
+    expect(readInboxTrackingState("user-1").pendingSubmissions).toEqual([]);
+    expect(readInboxTrackingState("user-2").pendingSubmissions).toEqual([]);
   });
 
   it("expires unresolved keys after the backend idempotency TTL", async () => {

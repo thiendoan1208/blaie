@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createTextCapture,
+  deleteCapture,
   getInboxItems,
 } from "@/features/inbox/api/inbox.service";
 import type {
@@ -14,6 +15,7 @@ vi.mock("@/shared/api/http-client", () => ({
   httpClient: {
     get: vi.fn(),
     post: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
@@ -30,6 +32,7 @@ const capture: TextCapture = {
 
 const item: InboxItem = {
   id: "item-1",
+  captureId: "capture-1",
   originalText: "Call mom",
   category: "reminder",
   processingStatus: "completed",
@@ -40,6 +43,15 @@ describe("Inbox service", () => {
   beforeEach(() => {
     vi.mocked(httpClient.get).mockReset();
     vi.mocked(httpClient.post).mockReset();
+    vi.mocked(httpClient.delete).mockReset();
+  });
+
+  it("deletes the owned source capture", async () => {
+    vi.mocked(httpClient.delete).mockResolvedValue({ data: null });
+
+    await deleteCapture("capture-1");
+
+    expect(httpClient.delete).toHaveBeenCalledWith("/captures/capture-1");
   });
 
   it("sends the persisted idempotency key on capture submission", async () => {

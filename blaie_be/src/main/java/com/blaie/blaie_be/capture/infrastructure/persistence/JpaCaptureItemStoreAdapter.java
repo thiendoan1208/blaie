@@ -45,6 +45,7 @@ public class JpaCaptureItemStoreAdapter implements CaptureItemStorePort {
     private CaptureItemResult toResult(CaptureItemEntity item) {
         return new CaptureItemResult(
                 item.id(),
+                item.captureId(),
                 item.originalText(),
                 item.category() == null ? null : CaptureCategory.fromValue(item.category()),
                 ProcessingStatus.fromValue(item.processingStatus()),

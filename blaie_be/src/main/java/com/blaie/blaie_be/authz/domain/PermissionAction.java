@@ -19,7 +19,8 @@ public enum PermissionAction {
     INFORMATION_UPDATE("information.update"),
     ADMIN_READ("admin.read"),
     ADMIN_USER_MANAGE("admin.user.manage"),
-    ADMIN_JOB_MANAGE("admin.job.manage");
+    ADMIN_JOB_MANAGE("admin.job.manage"),
+    ADMIN_AUDIT_READ("admin.audit.read");
 
     private final String key;
 

@@ -23,4 +23,6 @@ public interface CaptureWorkflowStorePort {
     List<CaptureResult> findOwnedProcessing(UUID userId, int limit);
 
     CaptureResult retryOwned(UUID captureId, UUID userId, Instant now);
+
+    void deleteOwned(UUID captureId, UUID userId);
 }

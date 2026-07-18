@@ -125,7 +125,12 @@ Ghi chu:
 
 5. Pagination - Cursor-based
 
-Blaie dung cursor-based pagination cho tat ca list endpoints.
+Blaie dung cursor-based pagination cho tat ca list endpoints. Cursor la opaque token co version va chu ky
+HMAC-SHA-256 theo tung endpoint. Client phai gui lai nguyen token; khong duoc parse hoac sua. Cursor bi sua,
+sai endpoint, sai current user (voi Inbox), key khong hop le hoac qua dai se tra VALIDATION_ERROR.
+
+Cursor duoc ky chu khong duoc ma hoa. Payload chi chua pagination metadata, khong chua raw content hoac secret.
+Server ho tro active + previous key trong cua so rotate key.
 
 Request query params:
   cursor=<cursor_value>    optional, bo qua cho trang dau
@@ -140,7 +145,7 @@ Vi du request trang dau:
   GET /api/v1/inbox?limit=20
 
 Vi du request trang tiep:
-  GET /api/v1/inbox?cursor=eyJpZCI6Ijg1In0&limit=20
+  GET /api/v1/inbox?cursor=<opaque_signed_cursor>&limit=20
 
 ----------------------------------------------------------------------
 
@@ -183,6 +188,7 @@ CaptureItem la object cot loi cua toan he thong. Schema nay dung chung o nhieu e
 
 {
   "id": "uuid",
+  "captureId": "source-capture-uuid",
   "userId": "uuid",
   "sourceType": "text | image | audio_upload",
   "originalText": "string | null",

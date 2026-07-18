@@ -1,5 +1,6 @@
 package com.blaie.blaie_be.auth.infrastructure.security;
 
+import com.blaie.blaie_be.audit.infrastructure.web.AuditAccessFilter;
 import com.blaie.blaie_be.core.ratelimit.filter.RateLimitFilter;
 import com.blaie.blaie_be.core.security.AppAccessDeniedHandler;
 import com.blaie.blaie_be.core.security.AppAuthenticationEntryPoint;
@@ -38,6 +39,7 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             AuthRequestFilter authRequestFilter,
+            AuditAccessFilter auditAccessFilter,
             RateLimitFilter rateLimitFilter,
             EmailVerificationRequiredFilter emailVerificationRequiredFilter,
             AppAuthenticationEntryPoint authenticationEntryPoint,
@@ -76,7 +78,8 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .addFilterBefore(authRequestFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(rateLimitFilter, AuthRequestFilter.class)
+                .addFilterAfter(auditAccessFilter, AuthRequestFilter.class)
+                .addFilterAfter(rateLimitFilter, AuditAccessFilter.class)
                 .addFilterAfter(emailVerificationRequiredFilter, RateLimitFilter.class)
                 .build();
     }
@@ -93,6 +96,11 @@ public class SecurityConfig {
 
     @Bean
     FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(RateLimitFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    FilterRegistrationBean<AuditAccessFilter> auditAccessFilterRegistration(AuditAccessFilter filter) {
         return securityChainOnly(filter);
     }
 

@@ -17,8 +17,8 @@ Data-safety rules:
 - Responses contain operational metadata only. They never return Capture.originalText, classified item content,
   provider request/response bodies, stack traces, secrets, or event_publication.serialized_event.
 - lastErrorCode and lastFailureClass are the safe persisted failure metadata, not raw exception messages.
-- Admin mutations emit a structured operation log containing the admin user id, request id, job id, action and
-  state transition. Persistent audit-log storage is a later privacy/retention decision.
+- Admin access and mutations emit persistent safe audit events containing bounded actor/action/resource/outcome,
+  request id and timestamp fields. Audit data never contains raw Capture/provider/outbox content.
 
 Actual job state machine:
   queued -> processing -> completed
@@ -236,3 +236,47 @@ Commit 5 does not add an in-memory pause endpoint because it would be inconsiste
 - A distributed per-provider runtime pause belongs with provider health/circuit-breaker/manual override work.
 
 The operational sequence and rollback steps are defined in docs/runbooks/capture-processing.md.
+
+----------------------------------------------------------------------
+
+7. Inspect persistent access-audit events
+
+GET /api/v1/admin/audit-events
+
+Requires admin.audit.read. Results are newest first and use a signed, endpoint-specific keyset cursor.
+
+Query params:
+  cursor  - optional opaque signed cursor returned by the previous page
+  limit   - optional, default 50, min 1, max 100
+
+Response 200:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "actorId": "server-side-user-id-or-anonymous",
+      "actorAdmin": true,
+      "action": "capture.delete",
+      "resourceType": "capture",
+      "resourceId": "uuid",
+      "outcome": "success",
+      "requestId": "request-id",
+      "occurredAt": "2026-07-17T15:00:00Z"
+    }
+  ],
+  "meta": {
+    "nextCursor": null,
+    "hasMore": false,
+    "limit": 50
+  }
+}
+
+Successful read/list events are deduplicated per actor/action/resource in a configurable 15-minute bucket. Mutation
+and unsuccessful access events are not deduplicated. Audit writes are best-effort/fail-open and not transactionally
+atomic with the business mutation; the business database remains the state source of truth. Default audit retention
+is 365 days.
+
+Errors:
+  401  UNAUTHORIZED
+  403  EMAIL_NOT_VERIFIED | FORBIDDEN
+  422  VALIDATION_ERROR - invalid cursor or limit

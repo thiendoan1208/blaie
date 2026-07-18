@@ -7,6 +7,7 @@ import java.util.UUID;
 
 public record CaptureItemResult(
         UUID id,
+        UUID captureId,
         String originalText,
         CaptureCategory category,
         ProcessingStatus processingStatus,

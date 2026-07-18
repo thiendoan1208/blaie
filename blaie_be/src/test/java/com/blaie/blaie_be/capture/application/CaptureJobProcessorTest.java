@@ -8,6 +8,7 @@ import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
+import com.blaie.blaie_be.capture.domain.CapturePiiMode;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
@@ -300,6 +301,7 @@ class CaptureJobProcessorTest {
                 store,
                 classifier,
                 new CaptureContentPolicy(),
+                new CapturePiiPolicy(() -> CapturePiiMode.MASK_STRUCTURED),
                 settings,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 heartbeat,

@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Send,
+  Trash2,
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -20,9 +21,11 @@ import { isAppError } from "@/shared/api/errors/app-error";
 import {
   captureFailureMessage,
   captureRequestErrorMessage,
+  shouldDiscardCaptureSubmission,
 } from "../model/inbox-errors";
 import {
   useCreateTextCaptureMutation,
+  useDeleteCaptureMutation,
   useRetryCaptureMutation,
 } from "../model/inbox.mutations";
 import {
@@ -69,6 +72,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
   const tracking = useInboxTracking(userId);
   const {
     beginSubmission,
+    discardSubmission,
     dismissCapture,
     markCaptureResolved,
     rememberCapture,
@@ -85,6 +89,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
   );
   const captureMutation = useCreateTextCaptureMutation(userId);
   const retryMutation = useRetryCaptureMutation(userId);
+  const deleteMutation = useDeleteCaptureMutation(userId);
 
   const captures = useMemo(() => {
     const byId = new Map<string, TextCapture>();
@@ -150,8 +155,9 @@ function InboxPanelContent({ userId }: { userId: string }) {
 
     submitInFlight.current = true;
     setPreparingSubmission(true);
+    let submission: Awaited<ReturnType<typeof beginSubmission>> | undefined;
     try {
-      const submission = await beginSubmission(trimmedText);
+      submission = await beginSubmission(trimmedText);
       const capture = await captureMutation.mutateAsync({
         text: trimmedText,
         idempotencyKey: submission.idempotencyKey,
@@ -160,10 +166,24 @@ function InboxPanelContent({ userId }: { userId: string }) {
       setText("");
       toast.success("Capture accepted and queued for classification.");
     } catch (error) {
+      if (submission && shouldDiscardCaptureSubmission(error)) {
+        discardSubmission(submission.idempotencyKey);
+      }
       toast.error(captureRequestErrorMessage(error));
     } finally {
       submitInFlight.current = false;
       setPreparingSubmission(false);
+    }
+  }
+
+  async function remove(captureId: string) {
+    if (!window.confirm("Delete this source capture and all Inbox items created from it?")) return;
+    try {
+      await deleteMutation.mutateAsync(captureId);
+      dismissCapture(captureId);
+      toast.success("Capture and its Inbox items were deleted.");
+    } catch (error) {
+      toast.error(captureRequestErrorMessage(error));
     }
   }
 
@@ -191,6 +211,12 @@ function InboxPanelContent({ userId }: { userId: string }) {
           <p className="text-sm text-muted-foreground">
             Write anything. Blaie will classify it in the background and place
             the extracted records in your Inbox.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Blaie stores your text and masks common email, phone, and IP
+            patterns before AI processing. Names and free-form addresses may
+            still be sent to the configured provider. Never paste passwords,
+            API keys, payment cards, or government IDs.
           </p>
         </div>
 
@@ -236,6 +262,10 @@ function InboxPanelContent({ userId }: { userId: string }) {
             retryMutation.isPending ? retryMutation.variables : undefined
           }
           onDismiss={dismissCapture}
+          deletingCaptureId={
+            deleteMutation.isPending ? deleteMutation.variables : undefined
+          }
+          onDelete={(captureId) => void remove(captureId)}
           onRetry={(captureId) => void retry(captureId)}
         />
       </section>
@@ -265,6 +295,10 @@ function InboxPanelContent({ userId }: { userId: string }) {
           isLoading={inboxQuery.isLoading}
           isLoadingMore={inboxQuery.isFetchingNextPage}
           items={inboxItems}
+          deletingCaptureId={
+            deleteMutation.isPending ? deleteMutation.variables : undefined
+          }
+          onDelete={(captureId) => void remove(captureId)}
           onLoadMore={() => void inboxQuery.fetchNextPage()}
         />
       </section>
@@ -274,13 +308,17 @@ function InboxPanelContent({ userId }: { userId: string }) {
 
 function CaptureCards({
   captures,
+  deletingCaptureId,
   retryingCaptureId,
+  onDelete,
   onDismiss,
   onRetry,
 }: {
   captures: TextCapture[];
+  deletingCaptureId: string | undefined;
   retryingCaptureId: string | undefined;
   onDismiss: (captureId: string) => void;
+  onDelete: (captureId: string) => void;
   onRetry: (captureId: string) => void;
 }) {
   if (captures.length === 0) return null;
@@ -291,6 +329,7 @@ function CaptureCards({
         const processing = capture.processingStatus === "processing";
         const failed = capture.processingStatus === "failed";
         const retrying = retryingCaptureId === capture.id;
+        const deleting = deletingCaptureId === capture.id;
         return (
           <article
             className="rounded-lg border border-border bg-background p-4"
@@ -330,8 +369,19 @@ function CaptureCards({
               </div>
             </div>
 
-            {!processing && (
-              <div className="mt-3 flex justify-end gap-2">
+            <div className="mt-3 flex justify-end gap-2">
+                <Button
+                  aria-label="Delete source capture"
+                  disabled={deleting}
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => onDelete(capture.id)}
+                >
+                  {deleting ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
+              {!processing && (
+                <>
                 {failed && capture.canRetry && (
                   <Button
                     aria-label="Retry capture"
@@ -353,8 +403,9 @@ function CaptureCards({
                   <X />
                   Dismiss
                 </Button>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </article>
         );
       })}
@@ -369,6 +420,8 @@ function InboxList({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  deletingCaptureId,
+  onDelete,
 }: {
   error: unknown;
   isLoading: boolean;
@@ -376,6 +429,8 @@ function InboxList({
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  deletingCaptureId: string | undefined;
+  onDelete: (captureId: string) => void;
 }) {
   if (isLoading) {
     return (
@@ -415,10 +470,25 @@ function InboxList({
                 {formatDate(item.createdAt)}
               </p>
             </div>
-            <CategoryBadge
-              category={item.category}
-              status={item.processingStatus}
-            />
+            <div className="flex shrink-0 items-center gap-2">
+              <CategoryBadge
+                category={item.category}
+                status={item.processingStatus}
+              />
+              <Button
+                aria-label={`Delete source capture for ${item.originalText}`}
+                disabled={deletingCaptureId === item.captureId}
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => onDelete(item.captureId)}
+              >
+                {deletingCaptureId === item.captureId ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Trash2 />
+                )}
+              </Button>
+            </div>
           </li>
         ))}
       </ul>

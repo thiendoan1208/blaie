@@ -15,7 +15,8 @@ GET /api/v1/inbox
 Mo ta: Lay cac Inbox item cua current user, moi nhat truoc. Mot text capture co the tao nhieu item trong list nay.
 
 Query params:
-  cursor - string (optional), cursor opaque tu response truoc.
+  cursor - string (optional), signed opaque cursor tu response truoc. Token bi sua, sai endpoint hoac cua user khac
+           se bi tu choi.
   limit  - number (optional, default 20, min 1, max 50).
 
 Response 200:
@@ -23,6 +24,7 @@ Response 200:
   "data": [
     {
       "id": "uuid",
+      "captureId": "source-capture-uuid",
       "originalText": "Nho goi cho me toi nay",
       "category": "reminder",
       "processingStatus": "completed",
@@ -46,6 +48,7 @@ Response 200:
 {
   "data": {
     "id": "uuid",
+    "captureId": "source-capture-uuid",
     "originalText": "Nho goi cho me toi nay",
     "category": "reminder",
     "processingStatus": "completed",
@@ -57,4 +60,5 @@ Errors:
   404  CAPTURE_ITEM_NOT_FOUND - item khong ton tai hoac khong thuoc current user.
   422  VALIDATION_ERROR - cursor hoac limit khong hop le.
 
-Khong co PATCH, confirm, retry hay DELETE item trong phase nay. Retry thuc hien tren Capture API.
+Khong co PATCH, confirm, retry hay DELETE rieng item trong phase nay. Retry va xoa thuc hien tren source Capture API.
+DELETE /api/v1/captures/{captureId} xoa source Capture va toan bo Inbox item sinh ra tu Capture do.

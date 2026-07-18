@@ -8,6 +8,7 @@ export type InboxProcessingStatus = "processing" | "completed" | "failed";
 
 export type InboxItem = {
   id: string;
+  captureId: string;
   originalText: string;
   category: InboxCategory | null;
   processingStatus: InboxProcessingStatus;

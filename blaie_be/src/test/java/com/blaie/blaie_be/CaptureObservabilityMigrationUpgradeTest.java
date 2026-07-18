@@ -51,13 +51,14 @@ class CaptureObservabilityMigrationUpgradeTest {
         Flyway latestFlyway = flywayAt(null);
         MigrateResult latestResult = latestFlyway.migrate();
 
-        assertEquals(2, latestResult.migrationsExecuted);
-        assertEquals("16", latestResult.targetSchemaVersion);
+        assertEquals(3, latestResult.migrationsExecuted);
+        assertEquals("17", latestResult.targetSchemaVersion);
         assertSeededCaptureWasPreserved(seed);
         assertSeededJobWasPreservedAndBackfilled(seed);
         assertSeededOutboxEventWasPreserved(seed);
         assertOriginRequestIdSchemaAndDefault(seed);
         assertObservabilityAndAdminIndexesExist();
+        assertPrivacyRetentionSchemaExists();
         latestFlyway.validate();
     }
 
@@ -296,6 +297,34 @@ class CaptureObservabilityMigrationUpgradeTest {
                 .contains("created_at DESC, id DESC"));
         assertTrue(indexes.get("idx_processing_jobs_admin_status_created")
                 .contains("status, created_at DESC, id DESC"));
+    }
+
+    private void assertPrivacyRetentionSchemaExists() throws SQLException {
+        assertTrue(columnExists("audit_events", "deduplication_bucket"));
+        Map<String, String> indexes = new HashMap<>();
+        try (Connection connection = connection();
+                PreparedStatement statement = connection.prepareStatement("""
+                    SELECT indexname, indexdef
+                    FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND indexname IN (
+                          'uq_audit_events_read_bucket',
+                          'idx_event_publication_completed_cleanup',
+                          'idx_processing_jobs_completed_cleanup'
+                      )
+                    """);
+                ResultSet result = statement.executeQuery()) {
+            while (result.next()) indexes.put(result.getString(1), result.getString(2));
+        }
+        assertEquals(3, indexes.size());
+        assertTrue(indexes.get("idx_event_publication_completed_cleanup").contains("completion_date IS NOT NULL"));
+        String completedJobCleanupIndex = indexes.get("idx_processing_jobs_completed_cleanup")
+                .replace("::character varying", "")
+                .replace("::text", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replaceAll("\\s+", " ");
+        assertTrue(completedJobCleanupIndex.contains("WHERE status = 'completed'"));
     }
 
     private void insertUser(Connection connection, UUID userId) throws SQLException {

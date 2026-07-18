@@ -5,11 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createTextCapture,
+  deleteCapture,
   getCapture,
   getInboxItems,
   getProcessingCaptures,
 } from "@/features/inbox/api/inbox.service";
-import { useCreateTextCaptureMutation } from "@/features/inbox/model/inbox.mutations";
+import {
+  useCreateTextCaptureMutation,
+  useDeleteCaptureMutation,
+} from "@/features/inbox/model/inbox.mutations";
 import {
   capturePollingInterval,
   uniqueInboxItems,
@@ -25,6 +29,7 @@ import { createAppError } from "@/shared/api/errors/app-error";
 
 vi.mock("@/features/inbox/api/inbox.service", () => ({
   createTextCapture: vi.fn(),
+  deleteCapture: vi.fn(),
   getCapture: vi.fn(),
   getInboxItems: vi.fn(),
   getProcessingCaptures: vi.fn(),
@@ -47,6 +52,7 @@ function capture(status: TextCapture["processingStatus"]): TextCapture {
 function item(id: string, text = id): InboxItem {
   return {
     id,
+    captureId: "capture-1",
     originalText: text,
     category: "task",
     processingStatus: "completed",
@@ -88,6 +94,7 @@ function wrapper(queryClient: QueryClient) {
 describe("Inbox queries and mutations", () => {
   beforeEach(() => {
     vi.mocked(createTextCapture).mockReset();
+    vi.mocked(deleteCapture).mockReset();
     vi.mocked(getCapture).mockReset();
     vi.mocked(getInboxItems).mockReset();
     vi.mocked(getProcessingCaptures).mockReset();
@@ -174,5 +181,98 @@ describe("Inbox queries and mutations", () => {
     expect(createTextCapture).toHaveBeenCalledTimes(2);
     expect(vi.mocked(createTextCapture).mock.calls[0]?.[0]).toEqual(input);
     expect(vi.mocked(createTextCapture).mock.calls[1]?.[0]).toEqual(input);
+  });
+
+  it("removes the deleted capture cache and invalidates user-scoped lists", async () => {
+    vi.mocked(deleteCapture).mockResolvedValue();
+    const queryClient = testQueryClient();
+    queryClient.setQueryData(
+      ["inbox", "user", "user-1", "capture", "capture-1"],
+      capture("completed"),
+    );
+    queryClient.setQueryData(["inbox", "user", "user-1", "list"], {});
+    queryClient.setQueryData(
+      ["inbox", "user", "user-1", "processing"],
+      [],
+    );
+    const { result } = renderHook(() => useDeleteCaptureMutation("user-1"), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync("capture-1");
+    });
+
+    expect(vi.mocked(deleteCapture).mock.calls[0]?.[0]).toBe("capture-1");
+    expect(
+      queryClient.getQueryData([
+        "inbox",
+        "user",
+        "user-1",
+        "capture",
+        "capture-1",
+      ]),
+    ).toBeUndefined();
+    expect(
+      queryClient.getQueryState(["inbox", "user", "user-1", "list"])
+        ?.isInvalidated,
+    ).toBe(true);
+  });
+
+  it("treats a missing capture as an idempotent delete success", async () => {
+    vi.mocked(deleteCapture).mockRejectedValue(
+      createAppError({
+        code: "CAPTURE_NOT_FOUND",
+        status: 404,
+        message: "Capture not found",
+      }),
+    );
+    const queryClient = testQueryClient();
+    queryClient.setQueryData(
+      ["inbox", "user", "user-1", "capture", "capture-1"],
+      capture("completed"),
+    );
+    const { result } = renderHook(() => useDeleteCaptureMutation("user-1"), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync("capture-1")).resolves.toBeUndefined();
+    });
+
+    expect(
+      queryClient.getQueryData([
+        "inbox",
+        "user",
+        "user-1",
+        "capture",
+        "capture-1",
+      ]),
+    ).toBeUndefined();
+  });
+
+  it("revalidates private caches after an ambiguous delete failure", async () => {
+    vi.mocked(deleteCapture).mockRejectedValue(
+      createAppError({
+        code: "NETWORK_ERROR",
+        status: 0,
+        message: "Network unavailable",
+      }),
+    );
+    const queryClient = testQueryClient();
+    const captureKey = ["inbox", "user", "user-1", "capture", "capture-1"];
+    const listKey = ["inbox", "user", "user-1", "list"];
+    queryClient.setQueryData(captureKey, capture("completed"));
+    queryClient.setQueryData(listKey, {});
+    const { result } = renderHook(() => useDeleteCaptureMutation("user-1"), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync("capture-1")).rejects.toMatchObject({ status: 0 });
+    });
+
+    expect(queryClient.getQueryState(captureKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
   });
 });

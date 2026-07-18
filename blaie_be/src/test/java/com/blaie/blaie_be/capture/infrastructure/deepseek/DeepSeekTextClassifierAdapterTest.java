@@ -54,7 +54,7 @@ class DeepSeekTextClassifierAdapterTest {
 
     @Test
     void promptDefinesCurrentCaptureClassificationContract() {
-        assertThat(DeepSeekTextClassifierAdapter.PROMPT_VERSION).isEqualTo("v4");
+        assertThat(DeepSeekTextClassifierAdapter.PROMPT_VERSION).isEqualTo("v5");
         assertThat(DeepSeekTextClassifierAdapter.SYSTEM_PROMPT)
                 .contains("Split one personal Inbox capture into every independent record")
                 .contains("Return JSON only")
@@ -66,6 +66,8 @@ class DeepSeekTextClassifierAdapterTest {
                 .contains("calendar_event: a scheduled meeting, appointment, or event")
                 .contains("information: a question or a request addressed to the assistant")
                 .contains("task: an action the user intends, needs, plans, or commits to perform themselves")
+                .contains("preserve each __BLAIE_PII_ token from that record exactly")
+                .contains("may be omitted only with a clause that is not emitted")
                 .contains("Do not add markdown, explanations, or extra keys.");
     }
 
@@ -80,7 +82,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertThat(analysis.provider()).isEqualTo("deepseek");
         assertThat(analysis.model()).isEqualTo("deepseek-test-model");
-        assertThat(analysis.promptVersion()).isEqualTo("v4");
+        assertThat(analysis.promptVersion()).isEqualTo("v5");
         assertThat(analysis.items()).hasSize(1);
         assertThat(analysis.items().getFirst().originalText()).isEqualTo("Buy milk");
         assertThat(analysis.items().getFirst().category()).isEqualTo(CaptureCategory.TASK);

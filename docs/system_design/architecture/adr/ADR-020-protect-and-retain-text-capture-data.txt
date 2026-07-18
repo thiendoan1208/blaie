@@ -1,0 +1,121 @@
+ADR-020 - Protect and retain text capture data
+
+Status: Accepted
+
+## Context
+
+Text Capture stores user-authored data and sends part of that data to an external AI provider. Durable processing
+also creates idempotency, job, outbox and access-audit records with different operational lifetimes. Before wider
+production use, Blaie needs explicit rules for provider disclosure, sensitive-content handling, user deletion,
+retention, audit data and pagination-token integrity.
+
+This decision covers the current text Inbox. Image/audio retention, account-wide erasure, data export, billing and
+usage accounting remain separate work.
+
+## Decision
+
+### User content and provider processing
+
+- PostgreSQL stores the original Capture text until the owner deletes that Capture. There is no automatic TTL for
+  raw Capture text or completed Inbox items in this phase.
+- Raw text is never placed in Redis Stream records, transactional-outbox payloads, operational logs, metrics or
+  audit events.
+- Before persistence, the API rejects recognized credential/secret patterns, Luhn-valid payment-card numbers and
+  US Social Security number patterns with CAPTURE_SENSITIVE_CONTENT. A rejected request creates no Capture,
+  idempotency key, job or outbox event.
+- Pattern detection is a safety layer, not a guarantee. False positives and false negatives remain possible, and
+  the UI tells users never to paste passwords, API keys, payment cards or government identifiers.
+- The production-default PII mode is mask_structured. Before an AI call, common email-address, phone-number and
+  IPv4 patterns are replaced with request-unique placeholders. A placeholder returned in an active record must be
+  preserved exactly once. It may be omitted with a canceled/inactive clause; duplicated, altered or injected
+  placeholders make the response invalid and retryable.
+- Exact original values are restored only after the structured provider response passes placeholder validation.
+  Names, free-form postal addresses and identifiers that do not match the supported patterns can still reach the
+  provider. The product disclosure must say this plainly.
+- The configurable allow mode exists as an explicit deployment escape hatch. It is not approved for a production
+  deployment without a documented privacy/legal decision and an appropriate provider contract.
+- A provider request already sent cannot be recalled by deleting the Capture. Provider-side storage, region,
+  training and deletion behavior must be governed by the provider's contract/DPA and production configuration.
+
+### Owner deletion
+
+- DELETE /api/v1/captures/{captureId} derives ownership from the authenticated current user. The client never sends
+  userId. Missing and foreign resources return the same CAPTURE_NOT_FOUND response.
+- Deletion hard-deletes the owned Capture and cascades to its classified Inbox items, durable processing job and
+  idempotency record in one database transaction.
+- The workflow locks job then Capture, matching worker lock order. If a provider call is already in flight, deleting
+  the job/capture fences its later result so it cannot recreate Inbox content.
+- Completed outbox rows and access-audit rows may remain until their own retention cutoff. They contain bounded
+  identifiers and operational metadata, never the raw Capture text or provider payload.
+- The UI requires destructive-action confirmation, removes deleted resources from local query/tracking state and
+  clears private React Query and Inbox tracking state whenever local sign-out settles, even if the server logout
+  request fails before the client redirects.
+
+### Retention schedule
+
+The cleanup scheduler runs hourly by default, uses bounded batches and FOR UPDATE SKIP LOCKED so multiple instances
+can safely participate. Each category fails independently, and cleanup logs only category/count metadata.
+
+| Data | Default retention | Reason |
+| --- | --- | --- |
+| Capture idempotency key | Until expires_at (currently 24 hours) | Preserve lost-response replay during its contract window |
+| Completed transactional outbox row | 7 days after completion | Incident diagnosis without keeping completed delivery metadata forever |
+| Completed processing job | 90 days after completion | Operational diagnosis and latency/failure history |
+| Dead processing job | Until owner deletes the Capture | Preserve the authoritative manual-retry state |
+| Queued/processing/retry_wait job | No cleanup while active | Never delete durable work |
+| Incomplete outbox row | No age-based cleanup | Never convert an unpublished event into lost work |
+| Access-audit event | 365 days | Security investigation window |
+| Raw Capture and classified Inbox items | Until owner deletion | Product data remains user-controlled in this phase |
+
+The defaults are configurable, but active work and incomplete publications remain excluded regardless of age.
+Shortening an operational retention period requires an incident-response review. A future account deletion flow
+must reuse the same deletion boundary and explicitly decide how legal/security audit retention applies.
+
+### Access audit
+
+- Persistent audit covers Capture list/read/retry/delete, Inbox list/item read, admin job list/read/requeue/mark-dead,
+  outbox summary reads and audit-list reads.
+- Events contain only event id, actor id/admin flag, bounded action, resource type/id, outcome, request id and
+  timestamp. They never contain original text, classified text, provider bodies, IP address, user agent, exception
+  message or serialized outbox data.
+- Every mutation and unsuccessful access event is retained. Repeated successful read/list events are deduplicated
+  per actor/action/resource within a 15-minute database bucket by default, preventing normal polling from creating
+  unbounded write volume without collapsing repeated denied/not-found/rejected attempts.
+- Audit persistence is best-effort and fail-open so an audit-store incident does not make the Inbox unavailable.
+  It is not transactionally atomic with the audited mutation and is not the business source of truth. Audit-store
+  failures must be observable in protected logs/alerts before this is treated as compliance-grade auditing.
+- GET /api/v1/admin/audit-events requires the server-side admin.audit.read permission and returns safe fields only.
+
+### Signed cursors
+
+- Inbox, admin-job and admin-audit keyset cursors use a versioned HMAC-SHA-256 envelope containing key id, payload
+  and signature. Each endpoint has a distinct signed audience, so a valid cursor cannot be replayed into another
+  list contract.
+- Inbox cursor payloads are bound to the authenticated user. Editing, cross-user reuse, cross-endpoint reuse,
+  unknown key ids, malformed encodings and oversized values return VALIDATION_ERROR.
+- Cursors are opaque API tokens but are signed, not encrypted. Their Base64URL payload can be decoded and therefore
+  must contain only pagination metadata, never secrets or raw user content.
+- Production supplies a dedicated BLAIE_CURSOR_HMAC_SECRET with at least 32 characters. The access-token secret is
+  only a compatibility/local default and should not couple the two key lifecycles in production.
+- Rotation sets a new active key id/secret and keeps the former pair as previous long enough for outstanding
+  pagination sessions. New cursors use the active key; both keys verify during the overlap. Remove the previous
+  pair after that overlap expires.
+
+### Encryption boundary
+
+- Database/storage encryption at rest and encrypted backups are production infrastructure requirements.
+- Application-level field encryption is deferred until Blaie has a managed KMS, envelope-key rotation, backup
+  restore and emergency recovery design. Adding ad-hoc application encryption now would risk unrecoverable data
+  and would not replace access control, deletion, provider policy or infrastructure encryption.
+
+## Consequences
+
+The current text Inbox has a defined user-deletion path, bounded operational-data lifetimes, tamper-resistant
+cursors, safe access-audit metadata, pre-persistence secret blocking and reduced PII exposure to AI providers.
+Cleanup does not sacrifice durable processing or retry state.
+
+The system still cannot promise complete PII discovery, provider-side erasure, compliance-grade atomic auditing,
+account-wide erasure or application-level encryption. Audited read/delete routes also need a general authenticated
+API/WAF rate-limit backstop before hostile request volume can be considered bounded; current capture submit/retry
+limits do not cover those reads. Those claims and controls require product/legal decisions or deployment work beyond
+this phase.

@@ -14,6 +14,8 @@ import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
+import com.blaie.blaie_be.core.cursor.CursorProperties;
+import com.blaie.blaie_be.core.cursor.SignedCursorCodec;
 import com.blaie.blaie_be.core.security.CurrentUser;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
 import java.time.Clock;
@@ -55,9 +57,17 @@ class CaptureAdminServiceImplTest {
                 settings,
                 telemetry,
                 authorization,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                cursorCodec()
         );
         CurrentUserHolder.set(new CurrentUser(UUID.randomUUID().toString(), true, Set.of()));
+    }
+
+    private SignedCursorCodec cursorCodec() {
+        CursorProperties properties = new CursorProperties();
+        properties.setActiveKeyId("v1");
+        properties.setActiveSecret("capture-admin-test-cursor-secret-1234567890");
+        return new SignedCursorCodec(properties);
     }
 
     @AfterEach

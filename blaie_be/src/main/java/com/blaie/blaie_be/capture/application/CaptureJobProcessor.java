@@ -31,6 +31,7 @@ public class CaptureJobProcessor {
     private final ProcessingJobStorePort jobStore;
     private final TextClassifierPort classifier;
     private final CaptureContentPolicy contentPolicy;
+    private final CapturePiiPolicy piiPolicy;
     private final CaptureProcessingSettingsPort settings;
     private final Clock clock;
     private final JobLeaseHeartbeatPort heartbeatPort;
@@ -40,6 +41,7 @@ public class CaptureJobProcessor {
             ProcessingJobStorePort jobStore,
             TextClassifierPort classifier,
             CaptureContentPolicy contentPolicy,
+            CapturePiiPolicy piiPolicy,
             CaptureProcessingSettingsPort settings,
             Clock clock,
             JobLeaseHeartbeatPort heartbeatPort,
@@ -48,6 +50,7 @@ public class CaptureJobProcessor {
         this.jobStore = jobStore;
         this.classifier = classifier;
         this.contentPolicy = contentPolicy;
+        this.piiPolicy = piiPolicy;
         this.settings = settings;
         this.clock = clock;
         this.heartbeatPort = heartbeatPort;
@@ -91,7 +94,11 @@ public class CaptureJobProcessor {
         JobOutcome outcome = JobOutcome.STALE_DISCARDED;
         try {
             contentPolicy.validate(job.originalText());
-            CaptureAnalysis analysis = classifier.classify(job.originalText());
+            CapturePiiPolicy.PreparedText preparedText = piiPolicy.prepare(job.originalText());
+            CaptureAnalysis analysis = piiPolicy.restore(
+                    preparedText,
+                    classifier.classify(preparedText.providerText())
+            );
             boolean completed = jobStore.complete(
                     job.id(),
                     workerId,

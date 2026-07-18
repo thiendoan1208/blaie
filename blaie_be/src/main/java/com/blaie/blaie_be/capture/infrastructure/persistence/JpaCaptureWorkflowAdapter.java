@@ -162,6 +162,19 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
         return toCaptureResult(capture, job);
     }
 
+    @Override
+    @Transactional
+    public void deleteOwned(UUID captureId, UUID userId) {
+        if (captureRepository.findByIdAndUserId(captureId, userId).isEmpty()) {
+            throw new AppException(ErrorCode.CAPTURE_NOT_FOUND);
+        }
+        jobRepository.findLockedByCaptureIdAndJobType(captureId, TEXT_CLASSIFICATION);
+        CaptureEntity capture = captureRepository.findLockedByIdAndUserId(captureId, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_NOT_FOUND));
+        captureRepository.delete(capture);
+        captureRepository.flush();
+    }
+
     private void publishDispatch(ProcessingJobEntity job) {
         eventPublisher.publishEvent(new TextCaptureQueuedEvent(
                 UUID.randomUUID(),
@@ -212,6 +225,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
     private CaptureItemResult toItemResult(CaptureItemEntity item) {
         return new CaptureItemResult(
                 item.id(),
+                item.captureId(),
                 item.originalText(),
                 item.category() == null ? null : CaptureCategory.fromValue(item.category()),
                 ProcessingStatus.fromValue(item.processingStatus()),

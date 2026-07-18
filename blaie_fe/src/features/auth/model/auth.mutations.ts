@@ -11,6 +11,7 @@ import {
   updateUsername,
 } from "../api/auth.service";
 import { authKeys } from "./auth.keys";
+import { clearAllInboxTracking } from "@/features/inbox/model/inbox-tracking";
 
 export function useLoginMutation() {
   return useMutation({
@@ -46,8 +47,9 @@ export function useLogoutMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: logout,
-    onSuccess: () => {
-      queryClient.removeQueries({ queryKey: authKeys.currentUser() });
+    onSettled: () => {
+      clearAllInboxTracking();
+      queryClient.clear();
     },
   });
 }

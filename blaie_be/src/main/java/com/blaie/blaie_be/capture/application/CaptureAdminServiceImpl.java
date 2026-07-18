@@ -14,14 +14,13 @@ import com.blaie.blaie_be.capture.application.result.AdminProcessingJobPageResul
 import com.blaie.blaie_be.capture.application.result.AdminProcessingJobResult;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.core.cursor.SignedCursorCodec;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.request.RequestContextHolder;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -33,25 +32,29 @@ import org.springframework.stereotype.Service;
 public class CaptureAdminServiceImpl implements CaptureAdminService {
     private static final Logger log = LoggerFactory.getLogger(CaptureAdminServiceImpl.class);
     private static final int MAX_LIMIT = 100;
+    private static final String JOB_CURSOR_AUDIENCE = "admin-processing-jobs";
 
     private final CaptureAdminStorePort store;
     private final CaptureProcessingSettingsPort settings;
     private final CaptureTelemetryPort telemetry;
     private final AuthorizationService authorizationService;
     private final Clock clock;
+    private final SignedCursorCodec cursorCodec;
 
     public CaptureAdminServiceImpl(
             CaptureAdminStorePort store,
             CaptureProcessingSettingsPort settings,
             CaptureTelemetryPort telemetry,
             AuthorizationService authorizationService,
-            Clock clock
+            Clock clock,
+            SignedCursorCodec cursorCodec
     ) {
         this.store = store;
         this.settings = settings;
         this.telemetry = telemetry;
         this.authorizationService = authorizationService;
         this.clock = clock;
+        this.cursorCodec = cursorCodec;
     }
 
     @Override
@@ -172,7 +175,7 @@ public class CaptureAdminServiceImpl implements CaptureAdminService {
             return null;
         }
         try {
-            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String decoded = cursorCodec.decode(JOB_CURSOR_AUDIENCE, cursor);
             String[] parts = decoded.split("\\|", -1);
             if (parts.length != 2) {
                 throw new IllegalArgumentException();
@@ -185,8 +188,7 @@ public class CaptureAdminServiceImpl implements CaptureAdminService {
 
     private String encodeCursor(AdminProcessingJobResult job) {
         String value = job.createdAt() + "|" + job.id();
-        return Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
+        return cursorCodec.encode(JOB_CURSOR_AUDIENCE, value);
     }
 
     private AppException validation(String message) {

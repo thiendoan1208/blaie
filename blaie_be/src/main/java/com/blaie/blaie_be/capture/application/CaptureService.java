@@ -15,6 +15,8 @@ public interface CaptureService {
 
     CaptureResult retry(UUID captureId);
 
+    void delete(UUID captureId);
+
     InboxPageResult inbox(String cursor, int limit);
 
     CaptureItemResult inboxItem(UUID itemId);

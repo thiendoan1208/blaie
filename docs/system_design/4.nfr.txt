@@ -182,6 +182,13 @@ NFR-SEC-007 - Audit admin actions
 - Priority: Must have
 - Admin actions that affect users, processing jobs or system settings must be logged.
 
+NFR-SEC-008 - Pagination cursor integrity
+
+- Priority: Must have
+- Sensitive list cursors must be signed, endpoint-bound and validated before query use. Inbox cursors must also be
+  bound to the authenticated current user.
+- Cursor signing provides integrity, not encryption; payloads must never contain raw content or secrets.
+
 6. Privacy
 
 NFR-PRI-001 - Preserve user ownership
@@ -203,15 +210,25 @@ NFR-PRI-003 - Minimal admin visibility
 
 NFR-PRI-004 - Sensitive data warning
 
-- Priority: Should have
-- Product should discourage users from storing highly sensitive secrets in V1, especially
-  because end-to-end encryption is out of scope.
+- Priority: Must have
+- Product must warn users not to submit passwords, API keys, payment cards or government IDs.
+- Text Capture must reject recognized credential/secret, valid payment-card and US SSN patterns before
+  persistence. Pattern detection is defense in depth and must not be presented as complete detection.
 
 NFR-PRI-005 - Third-party AI processing transparency
 
-- Priority: Should have
-- If using a third-party AI provider, product should disclose that user content may be
-  processed by that provider.
+- Priority: Must have
+- Product must disclose that accepted content may be processed by a third-party provider.
+- Common email, phone and IPv4 patterns should be masked before provider processing. Product must also disclose
+  that names, free-form addresses and unsupported patterns can still reach the provider.
+
+NFR-PRI-006 - User deletion and bounded retention
+
+- Priority: Must have
+- The authenticated owner must be able to hard-delete a source Capture and every Inbox item produced from it.
+- Active work and incomplete outbox publications must never be removed by age-based cleanup.
+- Operational metadata must have documented retention periods. Raw text remains until explicit owner deletion in
+  the current phase.
 
 7. Data integrity
 
@@ -433,4 +450,3 @@ NFR-COST-004 - Future quota readiness
 - Full billing/subscription reliability requirements.
 - Complex team permission model.
 - Public sharing security model.
-
