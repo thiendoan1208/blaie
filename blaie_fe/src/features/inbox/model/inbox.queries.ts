@@ -1,4 +1,5 @@
 import {
+  type QueryClient,
   type InfiniteData,
   useInfiniteQuery,
   useQueries,
@@ -60,6 +61,22 @@ export function useProcessingCapturesQuery(userId: string) {
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
+}
+
+export function removeCaptureFromProcessingCache(
+  queryClient: QueryClient,
+  userId: string,
+  captureId: string,
+) {
+  queryClient.setQueryData<TextCapture[]>(
+    inboxKeys.processing(userId),
+    (captures) => {
+      if (!captures?.some((capture) => capture.id === captureId)) {
+        return captures;
+      }
+      return captures.filter((capture) => capture.id !== captureId);
+    },
+  );
 }
 
 export function useTrackedCaptureQueries(

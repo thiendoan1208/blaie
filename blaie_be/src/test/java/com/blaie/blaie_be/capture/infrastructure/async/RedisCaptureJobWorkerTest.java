@@ -33,7 +33,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.timeout;
@@ -45,13 +44,12 @@ class RedisCaptureJobWorkerTest {
     private static final Instant NOW = Instant.parse("2026-07-17T12:00:00Z");
 
     @Test
-    @SuppressWarnings({"unchecked", "rawtypes"})
     void slowAiJobDoesNotBlockRecoveryScheduler() throws Exception {
         CaptureProcessingProperties properties = new CaptureProcessingProperties();
         properties.setConsumerName("worker-test");
         ThreadPoolTaskExecutor executor = executor(properties);
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
-        StreamOperations<String, String, String> streams = mock(StreamOperations.class);
+        StreamOperations<String, String, String> streams = mock();
         PendingMessages pending = mock(PendingMessages.class);
         CaptureJobProcessor processor = mock(CaptureJobProcessor.class);
         RedisCaptureMessageFinalizer messageFinalizer = mock(RedisCaptureMessageFinalizer.class);
@@ -71,7 +69,8 @@ class RedisCaptureJobWorkerTest {
         CountDownLatch releaseProvider = new CountDownLatch(1);
         AtomicReference<Map<String, String>> workerMdc = new AtomicReference<>();
         doReturn(streams).when(redisTemplate).opsForStream();
-        when(streams.add(anyString(), any(Map.class))).thenReturn(RecordId.of("1-0"));
+        when(streams.add(anyString(), org.mockito.ArgumentMatchers.<Map<String, String>>any()))
+                .thenReturn(RecordId.of("1-0"));
         when(streams.pending(
                 properties.streamKey(),
                 properties.consumerGroup(),
@@ -83,7 +82,7 @@ class RedisCaptureJobWorkerTest {
         when(streams.read(
                 any(Consumer.class),
                 any(StreamReadOptions.class),
-                any(StreamOffset[].class)
+                org.mockito.ArgumentMatchers.<StreamOffset<String>[]>any()
         )).thenReturn(List.of(record));
         when(processor.process(jobId, 3, properties.consumerName())).thenAnswer(invocation -> {
             workerMdc.set(MDC.getCopyOfContextMap());
@@ -131,13 +130,12 @@ class RedisCaptureJobWorkerTest {
     }
 
     @Test
-    @SuppressWarnings({"unchecked", "rawtypes"})
     void legacyMessageWithoutCorrelationMetadataStillRunsWithSafeJobFallback() {
         CaptureProcessingProperties properties = new CaptureProcessingProperties();
         properties.setConsumerName("legacy-worker-test");
         ThreadPoolTaskExecutor executor = executor(properties);
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
-        StreamOperations<String, String, String> streams = mock(StreamOperations.class);
+        StreamOperations<String, String, String> streams = mock();
         PendingMessages pending = mock(PendingMessages.class);
         CaptureJobProcessor processor = mock(CaptureJobProcessor.class);
         RedisCaptureMessageFinalizer messageFinalizer = mock(RedisCaptureMessageFinalizer.class);
@@ -153,7 +151,8 @@ class RedisCaptureJobWorkerTest {
                 .withStreamKey(properties.streamKey());
         AtomicReference<Map<String, String>> workerMdc = new AtomicReference<>();
         doReturn(streams).when(redisTemplate).opsForStream();
-        when(streams.add(anyString(), any(Map.class))).thenReturn(RecordId.of("1-0"));
+        when(streams.add(anyString(), org.mockito.ArgumentMatchers.<Map<String, String>>any()))
+                .thenReturn(RecordId.of("1-0"));
         when(streams.pending(
                 properties.streamKey(),
                 properties.consumerGroup(),
@@ -165,7 +164,7 @@ class RedisCaptureJobWorkerTest {
         when(streams.read(
                 any(Consumer.class),
                 any(StreamReadOptions.class),
-                any(StreamOffset[].class)
+                org.mockito.ArgumentMatchers.<StreamOffset<String>[]>any()
         )).thenReturn(List.of(record));
         when(processor.process(jobId, 1, properties.consumerName())).thenAnswer(invocation -> {
             workerMdc.set(MDC.getCopyOfContextMap());

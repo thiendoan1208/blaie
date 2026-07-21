@@ -9,7 +9,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -61,7 +60,7 @@ class RedisRateLimiterTest {
     void failOpenPolicyAllowsRedisConnectionFailure() {
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         when(redisTemplate.execute(
-                any(DefaultRedisScript.class),
+                any(),
                 anyList(),
                 any()
         )).thenThrow(new RedisConnectionFailureException("Redis unavailable"));
@@ -85,12 +84,11 @@ class RedisRateLimiterTest {
         return properties;
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     private void stub(StringRedisTemplate redisTemplate, List<?>... results) {
         AtomicInteger invocation = new AtomicInteger();
         doAnswer(ignored -> results[Math.min(invocation.getAndIncrement(), results.length - 1)])
                 .when(redisTemplate).execute(
-                any(DefaultRedisScript.class),
+                any(),
                 anyList(),
                 any()
         );

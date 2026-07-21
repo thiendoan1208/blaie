@@ -24,11 +24,10 @@ import static org.mockito.Mockito.when;
 class RedisCaptureJobPublisherTest {
 
     @Test
-    @SuppressWarnings({"unchecked", "rawtypes"})
     void publishesCompleteWakeUpMessageWithoutProducerSideTrimming() {
         CaptureProcessingProperties properties = new CaptureProcessingProperties();
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
-        StreamOperations<String, String, String> streams = mock(StreamOperations.class);
+        StreamOperations<String, String, String> streams = mock();
         TextCaptureQueuedEvent event = new TextCaptureQueuedEvent(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
@@ -38,7 +37,8 @@ class RedisCaptureJobPublisherTest {
         );
         doReturn(streams).when(redisTemplate).opsForStream();
         MDC.put("existing", "preserved");
-        when(streams.add(any(MapRecord.class))).thenAnswer(invocation -> {
+        when(streams.add(org.mockito.ArgumentMatchers.<MapRecord<String, String, String>>any()))
+                .thenAnswer(invocation -> {
             assertThat(MDC.get("requestId")).isEqualTo(event.originRequestId());
             assertThat(MDC.get("eventId")).isEqualTo(event.eventId().toString());
             assertThat(MDC.get("jobId")).isEqualTo(event.jobId().toString());
@@ -54,9 +54,8 @@ class RedisCaptureJobPublisherTest {
             MDC.clear();
         }
 
-        @SuppressWarnings("unchecked")
         org.mockito.ArgumentCaptor<MapRecord<String, String, String>> recordCaptor =
-                org.mockito.ArgumentCaptor.forClass(MapRecord.class);
+                org.mockito.ArgumentCaptor.captor();
         verify(streams).add(recordCaptor.capture());
         MapRecord<String, String, String> record = recordCaptor.getValue();
         assertThat(record.getStream()).isEqualTo(properties.streamKey());
@@ -67,15 +66,17 @@ class RedisCaptureJobPublisherTest {
                 "dispatchGeneration", "4",
                 "originRequestId", event.originRequestId()
         ));
-        verify(streams, never()).add(any(Record.class), any(XAddOptions.class));
+        verify(streams, never()).add(
+                org.mockito.ArgumentMatchers.<Record<String, ?>>any(),
+                any(XAddOptions.class)
+        );
     }
 
     @Test
-    @SuppressWarnings({"unchecked", "rawtypes"})
     void propagatesRedisFailureSoTheOutboxPublicationRemainsIncomplete() {
         CaptureProcessingProperties properties = new CaptureProcessingProperties();
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
-        StreamOperations<String, String, String> streams = mock(StreamOperations.class);
+        StreamOperations<String, String, String> streams = mock();
         RedisConnectionFailureException failure = new RedisConnectionFailureException("redis unavailable");
         TextCaptureQueuedEvent event = new TextCaptureQueuedEvent(
                 UUID.randomUUID(),
@@ -85,7 +86,8 @@ class RedisCaptureJobPublisherTest {
                 "publisher-failure-request"
         );
         doReturn(streams).when(redisTemplate).opsForStream();
-        when(streams.add(any(MapRecord.class))).thenThrow(failure);
+        when(streams.add(org.mockito.ArgumentMatchers.<MapRecord<String, String, String>>any()))
+                .thenThrow(failure);
 
         RedisCaptureJobPublisher publisher = new RedisCaptureJobPublisher(redisTemplate, properties);
 

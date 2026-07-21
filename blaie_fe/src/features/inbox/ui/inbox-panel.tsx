@@ -10,7 +10,15 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +37,7 @@ import {
   useRetryCaptureMutation,
 } from "../model/inbox.mutations";
 import {
+  removeCaptureFromProcessingCache,
   uniqueInboxItems,
   useInboxItemsQuery,
   useProcessingCapturesQuery,
@@ -68,6 +77,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
   const [preparingSubmission, setPreparingSubmission] = useState(false);
   const submitInFlight = useRef(false);
   const notifiedTerminalStates = useRef(new Set<string>());
+  const queryClient = useQueryClient();
 
   const tracking = useInboxTracking(userId);
   const {
@@ -90,6 +100,14 @@ function InboxPanelContent({ userId }: { userId: string }) {
   const captureMutation = useCreateTextCaptureMutation(userId);
   const retryMutation = useRetryCaptureMutation(userId);
   const deleteMutation = useDeleteCaptureMutation(userId);
+
+  const forgetCapture = useCallback(
+    (captureId: string) => {
+      removeCaptureFromProcessingCache(queryClient, userId, captureId);
+      dismissCapture(captureId);
+    },
+    [dismissCapture, queryClient, userId],
+  );
 
   const captures = useMemo(() => {
     const byId = new Map<string, TextCapture>();
@@ -117,10 +135,10 @@ function InboxPanelContent({ userId }: { userId: string }) {
     captureQueries.forEach((query, index) => {
       if (isAppError(query.error) && query.error.status === 404) {
         const captureId = trackingState.captureIds[index];
-        if (captureId) dismissCapture(captureId);
+        if (captureId) forgetCapture(captureId);
       }
     });
-  }, [captureQueries, dismissCapture, trackingState.captureIds]);
+  }, [captureQueries, forgetCapture, trackingState.captureIds]);
 
   useEffect(() => {
     for (const capture of captures) {
@@ -128,6 +146,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
       const notificationKey = `${capture.id}:${capture.processingStatus}:${capture.updatedAt}`;
       if (notifiedTerminalStates.current.has(notificationKey)) continue;
       notifiedTerminalStates.current.add(notificationKey);
+      removeCaptureFromProcessingCache(queryClient, userId, capture.id);
       markCaptureResolved(capture);
 
       if (capture.processingStatus === "completed") {
@@ -141,7 +160,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
         toast.error(captureFailureMessage(capture.failureCode));
       }
     }
-  }, [captures, inboxQuery, markCaptureResolved]);
+  }, [captures, inboxQuery, markCaptureResolved, queryClient, userId]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -180,7 +199,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
     if (!window.confirm("Delete this source capture and all Inbox items created from it?")) return;
     try {
       await deleteMutation.mutateAsync(captureId);
-      dismissCapture(captureId);
+      forgetCapture(captureId);
       toast.success("Capture and its Inbox items were deleted.");
     } catch (error) {
       toast.error(captureRequestErrorMessage(error));
@@ -261,7 +280,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
           retryingCaptureId={
             retryMutation.isPending ? retryMutation.variables : undefined
           }
-          onDismiss={dismissCapture}
+          onDismiss={forgetCapture}
           deletingCaptureId={
             deleteMutation.isPending ? deleteMutation.variables : undefined
           }

@@ -85,8 +85,8 @@ class CaptureAdmissionIntegrationTest {
         assertThat(replay.id()).isEqualTo(first.id());
 
         AppException keyConflict = catchThrowableOfType(
-                () -> start(userId, firstKey, "changed"),
-                AppException.class
+                AppException.class,
+                () -> start(userId, firstKey, "changed")
         );
         assertThat(keyConflict.errorCode()).isEqualTo(ErrorCode.IDEMPOTENCY_KEY_REUSED);
 
@@ -289,7 +289,7 @@ class CaptureAdmissionIntegrationTest {
     }
 
     private void assertAdmissionError(Runnable operation, ErrorCode expectedCode) {
-        RateLimitedException exception = catchThrowableOfType(operation::run, RateLimitedException.class);
+        RateLimitedException exception = catchThrowableOfType(RateLimitedException.class, operation::run);
         assertThat(exception.errorCode()).isEqualTo(expectedCode);
         assertThat(exception.retryAfter()).isEqualTo(Duration.ofSeconds(17));
     }

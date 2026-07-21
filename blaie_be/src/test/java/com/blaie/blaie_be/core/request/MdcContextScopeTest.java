@@ -18,11 +18,11 @@ class MdcContextScopeTest {
     void overlayAndReplaceRestoreTheExactPreviousContext() {
         MDC.put("traceId", "upstream-trace");
 
-        try (MdcContextScope outer = MdcContextScope.overlay(Map.of("requestId", "request-1"))) {
+        try (MdcContextScope _ = MdcContextScope.overlay(Map.of("requestId", "request-1"))) {
             assertThat(MDC.get("traceId")).isEqualTo("upstream-trace");
             assertThat(MDC.get("requestId")).isEqualTo("request-1");
 
-            try (MdcContextScope inner = MdcContextScope.replace(Map.of("jobId", "job-1"))) {
+            try (MdcContextScope _ = MdcContextScope.replace(Map.of("jobId", "job-1"))) {
                 assertThat(MDC.get("traceId")).isNull();
                 assertThat(MDC.get("requestId")).isNull();
                 assertThat(MDC.get("jobId")).isEqualTo("job-1");

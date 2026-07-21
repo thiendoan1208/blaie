@@ -262,7 +262,7 @@ class InboxWebFlowTest {
                         .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\":\"" + text + "\"}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("CAPTURE_SENSITIVE_CONTENT"));
 
         assertThat(jdbcTemplate.queryForObject("select count(*) from captures", Integer.class)).isZero();

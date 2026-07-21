@@ -34,10 +34,13 @@ class CaptureObservabilityMigrationUpgradeTest {
 
     @Container
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
-            DockerImageName.parse("postgres:latest"))
-            .withDatabaseName("capture_observability_upgrade")
-            .withUsername("capture_test")
-            .withPassword("capture_test");
+            DockerImageName.parse("postgres:latest"));
+
+    static {
+        POSTGRES.withDatabaseName("capture_observability_upgrade");
+        POSTGRES.withUsername("capture_test");
+        POSTGRES.withPassword("capture_test");
+    }
 
     @Test
     void upgradesSeededV14DatabaseWithoutLosingJobOrOutboxState() throws Exception {

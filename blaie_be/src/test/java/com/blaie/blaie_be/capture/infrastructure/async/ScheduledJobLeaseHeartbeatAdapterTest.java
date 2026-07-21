@@ -26,8 +26,7 @@ class ScheduledJobLeaseHeartbeatAdapterTest {
     void heartbeatExtendsLeaseAndStopsAfterProcessing() {
         ProcessingJobStorePort jobStore = mock(ProcessingJobStorePort.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
-        @SuppressWarnings("unchecked")
-        ScheduledFuture<?> scheduledFuture = mock(ScheduledFuture.class);
+        ScheduledFuture<?> scheduledFuture = mock();
         ArgumentCaptor<Runnable> heartbeatTask = ArgumentCaptor.forClass(Runnable.class);
         CaptureProcessingProperties properties = new CaptureProcessingProperties();
         UUID jobId = UUID.randomUUID();

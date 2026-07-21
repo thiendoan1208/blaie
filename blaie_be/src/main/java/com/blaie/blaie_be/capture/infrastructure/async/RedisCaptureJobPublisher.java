@@ -33,7 +33,7 @@ public class RedisCaptureJobPublisher {
 
     @ApplicationModuleListener(id = "capture-text-job-redis-publisher")
     public void publish(TextCaptureQueuedEvent event) {
-        try (MdcContextScope ignored = MdcContextScope.replace(Map.of(
+        try (MdcContextScope _ = MdcContextScope.replace(Map.of(
                 "requestId", event.originRequestId(),
                 "eventId", event.eventId().toString(),
                 "jobId", event.jobId().toString(),

@@ -19,7 +19,6 @@ import org.springframework.modulith.events.EventPublication;
 import org.springframework.modulith.events.IncompleteEventPublications;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -82,7 +81,6 @@ class CaptureJobRecoverySchedulerTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void outboxRecoveryOnlyResubmitsOldCaptureQueueEvents() {
         CaptureProcessingProperties properties = new CaptureProcessingProperties();
         properties.setOutboxRecoveryAge(Duration.ofSeconds(10));
@@ -92,7 +90,7 @@ class CaptureJobRecoverySchedulerTest {
 
         scheduler.recoverOutbox();
 
-        ArgumentCaptor<Predicate<EventPublication>> filterCaptor = ArgumentCaptor.forClass(Predicate.class);
+        ArgumentCaptor<Predicate<EventPublication>> filterCaptor = ArgumentCaptor.captor();
         verify(publications).resubmitIncompletePublications(filterCaptor.capture());
         Predicate<EventPublication> filter = filterCaptor.getValue();
         Instant cutoff = NOW.minusSeconds(10);

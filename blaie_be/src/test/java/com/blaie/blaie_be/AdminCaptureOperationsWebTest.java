@@ -186,13 +186,13 @@ class AdminCaptureOperationsWebTest {
         mockMvc.perform(get("/api/v1/admin/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .queryParam("status", "pending"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
         mockMvc.perform(get("/api/v1/admin/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .queryParam("limit", "abc"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
@@ -213,17 +213,17 @@ class AdminCaptureOperationsWebTest {
 
         mockMvc.perform(get("/api/v1/admin/jobs/not-a-uuid")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
         mockMvc.perform(post("/api/v1/admin/jobs/not-a-uuid/requeue")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
         mockMvc.perform(post("/api/v1/admin/jobs/not-a-uuid/mark-dead")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
@@ -456,7 +456,7 @@ class AdminCaptureOperationsWebTest {
         mockMvc.perform(get("/api/v1/admin/audit-events")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .queryParam("cursor", cursor + "tampered"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
         mockMvc.perform(get("/api/v1/admin/audit-events")

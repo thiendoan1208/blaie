@@ -24,7 +24,7 @@ public class RequestContextFilter extends OncePerRequestFilter {
         RequestContext previousContext = RequestContextHolder.current().orElse(null);
         RequestContextHolder.set(new RequestContext(requestId, request.getMethod(), request.getRequestURI(), request.getQueryString()));
         response.setHeader(REQUEST_ID_HEADER, requestId);
-        try (MdcContextScope ignored = MdcContextScope.overlay(Map.of(
+        try (MdcContextScope _ = MdcContextScope.overlay(Map.of(
                 "requestId", requestId,
                 "method", request.getMethod(),
                 "path", request.getRequestURI()

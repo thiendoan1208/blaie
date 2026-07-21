@@ -200,7 +200,7 @@ public class RedisCaptureJobWorker {
                 parsedJobId.toString(),
                 Integer.toString(parsedDispatchGeneration)
         );
-        try (MdcContextScope ignored = MdcContextScope.replace(context)) {
+        try (MdcContextScope _ = MdcContextScope.replace(context)) {
             try {
                 if (processor.process(
                         parsedJobId,

@@ -71,7 +71,7 @@ public class CaptureJobProcessor {
         }
 
         ProcessingJobResult job = claimed.get();
-        try (MdcContextScope ignored = MdcContextScope.overlay(Map.of(
+        try (MdcContextScope _ = MdcContextScope.overlay(Map.of(
                 "requestId", job.originRequestId(),
                 "jobId", job.id().toString(),
                 "captureId", job.captureId().toString(),

@@ -56,11 +56,11 @@ public class AiProviderRouter implements TextClassifierPort {
                 lastProviderTerminalFailure = providerNotConfigured(providerId);
                 continue;
             }
-            try (MdcContextScope ignored = MdcContextScope.overlay(Map.of(
+            try (MdcContextScope _ = MdcContextScope.overlay(Map.of(
                     "provider", providerId,
                     "providerAttemptId", UUID.randomUUID().toString()
             ))) {
-                try (ProviderConcurrencyLimiter.Permit permit = concurrencyLimiter.acquire(providerId)) {
+                try (ProviderConcurrencyLimiter.Permit _ = concurrencyLimiter.acquire(providerId)) {
                     return classifyWithProviderMetrics(provider, providerId, text);
                 } catch (TextClassificationException exception) {
                     TextClassificationFailureClass failureClass = exception.failureClass();

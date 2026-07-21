@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useUser } from "@/features/auth/model/user-context";
@@ -12,6 +14,7 @@ import {
   useProcessingCapturesQuery,
   useTrackedCaptureQueries,
 } from "@/features/inbox/model/inbox.queries";
+import { inboxKeys } from "@/features/inbox/model/inbox.keys";
 import { useInboxTracking } from "@/features/inbox/model/inbox-tracking";
 import type {
   InboxItem,
@@ -128,6 +131,27 @@ function mockTracking(captureIds: string[] = []) {
   });
 }
 
+function testQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+}
+
+function renderInbox(queryClient = testQueryClient()) {
+  function QueryWrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    );
+  }
+
+  return { ...render(<InboxPanel />, { wrapper: QueryWrapper }), queryClient };
+}
+
 describe("InboxPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -178,7 +202,7 @@ describe("InboxPanel", () => {
       { data: completed, error: null },
     ] as never);
 
-    render(<InboxPanel />);
+    renderInbox();
 
     expect(screen.getByText("Text for processing-1")).toBeInTheDocument();
     expect(screen.getByText("Text for failed-1")).toBeInTheDocument();
@@ -189,8 +213,35 @@ describe("InboxPanel", () => {
     expect(screen.queryByText("ai_provider_unavailable")).not.toBeInTheDocument();
   });
 
+  it("removes a terminal capture from the stale processing cache before dismissing it", async () => {
+    const staleProcessing = capture("capture-1", "processing");
+    const completed = capture("capture-1", "completed", {
+      items: [item("item-1")],
+    });
+    const queryClient = testQueryClient();
+    const processingKey = inboxKeys.processing("user-1");
+    queryClient.setQueryData(processingKey, [staleProcessing]);
+    mockTracking([completed.id]);
+    vi.mocked(useProcessingCapturesQuery).mockReturnValue({
+      data: [staleProcessing],
+    } as never);
+    vi.mocked(useTrackedCaptureQueries).mockReturnValue([
+      { data: completed, error: null },
+    ] as never);
+
+    renderInbox(queryClient);
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData(processingKey)).toEqual([]),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss capture" }));
+
+    expect(dismissCapture).toHaveBeenCalledWith("capture-1");
+    expect(retryCapture).not.toHaveBeenCalled();
+  });
+
   it("shows the just-in-time privacy disclosure", () => {
-    render(<InboxPanel />);
+    renderInbox();
 
     expect(screen.getByText(/masks common email, phone, and IP patterns/i)).toBeInTheDocument();
     expect(screen.getByText(/Names and free-form addresses may still be sent/i)).toBeInTheDocument();
@@ -206,7 +257,7 @@ describe("InboxPanel", () => {
       { data: restored, error: null },
     ] as never);
 
-    render(<InboxPanel />);
+    renderInbox();
 
     expect(screen.getByText("Text for failed-after-reload")).toBeInTheDocument();
     expect(screen.getByText(/appears to contain a secret/i)).toBeInTheDocument();
@@ -245,7 +296,7 @@ describe("InboxPanel", () => {
       refetch: refetchInbox,
     } as never);
 
-    render(<InboxPanel />);
+    renderInbox();
 
     expect(screen.getByText("First item")).toBeInTheDocument();
     expect(screen.queryByText("Duplicate item")).not.toBeInTheDocument();
@@ -278,7 +329,7 @@ describe("InboxPanel", () => {
           retryAfterSeconds,
         }),
       );
-      render(<InboxPanel />);
+      renderInbox();
 
       fireEvent.change(screen.getByLabelText("Text to classify"), {
         target: { value: "Call mom" },
@@ -298,7 +349,7 @@ describe("InboxPanel", () => {
         resolveCapture = resolve;
       }),
     );
-    render(<InboxPanel />);
+    renderInbox();
     fireEvent.change(screen.getByLabelText("Text to classify"), {
       target: { value: "Call mom" },
     });
@@ -321,7 +372,7 @@ describe("InboxPanel", () => {
       { data: failed, error: null },
     ] as never);
     retryCapture.mockResolvedValue(capture("failed-1", "processing"));
-    render(<InboxPanel />);
+    renderInbox();
 
     fireEvent.click(screen.getByRole("button", { name: "Retry capture" }));
 
@@ -332,7 +383,7 @@ describe("InboxPanel", () => {
     mockInbox([item("item-1", "Delete me")]);
     deleteCapture.mockResolvedValue(undefined);
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<InboxPanel />);
+    renderInbox();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -352,7 +403,7 @@ describe("InboxPanel", () => {
         message: "Capture contains sensitive content",
       }),
     );
-    render(<InboxPanel />);
+    renderInbox();
     fireEvent.change(screen.getByLabelText("Text to classify"), {
       target: { value: "secret" },
     });

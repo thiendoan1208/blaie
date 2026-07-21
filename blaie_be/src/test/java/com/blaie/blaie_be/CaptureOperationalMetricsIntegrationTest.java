@@ -167,6 +167,7 @@ class CaptureOperationalMetricsIntegrationTest {
         );
     }
 
+    @SuppressWarnings("unchecked") // Spring's read API requires a generic varargs StreamOffset array.
     private void seedRedisPendingAndProviderUsage() {
         var streams = redisTemplate.opsForStream();
         streams.add(processingProperties.streamKey(), Map.of("jobId", UUID.randomUUID().toString()));
