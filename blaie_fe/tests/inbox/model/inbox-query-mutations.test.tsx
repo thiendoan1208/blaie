@@ -16,7 +16,9 @@ import {
   useDeleteCaptureMutation,
 } from "@/features/inbox/model/inbox.mutations";
 import {
+  captureResolutionRetryDelay,
   capturePollingInterval,
+  shouldRetryCaptureResolution,
   uniqueInboxItems,
   useInboxItemsQuery,
   usePendingCaptureResolutionQueries,
@@ -143,6 +145,79 @@ describe("Inbox queries and mutations", () => {
     expect(capturePollingInterval(undefined)).toBe(false);
   });
 
+  it.each([
+    ["network errors", 0],
+    ["request timeouts", 408],
+    ["early requests", 425],
+    ["rate limits", 429],
+    ["server errors", 503],
+  ])("retries transient capture resolution %s", (_, status) => {
+    const error = createAppError({
+      code: status === 0 ? "NETWORK_ERROR" : "HTTP_ERROR",
+      status,
+      message: "Temporary failure",
+    });
+
+    expect(shouldRetryCaptureResolution(0, error)).toBe(true);
+    expect(shouldRetryCaptureResolution(4, error)).toBe(true);
+    expect(shouldRetryCaptureResolution(5, error)).toBe(false);
+  });
+
+  it("retries a missing capture briefly to cover commit races", () => {
+    const error = createAppError({
+      code: "CAPTURE_NOT_FOUND",
+      status: 404,
+      message: "Capture not found",
+    });
+
+    expect(shouldRetryCaptureResolution(0, error)).toBe(true);
+    expect(shouldRetryCaptureResolution(2, error)).toBe(true);
+    expect(shouldRetryCaptureResolution(3, error)).toBe(false);
+  });
+
+  it.each([400, 401, 403, 409, 422])(
+    "does not retry deterministic capture resolution status %s",
+    (status) => {
+      const error = createAppError({
+        code: "HTTP_ERROR",
+        status,
+        message: "Deterministic failure",
+      });
+
+      expect(shouldRetryCaptureResolution(0, error)).toBe(false);
+    },
+  );
+
+  it("bounds retries for unnormalized resolution failures", () => {
+    const error = new Error("Unknown failure");
+
+    expect(shouldRetryCaptureResolution(3, error)).toBe(true);
+    expect(shouldRetryCaptureResolution(4, error)).toBe(false);
+  });
+
+  it("backs off resolution retries and honors Retry-After", () => {
+    expect(captureResolutionRetryDelay(0, new Error("failure"))).toBe(1_000);
+    expect(captureResolutionRetryDelay(1, new Error("failure"))).toBe(2_000);
+    expect(captureResolutionRetryDelay(4, new Error("failure"))).toBe(10_000);
+    expect(captureResolutionRetryDelay(10, new Error("failure"))).toBe(10_000);
+
+    const rateLimited = createAppError({
+      code: "RATE_LIMITED",
+      status: 429,
+      message: "Wait",
+      retryAfterSeconds: 30,
+    });
+    const immediateRetry = createAppError({
+      code: "RATE_LIMITED",
+      status: 429,
+      message: "Retry now",
+      retryAfterSeconds: 0,
+    });
+
+    expect(captureResolutionRetryDelay(0, rateLimited)).toBe(30_000);
+    expect(captureResolutionRetryDelay(0, immediateRetry)).toBe(1_000);
+  });
+
   it("enables focus and reconnect recovery for the processing list", async () => {
     vi.mocked(getProcessingCaptures).mockResolvedValue([]);
     const queryClient = testQueryClient();
@@ -191,6 +266,18 @@ describe("Inbox queries and mutations", () => {
         "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
       ),
     );
+    const query = queryClient.getQueryCache().find({
+      queryKey: [
+        "inbox",
+        "user",
+        "user-1",
+        "resolution",
+        "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+      ],
+    });
+    expect(query?.options.refetchOnWindowFocus).toBe("always");
+    expect(query?.options.refetchOnReconnect).toBe("always");
+    expect(query?.options.staleTime).toBe(0);
   });
 
   it("uses the same idempotency key when React Query retries an ambiguous POST", async () => {

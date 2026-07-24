@@ -19,6 +19,46 @@ import { inboxKeys } from "./inbox.keys";
 
 const INBOX_PAGE_SIZE = 20;
 const CAPTURE_POLL_INTERVAL_MS = 1_500;
+const CAPTURE_RESOLUTION_NOT_FOUND_RETRY_LIMIT = 3;
+const CAPTURE_RESOLUTION_TRANSIENT_RETRY_LIMIT = 5;
+const CAPTURE_RESOLUTION_UNKNOWN_RETRY_LIMIT = 4;
+const CAPTURE_RESOLUTION_MAX_RETRY_DELAY_MS = 10_000;
+
+export function shouldRetryCaptureResolution(
+  failureCount: number,
+  error: unknown,
+): boolean {
+  if (!isAppError(error)) {
+    return failureCount < CAPTURE_RESOLUTION_UNKNOWN_RETRY_LIMIT;
+  }
+
+  if (error.status === 404) {
+    return failureCount < CAPTURE_RESOLUTION_NOT_FOUND_RETRY_LIMIT;
+  }
+
+  const transient =
+    error.status === 0 ||
+    error.status === 408 ||
+    error.status === 425 ||
+    error.status === 429 ||
+    error.status >= 500;
+
+  return transient && failureCount < CAPTURE_RESOLUTION_TRANSIENT_RETRY_LIMIT;
+}
+
+export function captureResolutionRetryDelay(
+  attempt: number,
+  error: unknown,
+): number {
+  if (isAppError(error) && error.retryAfterSeconds !== undefined) {
+    return Math.max(1_000, error.retryAfterSeconds * 1_000);
+  }
+
+  return Math.min(
+    1_000 * 2 ** attempt,
+    CAPTURE_RESOLUTION_MAX_RETRY_DELAY_MS,
+  );
+}
 
 export function capturePollingInterval(
   capture: TextCapture | undefined,
@@ -80,12 +120,11 @@ export function usePendingCaptureResolutionQueries(
       queryKey: inboxKeys.resolution(userId, submission.idempotencyKey),
       queryFn: () => resolveCapture(submission.idempotencyKey),
       enabled: recoveryEnabled,
-      retry: (failureCount: number, error: unknown) =>
-        isAppError(error) && error.status === 404 && failureCount < 3,
-      retryDelay: (attempt: number) => Math.min(500 * 2 ** attempt, 2_000),
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-      staleTime: Number.POSITIVE_INFINITY,
+      retry: shouldRetryCaptureResolution,
+      retryDelay: captureResolutionRetryDelay,
+      refetchOnWindowFocus: "always" as const,
+      refetchOnReconnect: "always" as const,
+      staleTime: 0,
     })),
   });
 }
