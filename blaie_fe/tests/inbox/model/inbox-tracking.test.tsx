@@ -53,7 +53,12 @@ describe("Inbox capture tracking", () => {
     );
 
     expect(replay.idempotencyKey).toBe(first.idempotencyKey);
-    expect(readInboxTrackingState(USER_ID).pendingSubmissions).toHaveLength(1);
+    expect(
+      readInboxTrackingState(
+        USER_ID,
+        Date.parse("2026-07-17T10:05:00Z"),
+      ).pendingSubmissions,
+    ).toHaveLength(1);
   });
 
   it("isolates persisted tracking by authenticated user", async () => {

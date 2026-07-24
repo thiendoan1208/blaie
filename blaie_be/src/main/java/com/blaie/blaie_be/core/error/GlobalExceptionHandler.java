@@ -9,13 +9,16 @@ import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -68,6 +71,33 @@ public class GlobalExceptionHandler {
             default -> ErrorCode.INTERNAL_SERVER_ERROR;
         };
         return buildResponse(errorCode, exception.getReason(), null);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoResourceFoundException(
+            NoResourceFoundException exception
+    ) {
+        return buildResponse(
+                ErrorCode.NOT_FOUND,
+                ErrorCode.NOT_FOUND.defaultMessage(),
+                null
+        );
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethodNotSupportedException(
+            HttpRequestMethodNotSupportedException exception
+    ) {
+        String[] supportedMethods = exception.getSupportedMethods();
+        Map<String, String> headers = supportedMethods == null || supportedMethods.length == 0
+                ? Map.of()
+                : Map.of(HttpHeaders.ALLOW, String.join(", ", supportedMethods));
+        return buildResponse(
+                ErrorCode.METHOD_NOT_ALLOWED,
+                ErrorCode.METHOD_NOT_ALLOWED.defaultMessage(),
+                null,
+                headers
+        );
     }
 
     @ExceptionHandler({

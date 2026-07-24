@@ -55,7 +55,10 @@ describe("tryHandleAuthRefreshError", () => {
 
     await tryHandleAuthRefreshError(unauthorizedError("/items"), client);
 
-    expect(client.get).toHaveBeenCalledWith("/auth/csrf", { skipAuthRefresh: true });
+    expect(client.get).toHaveBeenCalledWith("/auth/csrf", {
+      skipAuthRefresh: true,
+      skipCsrfBootstrap: true,
+    });
     expect(client.post).toHaveBeenCalledWith("/auth/refresh", undefined, { skipAuthRefresh: true });
   });
 

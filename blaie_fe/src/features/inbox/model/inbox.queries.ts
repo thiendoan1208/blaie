@@ -10,7 +10,10 @@ import {
   getCapture,
   getInboxItems,
   getProcessingCaptures,
+  resolveCapture,
 } from "../api/inbox.service";
+import { isAppError } from "@/shared/api/errors/app-error";
+import type { PendingCaptureSubmission } from "./inbox-tracking";
 import type { InboxItem, InboxPage, TextCapture } from "../types/inbox";
 import { inboxKeys } from "./inbox.keys";
 
@@ -60,6 +63,30 @@ export function useProcessingCapturesQuery(userId: string) {
     queryFn: getProcessingCaptures,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
+  });
+}
+
+export function usePendingCaptureResolutionQueries(
+  userId: string,
+  pendingSubmissions: PendingCaptureSubmission[],
+  recoveryEnabled = true,
+) {
+  const unresolved = pendingSubmissions.filter(
+    (submission) => submission.captureId === null,
+  );
+
+  return useQueries({
+    queries: unresolved.map((submission) => ({
+      queryKey: inboxKeys.resolution(userId, submission.idempotencyKey),
+      queryFn: () => resolveCapture(submission.idempotencyKey),
+      enabled: recoveryEnabled,
+      retry: (failureCount: number, error: unknown) =>
+        isAppError(error) && error.status === 404 && failureCount < 3,
+      retryDelay: (attempt: number) => Math.min(500 * 2 ** attempt, 2_000),
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: Number.POSITIVE_INFINITY,
+    })),
   });
 }
 

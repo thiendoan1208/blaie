@@ -14,6 +14,9 @@ public class AuditRequestClassifier {
         if ("GET".equals(method) && "/api/v1/captures".equals(path)) {
             return access("capture.list", "capture", null);
         }
+        if ("GET".equals(method) && "/api/v1/captures/resolve".equals(path)) {
+            return access("capture.resolve", "capture", null);
+        }
         if (path.startsWith("/api/v1/captures/")) {
             String suffix = path.substring("/api/v1/captures/".length());
             if (suffix.endsWith("/retry") && "POST".equals(method)) {

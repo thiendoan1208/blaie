@@ -6,4 +6,6 @@ export const inboxKeys = {
     [...inboxKeys.user(userId), "processing"] as const,
   capture: (userId: string, captureId: string) =>
     [...inboxKeys.user(userId), "capture", captureId] as const,
+  resolution: (userId: string, idempotencyKey: string) =>
+    [...inboxKeys.user(userId), "resolution", idempotencyKey] as const,
 };

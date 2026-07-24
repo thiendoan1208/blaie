@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.task.TaskRejectedException;
@@ -93,6 +94,37 @@ class CaptureAsyncConfigurationTest {
         release.countDown();
         shutdown.get(1, TimeUnit.SECONDS);
         assertThat(shutdown).isCompleted();
+    }
+
+    @Test
+    void shutdownInterruptsRunningJobAfterConfiguredBound() throws Exception {
+        CaptureProcessingProperties properties = new CaptureProcessingProperties();
+        properties.setWorkerShutdownAwait(Duration.ofSeconds(1));
+        ThreadPoolTaskExecutor executor = executor(properties);
+        CountDownLatch started = new CountDownLatch(1);
+        AtomicBoolean interrupted = new AtomicBoolean();
+        executor.execute(() -> {
+            started.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException exception) {
+                interrupted.set(true);
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertThat(started.await(1, TimeUnit.SECONDS)).isTrue();
+
+        long startedAt = System.nanoTime();
+        try {
+            executor.shutdown();
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+            assertThat(elapsedMillis).isBetween(800L, 2_500L);
+            assertThat(interrupted).isTrue();
+            assertThat(executor.getThreadPoolExecutor().isTerminated()).isTrue();
+        } finally {
+            executor.getThreadPoolExecutor().shutdownNow();
+        }
     }
 
     @Test

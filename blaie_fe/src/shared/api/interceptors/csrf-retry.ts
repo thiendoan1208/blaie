@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance } from "axios";
 import { normalizeError } from "../errors/normalize-error";
+import { ensureCsrfCookie } from "./csrf-header";
 
 declare module "axios" {
   export interface AxiosRequestConfig {
@@ -74,7 +75,7 @@ export async function tryHandleCsrfError(
   error.config.hasRetriedWithCsrf = true;
 
   try {
-    await client.get(AUTH_CSRF_PATH, { skipAuthRefresh: true });
+    await ensureCsrfCookie(client, true);
     return { handled: true, response: await client(error.config) };
   } catch (csrfError) {
     return Promise.reject(normalizeError(csrfError));

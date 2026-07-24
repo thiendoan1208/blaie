@@ -9,6 +9,7 @@ import {
   getCapture,
   getInboxItems,
   getProcessingCaptures,
+  resolveCapture,
 } from "@/features/inbox/api/inbox.service";
 import {
   useCreateTextCaptureMutation,
@@ -18,6 +19,7 @@ import {
   capturePollingInterval,
   uniqueInboxItems,
   useInboxItemsQuery,
+  usePendingCaptureResolutionQueries,
   useProcessingCapturesQuery,
 } from "@/features/inbox/model/inbox.queries";
 import type {
@@ -33,6 +35,7 @@ vi.mock("@/features/inbox/api/inbox.service", () => ({
   getCapture: vi.fn(),
   getInboxItems: vi.fn(),
   getProcessingCaptures: vi.fn(),
+  resolveCapture: vi.fn(),
   retryCapture: vi.fn(),
 }));
 
@@ -98,6 +101,7 @@ describe("Inbox queries and mutations", () => {
     vi.mocked(getCapture).mockReset();
     vi.mocked(getInboxItems).mockReset();
     vi.mocked(getProcessingCaptures).mockReset();
+    vi.mocked(resolveCapture).mockReset();
   });
 
   it("loads cursor pages and removes duplicate items across page boundaries", async () => {
@@ -152,6 +156,41 @@ describe("Inbox queries and mutations", () => {
     });
     expect(query?.options.refetchOnWindowFocus).toBe(true);
     expect(query?.options.refetchOnReconnect).toBe(true);
+  });
+
+  it("does not resolve an idempotency key while its POST is still active", async () => {
+    vi.mocked(resolveCapture).mockResolvedValue(capture("processing"));
+    const queryClient = testQueryClient();
+    const pendingSubmissions = [
+      {
+        textHash: "a".repeat(64),
+        idempotencyKey: "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+        createdAt: "2026-07-17T10:00:00Z",
+        captureId: null,
+      },
+    ];
+    const { rerender } = renderHook(
+      ({ recoveryEnabled }) =>
+        usePendingCaptureResolutionQueries(
+          "user-1",
+          pendingSubmissions,
+          recoveryEnabled,
+        ),
+      {
+        initialProps: { recoveryEnabled: false },
+        wrapper: wrapper(queryClient),
+      },
+    );
+
+    await act(async () => Promise.resolve());
+    expect(resolveCapture).not.toHaveBeenCalled();
+
+    rerender({ recoveryEnabled: true });
+    await waitFor(() =>
+      expect(resolveCapture).toHaveBeenCalledWith(
+        "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+      ),
+    );
   });
 
   it("uses the same idempotency key when React Query retries an ambiguous POST", async () => {

@@ -40,6 +40,7 @@ import {
   removeCaptureFromProcessingCache,
   uniqueInboxItems,
   useInboxItemsQuery,
+  usePendingCaptureResolutionQueries,
   useProcessingCapturesQuery,
   useTrackedCaptureQueries,
 } from "../model/inbox.queries";
@@ -75,8 +76,12 @@ export function InboxPanel() {
 function InboxPanelContent({ userId }: { userId: string }) {
   const [text, setText] = useState("");
   const [preparingSubmission, setPreparingSubmission] = useState(false);
+  const [hiddenCaptureIds, setHiddenCaptureIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const submitInFlight = useRef(false);
   const notifiedTerminalStates = useRef(new Set<string>());
+  const recoveredResolutionStates = useRef(new Set<string>());
   const queryClient = useQueryClient();
 
   const tracking = useInboxTracking(userId);
@@ -92,9 +97,21 @@ function InboxPanelContent({ userId }: { userId: string }) {
   } = tracking;
   const inboxQuery = useInboxItemsQuery(userId);
   const processingQuery = useProcessingCapturesQuery(userId);
+  const resolutionQueries = usePendingCaptureResolutionQueries(
+    userId,
+    trackingState.pendingSubmissions,
+    !preparingSubmission,
+  );
+  const visibleTrackedCaptureIds = useMemo(
+    () =>
+      trackingState.captureIds.filter(
+        (captureId) => !hiddenCaptureIds.has(captureId),
+      ),
+    [hiddenCaptureIds, trackingState.captureIds],
+  );
   const captureQueries = useTrackedCaptureQueries(
     userId,
-    trackingState.captureIds,
+    visibleTrackedCaptureIds,
     processingQuery.data ?? [],
   );
   const captureMutation = useCreateTextCaptureMutation(userId);
@@ -132,13 +149,23 @@ function InboxPanelContent({ userId }: { userId: string }) {
   }, [processingQuery.data, rememberRecoveredCapture]);
 
   useEffect(() => {
+    for (const query of resolutionQueries) {
+      if (!query.data) continue;
+      const recoveryKey = `${query.data.id}:${query.data.processingStatus}:${query.data.updatedAt}`;
+      if (recoveredResolutionStates.current.has(recoveryKey)) continue;
+      recoveredResolutionStates.current.add(recoveryKey);
+      void rememberRecoveredCapture(query.data);
+    }
+  }, [rememberRecoveredCapture, resolutionQueries]);
+
+  useEffect(() => {
     captureQueries.forEach((query, index) => {
       if (isAppError(query.error) && query.error.status === 404) {
-        const captureId = trackingState.captureIds[index];
+        const captureId = visibleTrackedCaptureIds[index];
         if (captureId) forgetCapture(captureId);
       }
     });
-  }, [captureQueries, forgetCapture, trackingState.captureIds]);
+  }, [captureQueries, forgetCapture, visibleTrackedCaptureIds]);
 
   useEffect(() => {
     for (const capture of captures) {
@@ -197,11 +224,22 @@ function InboxPanelContent({ userId }: { userId: string }) {
 
   async function remove(captureId: string) {
     if (!window.confirm("Delete this source capture and all Inbox items created from it?")) return;
+    setHiddenCaptureIds((current) => new Set(current).add(captureId));
     try {
       await deleteMutation.mutateAsync(captureId);
       forgetCapture(captureId);
+      setHiddenCaptureIds((current) => {
+        const next = new Set(current);
+        next.delete(captureId);
+        return next;
+      });
       toast.success("Capture and its Inbox items were deleted.");
     } catch (error) {
+      setHiddenCaptureIds((current) => {
+        const restored = new Set(current);
+        restored.delete(captureId);
+        return restored;
+      });
       toast.error(captureRequestErrorMessage(error));
     }
   }

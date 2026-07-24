@@ -94,6 +94,25 @@ class CaptureServiceImplTest {
     }
 
     @Test
+    void idempotencyLookupResolvesOnlyForTheAuthenticatedOwner() {
+        UUID ownerId = UUID.randomUUID();
+        UUID otherId = UUID.randomUUID();
+        InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
+        CaptureService service = service(new InMemoryCaptureItemStore(), workflowStore);
+        CaptureResult created = runAs(
+                ownerId,
+                () -> service.captureText("Recover after refresh", IDEMPOTENCY_KEY.toString())
+        );
+
+        assertThat(runAs(ownerId, () -> service.resolveCapture(IDEMPOTENCY_KEY.toString())).id())
+                .isEqualTo(created.id());
+        assertThatThrownBy(() -> runAs(otherId, () -> service.resolveCapture(IDEMPOTENCY_KEY.toString())))
+                .isInstanceOf(AppException.class)
+                .extracting(exception -> ((AppException) exception).errorCode())
+                .isEqualTo(ErrorCode.CAPTURE_NOT_FOUND);
+    }
+
+    @Test
     void inboxItemIsNotVisibleToAnotherAuthenticatedUser() {
         UUID ownerId = UUID.randomUUID();
         UUID otherUserId = UUID.randomUUID();
@@ -346,7 +365,7 @@ class CaptureServiceImplTest {
                     now,
                     now
             );
-            captures.add(new OwnedCapture(userId, result));
+            captures.add(new OwnedCapture(userId, idempotencyKey, result));
             return result;
         }
 
@@ -354,6 +373,19 @@ class CaptureServiceImplTest {
         public Optional<CaptureResult> findOwned(UUID captureId, UUID userId) {
             return captures.stream()
                     .filter(capture -> capture.userId().equals(userId) && capture.result().id().equals(captureId))
+                    .map(OwnedCapture::result)
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<CaptureResult> findOwnedByIdempotencyKey(
+                UUID idempotencyKey,
+                UUID userId,
+                Instant now
+        ) {
+            return captures.stream()
+                    .filter(capture -> capture.userId().equals(userId)
+                            && capture.idempotencyKey().equals(idempotencyKey))
                     .map(OwnedCapture::result)
                     .findFirst();
         }
@@ -381,7 +413,7 @@ class CaptureServiceImplTest {
         }
     }
 
-    private record OwnedCapture(UUID userId, CaptureResult result) {
+    private record OwnedCapture(UUID userId, UUID idempotencyKey, CaptureResult result) {
     }
 
     private static final class InMemoryCaptureItemStore implements CaptureItemStorePort {

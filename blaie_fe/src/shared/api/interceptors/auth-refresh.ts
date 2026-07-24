@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance } from "axios";
 import { isProtectedRoutePath, routePaths } from "@/shared/routes/route-paths";
 import { normalizeError } from "../errors/normalize-error";
-import { readBrowserCookie } from "../utils/browser-cookie";
+import { ensureCsrfCookie } from "./csrf-header";
 
 declare module "axios" {
   export interface AxiosRequestConfig {
@@ -25,7 +25,6 @@ const AUTH_REFRESH_SKIP_PATHS = new Set([
   "/auth/register",
   AUTH_REFRESH_PATH,
 ]);
-const CSRF_COOKIE_NAME = "XSRF-TOKEN";
 const REFRESH_LOCK_KEY = "blaie.auth.refresh.lock";
 const REFRESH_RESULT_KEY = "blaie.auth.refresh.result";
 const REFRESH_CHANNEL_NAME = "blaie.auth.refresh";
@@ -200,14 +199,6 @@ function waitForOtherTabRefresh(ownerId: string) {
       };
     }
   });
-}
-
-async function ensureCsrfCookie(client: AxiosInstance) {
-  if (typeof document === "undefined" || readBrowserCookie(CSRF_COOKIE_NAME)) {
-    return;
-  }
-
-  await client.get(AUTH_CSRF_PATH, { skipAuthRefresh: true });
 }
 
 async function postRefreshRequest(client: AxiosInstance) {

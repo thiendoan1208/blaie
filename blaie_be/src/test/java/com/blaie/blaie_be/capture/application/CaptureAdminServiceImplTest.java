@@ -102,7 +102,7 @@ class CaptureAdminServiceImplTest {
     }
 
     @Test
-    void successfulAdminRequeueRecordsOneManualRetry() {
+    void successfulAdminRequeueRecordsOneAdminRetry() {
         UUID jobId = UUID.randomUUID();
         AdminProcessingJobResult queued = job(ProcessingJobStatus.QUEUED, NOW);
         when(settings.acceptAsyncEnabled()).thenReturn(true);
@@ -114,7 +114,7 @@ class CaptureAdminServiceImplTest {
         assertThat(service.requeue(jobId.toString())).isEqualTo(queued);
 
         verify(authorization).require(PermissionAction.ADMIN_JOB_MANAGE);
-        verify(telemetry).incrementRetry(RetrySource.MANUAL);
+        verify(telemetry).incrementRetry(RetrySource.ADMIN);
     }
 
     @Test

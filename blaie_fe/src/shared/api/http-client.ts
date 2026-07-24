@@ -1,7 +1,7 @@
 import axios from "axios";
 import { handleHttpError } from "./errors/http-error-handler";
 import { normalizeError } from "./errors/normalize-error";
-import { attachCsrfHeader } from "./interceptors/csrf-header";
+import { prepareCsrfRequest } from "./interceptors/csrf-header";
 import { attachRequestIdHeader } from "./interceptors/request-id-header";
 
 export const httpClient = axios.create({
@@ -12,12 +12,10 @@ export const httpClient = axios.create({
 });
 
 httpClient.interceptors.request.use(
-  (config) => {
+  async (config) => {
     config.headers = config.headers ?? {};
     attachRequestIdHeader(config);
-    attachCsrfHeader(config);
-
-    return config;
+    return prepareCsrfRequest(config, httpClient);
   },
   (error) => Promise.reject(normalizeError(error)),
 );

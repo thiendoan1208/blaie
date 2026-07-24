@@ -28,6 +28,7 @@ class MicrometerCaptureTelemetryTest {
                 TextClassificationFailureClass.PROVIDER_RETRYABLE
         );
         telemetry.incrementRetry(RetrySource.AUTOMATIC);
+        telemetry.incrementRetry(RetrySource.ADMIN);
         telemetry.incrementDead(DeadSource.WORKER, TextClassificationFailureClass.SYSTEM_RETRYABLE);
         telemetry.incrementStaleRecovered(2);
         telemetry.incrementQueuedRedispatched(3);
@@ -45,6 +46,7 @@ class MicrometerCaptureTelemetryTest {
                 .tags("provider", "deepseek", "failure_class", "provider_retryable")
                 .counter().count()).isEqualTo(1);
         assertThat(registry.get("capture.retry").tag("source", "automatic").counter().count()).isEqualTo(1);
+        assertThat(registry.get("capture.retry").tag("source", "admin").counter().count()).isEqualTo(1);
         assertThat(registry.get("capture.dead")
                 .tags("source", "worker", "failure_class", "system_retryable")
                 .counter().count()).isEqualTo(1);

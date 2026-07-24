@@ -26,6 +26,16 @@ export async function getCapture(captureId: string): Promise<TextCapture> {
   return response.data.data;
 }
 
+export async function resolveCapture(
+  idempotencyKey: string,
+): Promise<TextCapture> {
+  const response = await httpClient.get<ApiResponse<TextCapture>>(
+    "/captures/resolve",
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  );
+  return response.data.data;
+}
+
 export async function getProcessingCaptures(): Promise<TextCapture[]> {
   const response = await httpClient.get<ApiResponse<TextCapture[]>>(
     "/captures",

@@ -20,6 +20,8 @@ public interface CaptureWorkflowStorePort {
 
     Optional<CaptureResult> findOwned(UUID captureId, UUID userId);
 
+    Optional<CaptureResult> findOwnedByIdempotencyKey(UUID idempotencyKey, UUID userId, Instant now);
+
     List<CaptureResult> findOwnedProcessing(UUID userId, int limit);
 
     CaptureResult retryOwned(UUID captureId, UUID userId, Instant now);

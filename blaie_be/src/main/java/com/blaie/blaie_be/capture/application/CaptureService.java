@@ -11,6 +11,8 @@ public interface CaptureService {
 
     CaptureResult capture(UUID captureId);
 
+    CaptureResult resolveCapture(String idempotencyKey);
+
     List<CaptureResult> processingCaptures(int limit);
 
     CaptureResult retry(UUID captureId);

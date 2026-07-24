@@ -44,7 +44,7 @@ public class CaptureAsyncConfiguration {
             CaptureProcessingProperties properties,
             @Qualifier(HEARTBEAT_SCHEDULER) TaskScheduler heartbeatScheduler
     ) {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        ThreadPoolTaskExecutor executor = new BoundedShutdownThreadPoolTaskExecutor();
         executor.setCorePoolSize(properties.workerCorePoolSize());
         executor.setMaxPoolSize(properties.workerMaxPoolSize());
         executor.setQueueCapacity(properties.workerQueueCapacity());
@@ -54,13 +54,13 @@ public class CaptureAsyncConfiguration {
         executor.setAcceptTasksAfterContextClose(false);
         executor.setStrictEarlyShutdown(true);
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(Math.toIntExact(properties.workerShutdownAwait().toSeconds()));
+        executor.setAwaitTerminationMillis(properties.workerShutdownAwait().toMillis());
         return executor;
     }
 
     @Bean(name = {EVENT_EXECUTOR, "taskExecutor"})
     ThreadPoolTaskExecutor captureEventExecutor(CaptureProcessingProperties properties) {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        ThreadPoolTaskExecutor executor = new BoundedShutdownThreadPoolTaskExecutor();
         executor.setCorePoolSize(properties.eventCorePoolSize());
         executor.setMaxPoolSize(properties.eventMaxPoolSize());
         executor.setQueueCapacity(properties.eventQueueCapacity());
@@ -70,7 +70,7 @@ public class CaptureAsyncConfiguration {
         executor.setAcceptTasksAfterContextClose(false);
         executor.setStrictEarlyShutdown(true);
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(Math.toIntExact(properties.workerShutdownAwait().toSeconds()));
+        executor.setAwaitTerminationMillis(properties.workerShutdownAwait().toMillis());
         return executor;
     }
 }

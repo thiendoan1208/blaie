@@ -69,7 +69,8 @@ public interface CaptureTelemetryPort {
     enum RetrySource {
         AUTOMATIC("automatic"),
         STALE_RECOVERY("stale_recovery"),
-        MANUAL("manual");
+        MANUAL("manual"),
+        ADMIN("admin");
 
         private final String value;
 

@@ -91,7 +91,7 @@ public class CaptureAdminServiceImpl implements CaptureAdminService {
         requireAsyncAcceptance();
         AdminProcessingJobMutationResult mutation = store.requeue(parsedJobId, clock.instant());
         AdminProcessingJobResult job = mutation.job();
-        telemetry.incrementRetry(RetrySource.MANUAL);
+        telemetry.incrementRetry(RetrySource.ADMIN);
         logOperation("requeue", parsedJobId, mutation.previousStatus(), job.status());
         return job;
     }

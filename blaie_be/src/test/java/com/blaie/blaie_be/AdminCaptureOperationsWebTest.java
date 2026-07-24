@@ -108,6 +108,30 @@ class AdminCaptureOperationsWebTest {
     }
 
     @Test
+    void unknownAdminRouteAndUnsupportedMethodReturnSafeJsonErrors() throws Exception {
+        UserAccess admin = user(true, "admin-routing");
+
+        mockMvc.perform(get("/api/v1/admin/not-a-route")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
+                        .header("X-Request-ID", "admin-route-not-found"))
+                .andExpect(status().isNotFound())
+                .andExpect(header().string("X-Request-ID", "admin-route-not-found"))
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("Not found"))
+                .andExpect(jsonPath("$.requestId").value("admin-route-not-found"));
+
+        mockMvc.perform(post("/api/v1/admin/outbox/summary")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
+                        .header("X-Request-ID", "admin-method-not-allowed"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string(HttpHeaders.ALLOW, "GET"))
+                .andExpect(header().string("X-Request-ID", "admin-method-not-allowed"))
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.message").value("Method not allowed"))
+                .andExpect(jsonPath("$.requestId").value("admin-method-not-allowed"));
+    }
+
+    @Test
     void adminReadsAreProtectedPaginatedFilteredAndNeverLeakPrivatePayloads() throws Exception {
         UserAccess regular = user(false, "regular-operator");
         UserAccess admin = user(true, "admin-operator");

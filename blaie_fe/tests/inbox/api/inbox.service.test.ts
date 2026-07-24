@@ -4,6 +4,7 @@ import {
   createTextCapture,
   deleteCapture,
   getInboxItems,
+  resolveCapture,
 } from "@/features/inbox/api/inbox.service";
 import type {
   InboxItem,
@@ -73,6 +74,21 @@ describe("Inbox service", () => {
         },
       },
     );
+  });
+
+  it("resolves an uncertain capture without resubmitting its text", async () => {
+    vi.mocked(httpClient.get).mockResolvedValue({
+      data: { data: { ...capture, processingStatus: "completed" } },
+    });
+
+    await resolveCapture("5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef");
+
+    expect(httpClient.get).toHaveBeenCalledWith("/captures/resolve", {
+      headers: {
+        "Idempotency-Key": "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+      },
+    });
+    expect(httpClient.post).not.toHaveBeenCalled();
   });
 
   it("maps cursor metadata and sends the next cursor", async () => {

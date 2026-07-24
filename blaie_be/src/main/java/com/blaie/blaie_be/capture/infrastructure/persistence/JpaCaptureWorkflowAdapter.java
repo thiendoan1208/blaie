@@ -120,6 +120,18 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<CaptureResult> findOwnedByIdempotencyKey(
+            UUID idempotencyKey,
+            UUID userId,
+            Instant now
+    ) {
+        return idempotencyRepository
+                .findByUserIdAndIdempotencyKeyAndExpiresAtAfter(userId, idempotencyKey, now)
+                .flatMap(key -> findOwned(key.captureId(), userId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<CaptureResult> findOwnedProcessing(UUID userId, int limit) {
         return captureRepository.findByUserIdAndProcessingStatusOrderByCreatedAtDescIdDesc(
                         userId,

@@ -11,6 +11,7 @@ import {
 } from "@/features/inbox/model/inbox.mutations";
 import {
   useInboxItemsQuery,
+  usePendingCaptureResolutionQueries,
   useProcessingCapturesQuery,
   useTrackedCaptureQueries,
 } from "@/features/inbox/model/inbox.queries";
@@ -42,6 +43,7 @@ vi.mock("@/features/inbox/model/inbox.queries", async (importOriginal) => {
   return {
     ...original,
     useInboxItemsQuery: vi.fn(),
+    usePendingCaptureResolutionQueries: vi.fn(),
     useProcessingCapturesQuery: vi.fn(),
     useTrackedCaptureQueries: vi.fn(),
   };
@@ -163,6 +165,7 @@ describe("InboxPanel", () => {
     mockInbox();
     mockTracking();
     vi.mocked(useProcessingCapturesQuery).mockReturnValue({ data: [] } as never);
+    vi.mocked(usePendingCaptureResolutionQueries).mockReturnValue([]);
     vi.mocked(useTrackedCaptureQueries).mockReturnValue([]);
     vi.mocked(useCreateTextCaptureMutation).mockReturnValue({
       isPending: false,
@@ -265,6 +268,44 @@ describe("InboxPanel", () => {
     expect(screen.getByRole("button", { name: "Dismiss capture" })).toBeInTheDocument();
   });
 
+  it("recovers a terminal capture by idempotency key after an immediate reload", async () => {
+    const recovered = capture("completed-after-reload", "completed", {
+      originalText: "Call mom",
+      items: [item("item-after-reload", "Call mom")],
+    });
+    vi.mocked(useInboxTracking).mockReturnValue({
+      state: {
+        version: 1,
+        captureIds: [],
+        pendingSubmissions: [
+          {
+            textHash: "a".repeat(64),
+            idempotencyKey: "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+            createdAt: "2026-07-17T10:00:00Z",
+            captureId: null,
+          },
+        ],
+      },
+      unresolvedSubmissionCount: 1,
+      beginSubmission,
+      discardSubmission,
+      dismissCapture,
+      markCaptureResolved,
+      rememberCapture,
+      rememberRecoveredCapture,
+    });
+    vi.mocked(usePendingCaptureResolutionQueries).mockReturnValue([
+      { data: recovered, error: null },
+    ] as never);
+
+    renderInbox();
+
+    await waitFor(() =>
+      expect(rememberRecoveredCapture).toHaveBeenCalledWith(recovered),
+    );
+    expect(createCapture).not.toHaveBeenCalled();
+  });
+
   it("renders unique Inbox items and loads the next cursor page", () => {
     vi.mocked(useInboxItemsQuery).mockReturnValue({
       data: {
@@ -365,6 +406,33 @@ describe("InboxPanel", () => {
     await waitFor(() => expect(rememberCapture).toHaveBeenCalledOnce());
   });
 
+  it("pauses idempotency recovery while a normal capture POST is pending", async () => {
+    let finishCapture!: (value: TextCapture) => void;
+    createCapture.mockReturnValue(
+      new Promise<TextCapture>((resolve) => {
+        finishCapture = resolve;
+      }),
+    );
+    renderInbox();
+    fireEvent.change(screen.getByLabelText("Text to classify"), {
+      target: { value: "Call mom" },
+    });
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Capture text" }).closest("form")!,
+    );
+
+    await waitFor(() =>
+      expect(usePendingCaptureResolutionQueries).toHaveBeenLastCalledWith(
+        "user-1",
+        [],
+        false,
+      ),
+    );
+
+    finishCapture(capture("capture-1", "processing"));
+    await waitFor(() => expect(rememberCapture).toHaveBeenCalledOnce());
+  });
+
   it("retries the failed capture represented by the selected card", async () => {
     const failed = capture("failed-1", "failed");
     mockTracking([failed.id]);
@@ -393,6 +461,39 @@ describe("InboxPanel", () => {
 
     await waitFor(() => expect(deleteCapture).toHaveBeenCalledWith("capture-1"));
     expect(dismissCapture).toHaveBeenCalledWith("capture-1");
+  });
+
+  it("stops tracking a capture before its delete request settles", async () => {
+    let finishDelete!: () => void;
+    deleteCapture.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishDelete = resolve;
+      }),
+    );
+    mockTracking(["capture-1"]);
+    mockInbox([item("item-1", "Delete without a trailing GET")]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderInbox();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Delete source capture for Delete without a trailing GET",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(useTrackedCaptureQueries).toHaveBeenLastCalledWith(
+        "user-1",
+        [],
+        [],
+      ),
+    );
+    expect(dismissCapture).not.toHaveBeenCalled();
+
+    finishDelete();
+    await waitFor(() =>
+      expect(dismissCapture).toHaveBeenCalledWith("capture-1"),
+    );
   });
 
   it("discards the persisted submission key after a deterministic privacy rejection", async () => {

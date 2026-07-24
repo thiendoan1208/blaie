@@ -2,7 +2,10 @@ package com.blaie.blaie_be;
 
 import com.blaie.blaie_be.core.request.RequestContextFilter;
 import com.blaie.blaie_be.auth.domain.AuthActionTokenType;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthClientPort;
+import com.blaie.blaie_be.auth.application.port.GoogleOAuthProfile;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthTokenService;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -27,12 +30,14 @@ import org.springframework.mock.web.MockCookie;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -42,6 +47,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @Import({TestcontainersConfiguration.class, LocalAuthWebFlowTest.SecurityTestController.class})
 @SpringBootTest(properties = {
@@ -82,6 +91,9 @@ class LocalAuthWebFlowTest {
 
     @Autowired
     private AuthTokenService authTokenService;
+
+    @MockitoBean
+    private GoogleOAuthClientPort googleOAuthClientPort;
 
     @BeforeEach
     void cleanDatabase() {
@@ -170,6 +182,60 @@ class LocalAuthWebFlowTest {
     }
 
     @Test
+    void csrfTokenRotatesOnLoginAndSurvivesAuthenticatedRequests() throws Exception {
+        String username = uniqueValue("csrf-lifecycle");
+        String email = uniqueValue("csrf-lifecycle") + "@example.com";
+        registerUser(username, email, "Csrf Lifecycle User", "Password1!");
+        markEmailVerified(username);
+
+        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String preLoginCsrfToken = cookieValue(csrfResult, CSRF_COOKIE);
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .cookie(new MockCookie(CSRF_COOKIE, preLoginCsrfToken))
+                        .header(CSRF_HEADER, preLoginCsrfToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "identifier", username,
+                                "password", "Password1!"
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
+        String authenticatedCsrfToken = cookieValue(loginResult, CSRF_COOKIE);
+        Assertions.assertThat(authenticatedCsrfToken)
+                .isNotBlank()
+                .isNotEqualTo(preLoginCsrfToken);
+
+        MvcResult meResult = mockMvc.perform(get("/api/v1/auth/me")
+                        .cookie(
+                                new MockCookie(ACCESS_COOKIE, accessToken),
+                                new MockCookie(CSRF_COOKIE, authenticatedCsrfToken)
+                        ))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertDoesNotSetCookie(meResult, CSRF_COOKIE);
+
+        mockMvc.perform(post("/api/v1/test/write")
+                        .cookie(
+                                new MockCookie(ACCESS_COOKIE, accessToken),
+                                new MockCookie(CSRF_COOKIE, authenticatedCsrfToken)
+                        )
+                        .header(CSRF_HEADER, authenticatedCsrfToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/v1/test/write")
+                        .cookie(
+                                new MockCookie(ACCESS_COOKIE, accessToken),
+                                new MockCookie(CSRF_COOKIE, authenticatedCsrfToken)
+                        )
+                        .header(CSRF_HEADER, authenticatedCsrfToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
     void authenticatedUserWithoutPermissionReturnsJsonForbidden() throws Exception {
         String username = uniqueValue("permission");
         String email = uniqueValue("permission") + "@example.com";
@@ -212,6 +278,61 @@ class LocalAuthWebFlowTest {
     }
 
     @Test
+    void googleCallbackCreatesAuthenticatedSessionAndReturnsToRequestedPage() throws Exception {
+        MvcResult startResult = mockMvc.perform(get("/api/v1/auth/google/start")
+                        .queryParam("next", "/inbox"))
+                .andExpect(status().isFound())
+                .andReturn();
+        String state = UriComponentsBuilder.fromUriString(
+                        startResult.getResponse().getHeader(HttpHeaders.LOCATION)
+                )
+                .build()
+                .getQueryParams()
+                .getFirst("state");
+        String stateCookie = cookieValue(startResult, "blaie_google_oauth");
+        String googleEmail = uniqueValue("google") + "@example.com";
+        when(googleOAuthClientPort.exchangeCodeForProfile(
+                eq("google-authorization-code"),
+                anyString(),
+                eq(URI.create("http://localhost:8080/api/v1/auth/google/callback"))
+        )).thenReturn(new GoogleOAuthProfile(
+                "google-subject-" + UUID.randomUUID(),
+                googleEmail,
+                true,
+                "Google Test User",
+                "https://example.com/avatar.png"
+        ));
+
+        MvcResult callbackResult = mockMvc.perform(get("/api/v1/auth/google/callback")
+                        .queryParam("code", "google-authorization-code")
+                        .queryParam("state", state)
+                        .cookie(new MockCookie("blaie_google_oauth", stateCookie))
+                        .header(HttpHeaders.USER_AGENT, "NAV-03 integration test"))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, "http://localhost:3000/inbox"))
+                .andReturn();
+
+        Assertions.assertThat(setCookieHeader(callbackResult, "blaie_google_oauth"))
+                .contains("Max-Age=0");
+        assertHttpOnlyCookie(callbackResult, ACCESS_COOKIE);
+        assertHttpOnlyCookie(callbackResult, REFRESH_COOKIE);
+        Assertions.assertThat(cookieValue(callbackResult, CSRF_COOKIE)).isNotBlank();
+        verify(googleOAuthClientPort).exchangeCodeForProfile(
+                eq("google-authorization-code"),
+                anyString(),
+                eq(URI.create("http://localhost:8080/api/v1/auth/google/callback"))
+        );
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .cookie(new MockCookie(ACCESS_COOKIE, cookieValue(callbackResult, ACCESS_COOKIE))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.email").value(googleEmail))
+                .andExpect(jsonPath("$.data.user.emailVerified").value(true))
+                .andExpect(jsonPath("$.data.user.hasPassword").value(false))
+                .andExpect(jsonPath("$.data.user.displayName").value("Google Test User"));
+    }
+
+    @Test
     void registerLocalCreatesAccountAndSetsCookies() throws Exception {
         String username = uniqueValue("jane");
         String email = uniqueValue("jane") + "@example.com";
@@ -235,6 +356,7 @@ class LocalAuthWebFlowTest {
 
         assertHttpOnlyCookie(result, ACCESS_COOKIE);
         assertHttpOnlyCookie(result, REFRESH_COOKIE);
+        Assertions.assertThat(cookieValue(result, CSRF_COOKIE)).isNotBlank();
     }
 
     @Test
@@ -505,6 +627,37 @@ class LocalAuthWebFlowTest {
     }
 
     @Test
+    void refreshPreservesCsrfTokenForTheAuthenticatedBrowserSession() throws Exception {
+        String username = uniqueValue("csrf-refresh");
+        String email = uniqueValue("csrf-refresh") + "@example.com";
+        registerUser(username, email, "Csrf Refresh User", "Password1!");
+        markEmailVerified(username);
+        MvcResult loginResult = loginWithIdentifier(username, "Password1!");
+        String accessToken = cookieValue(loginResult, ACCESS_COOKIE);
+        String refreshToken = cookieValue(loginResult, REFRESH_COOKIE);
+        String csrfToken = cookieValue(loginResult, CSRF_COOKIE);
+
+        MvcResult refreshResult = mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(
+                                new MockCookie(ACCESS_COOKIE, accessToken),
+                                new MockCookie(REFRESH_COOKIE, refreshToken),
+                                new MockCookie(CSRF_COOKIE, csrfToken)
+                        )
+                        .header(CSRF_HEADER, csrfToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertDoesNotSetCookie(refreshResult, CSRF_COOKIE);
+
+        mockMvc.perform(post("/api/v1/test/write")
+                        .cookie(
+                                new MockCookie(ACCESS_COOKIE, cookieValue(refreshResult, ACCESS_COOKIE)),
+                                new MockCookie(CSRF_COOKIE, csrfToken)
+                        )
+                        .header(CSRF_HEADER, csrfToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
     void logoutClearsCookiesAndRevokesRefreshToken() throws Exception {
         String username = uniqueValue("ava");
         String email = uniqueValue("ava") + "@example.com";
@@ -513,9 +666,12 @@ class LocalAuthWebFlowTest {
         MvcResult loginResult = loginWithIdentifier(email, "Password1!");
         String refreshToken = cookieValue(loginResult, REFRESH_COOKIE);
 
-        mockMvc.perform(withCsrf(post("/api/v1/auth/logout")
+        MvcResult logoutResult = mockMvc.perform(withCsrf(post("/api/v1/auth/logout")
                         .cookie(new MockCookie(REFRESH_COOKIE, refreshToken))))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isNoContent())
+                .andReturn();
+        Assertions.assertThat(setCookieHeader(logoutResult, CSRF_COOKIE))
+                .contains("Max-Age=0");
 
         mockMvc.perform(withCsrf(post("/api/v1/auth/refresh")
                         .cookie(new MockCookie(REFRESH_COOKIE, refreshToken))))
@@ -664,6 +820,12 @@ class LocalAuthWebFlowTest {
                 .filter(header -> header.startsWith(prefix))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Missing Set-Cookie header for " + cookieName));
+    }
+
+    private void assertDoesNotSetCookie(MvcResult result, String cookieName) {
+        String prefix = cookieName + "=";
+        Assertions.assertThat(result.getResponse().getHeaders("Set-Cookie"))
+                .noneMatch(header -> header.startsWith(prefix));
     }
 
     private String uniqueValue(String prefix) {

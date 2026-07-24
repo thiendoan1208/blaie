@@ -133,6 +133,13 @@ class InboxWebFlowTest {
 
         awaitCaptureStatus(captureId, "completed");
 
+        mockMvc.perform(get("/api/v1/captures/resolve")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .header("Idempotency-Key", idempotencyKey))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(captureId))
+                .andExpect(jsonPath("$.data.processingStatus").value("completed"));
+
         MvcResult completedCapture = mockMvc.perform(get("/api/v1/captures/{captureId}", captureId)
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isOk())
@@ -160,6 +167,12 @@ class InboxWebFlowTest {
                 """, Integer.class, ownerId.toString(), ownerId.toString())).isEqualTo(1);
 
         String otherToken = registeredAndVerifiedAccessToken(uniqueValue("inbox-other"));
+        mockMvc.perform(get("/api/v1/captures/resolve")
+                        .header("Authorization", "Bearer " + otherToken)
+                        .header("Idempotency-Key", idempotencyKey))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CAPTURE_NOT_FOUND"));
+
         mockMvc.perform(get("/api/v1/inbox/items/{itemId}", itemId)
                         .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())

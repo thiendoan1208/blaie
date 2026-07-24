@@ -40,7 +40,10 @@ describe("tryHandleCsrfError", () => {
     const result = await tryHandleCsrfError(forbiddenError("/auth/me/password"), client);
 
     expect(result).toEqual({ handled: true, response });
-    expect(client.get).toHaveBeenCalledWith("/auth/csrf", { skipAuthRefresh: true });
+    expect(client.get).toHaveBeenCalledWith("/auth/csrf", {
+      skipAuthRefresh: true,
+      skipCsrfBootstrap: true,
+    });
     expect(client).toHaveBeenCalledWith(expect.objectContaining({
       url: "/auth/me/password",
       method: "patch",

@@ -27,6 +27,7 @@ import com.blaie.blaie_be.auth.application.result.WebAuthResult;
 import com.blaie.blaie_be.core.response.ApiResponse;
 import com.blaie.blaie_be.core.security.AuthCookieNames;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.net.URI;
 import org.springframework.http.HttpHeaders;
@@ -53,6 +54,7 @@ public class AuthController {
     private final GoogleOAuthSettingsPort googleOAuthSettings;
     private final GoogleOAuthStatePort googleOAuthStateCookieService;
     private final GoogleOAuthClientPort googleOAuthClientPort;
+    private final CsrfTokenLifecycleService csrfTokenLifecycleService;
 
     public AuthController(
             AuthService authService,
@@ -61,7 +63,8 @@ public class AuthController {
             WebAuthCookiePort authCookieService,
             GoogleOAuthSettingsPort googleOAuthSettings,
             GoogleOAuthStatePort googleOAuthStateCookieService,
-            GoogleOAuthClientPort googleOAuthClientPort
+            GoogleOAuthClientPort googleOAuthClientPort,
+            CsrfTokenLifecycleService csrfTokenLifecycleService
     ) {
         this.authService = authService;
         this.emailVerificationService = emailVerificationService;
@@ -70,30 +73,35 @@ public class AuthController {
         this.googleOAuthSettings = googleOAuthSettings;
         this.googleOAuthStateCookieService = googleOAuthStateCookieService;
         this.googleOAuthClientPort = googleOAuthClientPort;
+        this.csrfTokenLifecycleService = csrfTokenLifecycleService;
     }
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthUserEnvelope>> register(
             @Valid @RequestBody RegisterLocalRequest request,
-            HttpServletRequest httpRequest
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         WebAuthResult result = authService.registerLocal(
                 new RegisterLocalCommand(request.username(), request.email(), request.displayName(), request.password()),
                 httpRequest.getHeader(HttpHeaders.USER_AGENT)
         );
-        return authResponse(result, HttpStatus.CREATED);
+        csrfTokenLifecycleService.rotate(httpRequest, httpResponse);
+        return authResponse(result, HttpStatus.CREATED, httpResponse);
     }
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthUserEnvelope>> login(
             @Valid @RequestBody LoginLocalRequest request,
-            HttpServletRequest httpRequest
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         WebAuthResult result = authService.loginLocal(
                 new LoginLocalCommand(request.identifier(), request.password()),
                 httpRequest.getHeader(HttpHeaders.USER_AGENT)
         );
-        return authResponse(result, HttpStatus.OK);
+        csrfTokenLifecycleService.rotate(httpRequest, httpResponse);
+        return authResponse(result, HttpStatus.OK, httpResponse);
     }
 
     @GetMapping("/me")
@@ -184,7 +192,8 @@ public class AuthController {
             @RequestParam(name = "code", required = false) String code,
             @RequestParam(name = "state", required = false) String state,
             @CookieValue(name = GoogleOAuthStatePort.COOKIE_NAME, required = false) String stateCookie,
-            HttpServletRequest httpRequest
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         try {
             GoogleOAuthStateData oauthState = googleOAuthStateCookieService.require(stateCookie, state);
@@ -192,15 +201,15 @@ public class AuthController {
                     googleOAuthClientPort.exchangeCodeForProfile(code, oauthState.codeVerifier(), googleOAuthSettings.redirectUri()),
                     httpRequest.getHeader(HttpHeaders.USER_AGENT)
             );
+            csrfTokenLifecycleService.rotate(httpRequest, httpResponse);
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie());
+            addAuthCookies(httpResponse, result);
             return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie())
-                    .header(HttpHeaders.SET_COOKIE, authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl()))
-                    .header(HttpHeaders.SET_COOKIE, authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl()))
                     .location(URI.create(googleOAuthSettings.webBaseUrl() + oauthState.nextPath()))
                     .build();
         } catch (RuntimeException exception) {
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie());
             return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.SET_COOKIE, googleOAuthStateCookieService.clearCookie())
                     .location(URI.create(googleOAuthSettings.webBaseUrl() + "/login?error=google_auth_failed"))
                     .build();
         }
@@ -209,27 +218,44 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<AuthUserEnvelope>> refresh(
             @CookieValue(name = AuthCookieNames.REFRESH_COOKIE_NAME, required = false) String refreshToken,
-            HttpServletRequest httpRequest
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         WebAuthResult result = authService.refreshWeb(refreshToken, httpRequest.getHeader(HttpHeaders.USER_AGENT));
-        return authResponse(result, HttpStatus.OK);
+        return authResponse(result, HttpStatus.OK, httpResponse);
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
-            @CookieValue(name = AuthCookieNames.REFRESH_COOKIE_NAME, required = false) String refreshToken
+            @CookieValue(name = AuthCookieNames.REFRESH_COOKIE_NAME, required = false) String refreshToken,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         authService.logoutWeb(refreshToken);
-        return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, authCookieService.clearAccessCookie())
-                .header(HttpHeaders.SET_COOKIE, authCookieService.clearRefreshCookie())
-                .build();
+        csrfTokenLifecycleService.clear(httpRequest, httpResponse);
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.clearAccessCookie());
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE, authCookieService.clearRefreshCookie());
+        return ResponseEntity.noContent().build();
     }
 
-    private ResponseEntity<ApiResponse<AuthUserEnvelope>> authResponse(WebAuthResult result, HttpStatus status) {
+    private ResponseEntity<ApiResponse<AuthUserEnvelope>> authResponse(
+            WebAuthResult result,
+            HttpStatus status,
+            HttpServletResponse httpResponse
+    ) {
+        addAuthCookies(httpResponse, result);
         return ResponseEntity.status(status)
-                .header(HttpHeaders.SET_COOKIE, authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl()))
-                .header(HttpHeaders.SET_COOKIE, authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl()))
                 .body(ApiResponse.of(new AuthUserEnvelope(AuthUserResponse.from(result.user()))));
+    }
+
+    private void addAuthCookies(HttpServletResponse httpResponse, WebAuthResult result) {
+        httpResponse.addHeader(
+                HttpHeaders.SET_COOKIE,
+                authCookieService.accessCookie(result.accessToken(), result.accessTokenTtl())
+        );
+        httpResponse.addHeader(
+                HttpHeaders.SET_COOKIE,
+                authCookieService.refreshCookie(result.refreshToken(), result.refreshTokenTtl())
+        );
     }
 }

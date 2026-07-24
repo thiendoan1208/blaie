@@ -46,6 +46,13 @@ public class CaptureController {
         return ApiResponse.of(CaptureResponse.from(captureService.capture(captureId)));
     }
 
+    @GetMapping("/resolve")
+    public ApiResponse<CaptureResponse> resolve(
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        return ApiResponse.of(CaptureResponse.from(captureService.resolveCapture(idempotencyKey)));
+    }
+
     @GetMapping
     public ApiResponse<List<CaptureResponse>> captures(
             @RequestParam(defaultValue = "processing") String status,

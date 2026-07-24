@@ -82,6 +82,16 @@ public class CaptureServiceImpl implements CaptureService {
     }
 
     @Override
+    public CaptureResult resolveCapture(String idempotencyKey) {
+        return workflowStore.findOwnedByIdempotencyKey(
+                        requireIdempotencyKey(idempotencyKey),
+                        currentUserId(),
+                        clock.instant()
+                )
+                .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_NOT_FOUND));
+    }
+
+    @Override
     public List<CaptureResult> processingCaptures(int limit) {
         return workflowStore.findOwnedProcessing(currentUserId(), validateLimit(limit));
     }

@@ -13,6 +13,12 @@ public interface CaptureIdempotencyKeyRepository
 
     Optional<CaptureIdempotencyKeyEntity> findByUserIdAndIdempotencyKey(UUID userId, UUID idempotencyKey);
 
+    Optional<CaptureIdempotencyKeyEntity> findByUserIdAndIdempotencyKeyAndExpiresAtAfter(
+            UUID userId,
+            UUID idempotencyKey,
+            Instant now
+    );
+
     @Modifying
     @Query(value = """
             DELETE FROM capture_idempotency_keys

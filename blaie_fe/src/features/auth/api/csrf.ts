@@ -1,8 +1,7 @@
 import { httpClient } from "@/shared/api/http-client";
+import { ensureCsrfCookie } from "@/shared/api/interceptors/csrf-header";
 import type { ApiResponse } from "@/shared/api/contracts/api-response";
 import type { CsrfTokenResponse } from "../types/types";
-
-let csrfBootstrapPromise: Promise<CsrfTokenResponse> | null = null;
 
 export async function getCsrfToken(): Promise<CsrfTokenResponse> {
   const response =
@@ -10,11 +9,6 @@ export async function getCsrfToken(): Promise<CsrfTokenResponse> {
   return response.data.data;
 }
 
-export function ensureCsrfToken(): Promise<CsrfTokenResponse> {
-  csrfBootstrapPromise ??= getCsrfToken().catch((error: unknown) => {
-    csrfBootstrapPromise = null;
-    throw error;
-  });
-
-  return csrfBootstrapPromise;
+export function ensureCsrfToken(): Promise<void> {
+  return ensureCsrfCookie(httpClient);
 }
