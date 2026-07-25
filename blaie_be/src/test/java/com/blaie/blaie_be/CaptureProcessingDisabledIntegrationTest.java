@@ -5,8 +5,12 @@ import com.blaie.blaie_be.capture.infrastructure.async.CaptureJobRecoverySchedul
 import com.blaie.blaie_be.capture.infrastructure.async.CaptureProcessingProperties;
 import com.blaie.blaie_be.capture.infrastructure.async.RedisCaptureJobPublisher;
 import com.blaie.blaie_be.capture.infrastructure.async.RedisCaptureJobWorker;
+import com.blaie.blaie_be.authz.domain.PermissionAction;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
+import com.blaie.blaie_be.core.security.CurrentUser;
+import com.blaie.blaie_be.core.security.CurrentUserHolder;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,9 +58,16 @@ class CaptureProcessingDisabledIntegrationTest {
         assertThat(applicationContext.getBeansOfType(RedisCaptureJobWorker.class)).isEmpty();
         assertThat(applicationContext.getBeansOfType(CaptureJobRecoveryScheduler.class)).isEmpty();
 
-        assertThatThrownBy(() -> captureService.captureText(
-                "This request must never create a capture",
-                UUID.randomUUID().toString()
+        assertThatThrownBy(() -> CurrentUserHolder.runAs(
+                new CurrentUser(
+                        UUID.randomUUID().toString(),
+                        false,
+                        Set.of(PermissionAction.CAPTURE_CREATE.key())
+                ),
+                () -> captureService.captureText(
+                        "This request must never create a capture",
+                        UUID.randomUUID().toString()
+                )
         ))
                 .isInstanceOf(AppException.class)
                 .extracting(exception -> ((AppException) exception).errorCode())

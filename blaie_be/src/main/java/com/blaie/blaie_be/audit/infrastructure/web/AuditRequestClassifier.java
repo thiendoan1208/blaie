@@ -11,6 +11,9 @@ public class AuditRequestClassifier {
         String method = request.getMethod();
         String path = request.getRequestURI();
 
+        if ("POST".equals(method) && "/api/v1/captures/text".equals(path)) {
+            return access("capture.create", "capture", null);
+        }
         if ("GET".equals(method) && "/api/v1/captures".equals(path)) {
             return access("capture.list", "capture", null);
         }
@@ -33,11 +36,11 @@ public class AuditRequestClassifier {
         if ("GET".equals(method) && "/api/v1/inbox".equals(path)) {
             return access("inbox.list", "inbox", null);
         }
-        if ("GET".equals(method) && "/api/v1/admin/jobs".equals(path)) {
+        if ("GET".equals(method) && "/api/v1/admin/capture/jobs".equals(path)) {
             return access("admin.job.list", "processing_job", null);
         }
-        if (path.startsWith("/api/v1/admin/jobs/")) {
-            String suffix = path.substring("/api/v1/admin/jobs/".length());
+        if (path.startsWith("/api/v1/admin/capture/jobs/")) {
+            String suffix = path.substring("/api/v1/admin/capture/jobs/".length());
             if (suffix.endsWith("/requeue") && "POST".equals(method)) {
                 return access("admin.job.requeue", "processing_job", stripSuffix(suffix, "/requeue"));
             }
@@ -48,7 +51,7 @@ public class AuditRequestClassifier {
                 return access("admin.job.read", "processing_job", suffix);
             }
         }
-        if ("GET".equals(method) && "/api/v1/admin/outbox/summary".equals(path)) {
+        if ("GET".equals(method) && "/api/v1/admin/capture/outbox/summary".equals(path)) {
             return access("admin.outbox.read", "outbox", null);
         }
         if ("GET".equals(method) && "/api/v1/admin/audit-events".equals(path)) {

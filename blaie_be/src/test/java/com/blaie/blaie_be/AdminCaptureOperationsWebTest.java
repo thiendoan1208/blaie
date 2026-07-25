@@ -22,6 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockCookie;
 import org.springframework.test.web.servlet.MockMvc;
@@ -96,6 +97,7 @@ class AdminCaptureOperationsWebTest {
                 .apply(springSecurity())
                 .build();
         jdbcTemplate.execute("delete from audit_events");
+        jdbcTemplate.execute("delete from capture_admin_job_operations");
         jdbcTemplate.execute("delete from event_publication");
         jdbcTemplate.execute("delete from capture_items");
         jdbcTemplate.execute("delete from capture_idempotency_keys");
@@ -120,7 +122,7 @@ class AdminCaptureOperationsWebTest {
                 .andExpect(jsonPath("$.message").value("Not found"))
                 .andExpect(jsonPath("$.requestId").value("admin-route-not-found"));
 
-        mockMvc.perform(post("/api/v1/admin/outbox/summary")
+        mockMvc.perform(post("/api/v1/admin/capture/outbox/summary")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .header("X-Request-ID", "admin-method-not-allowed"))
                 .andExpect(status().isMethodNotAllowed())
@@ -148,22 +150,22 @@ class AdminCaptureOperationsWebTest {
         );
         insertOutbox(false, TextCaptureQueuedEvent.class.getName(), "capture-text-job-redis-publisher", base);
 
-        mockMvc.perform(get("/api/v1/admin/jobs"))
+        mockMvc.perform(get("/api/v1/admin/capture/jobs"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
 
-        mockMvc.perform(get("/api/v1/admin/jobs")
+        mockMvc.perform(get("/api/v1/admin/capture/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(regular.token())))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
 
-        mockMvc.perform(get("/api/v1/admin/jobs")
+        mockMvc.perform(get("/api/v1/admin/capture/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(regular.token()))
                         .queryParam("limit", "abc"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
 
-        MvcResult firstPage = mockMvc.perform(get("/api/v1/admin/jobs")
+        MvcResult firstPage = mockMvc.perform(get("/api/v1/admin/capture/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .queryParam("limit", "2"))
                 .andExpect(status().isOk())
@@ -177,7 +179,7 @@ class AdminCaptureOperationsWebTest {
                 .path("meta")
                 .path("nextCursor")
                 .asString();
-        MvcResult secondPage = mockMvc.perform(get("/api/v1/admin/jobs")
+        MvcResult secondPage = mockMvc.perform(get("/api/v1/admin/capture/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .queryParam("limit", "2")
                         .queryParam("cursor", cursor))
@@ -187,7 +189,7 @@ class AdminCaptureOperationsWebTest {
                 .andReturn();
         assertNoPrivateData(secondPage);
 
-        MvcResult stuckPage = mockMvc.perform(get("/api/v1/admin/jobs")
+        MvcResult stuckPage = mockMvc.perform(get("/api/v1/admin/capture/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .queryParam("status", "queued")
                         .queryParam("stuck", "true"))
@@ -197,7 +199,7 @@ class AdminCaptureOperationsWebTest {
                 .andReturn();
         assertNoPrivateData(stuckPage);
 
-        MvcResult detail = mockMvc.perform(get("/api/v1/admin/jobs/{jobId}", dead.jobId())
+        MvcResult detail = mockMvc.perform(get("/api/v1/admin/capture/jobs/{jobId}", dead.jobId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.captureId").value(dead.captureId().toString()))
@@ -207,13 +209,13 @@ class AdminCaptureOperationsWebTest {
                 .andReturn();
         assertNoPrivateData(detail);
 
-        mockMvc.perform(get("/api/v1/admin/jobs")
+        mockMvc.perform(get("/api/v1/admin/capture/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .queryParam("status", "pending"))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
-        mockMvc.perform(get("/api/v1/admin/jobs")
+        mockMvc.perform(get("/api/v1/admin/capture/jobs")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
                         .queryParam("limit", "abc"))
                 .andExpect(status().isUnprocessableContent())
@@ -225,28 +227,30 @@ class AdminCaptureOperationsWebTest {
         UserAccess regular = user(false, "malformed-job-regular");
         UserAccess admin = user(true, "malformed-job-admin");
 
-        mockMvc.perform(get("/api/v1/admin/jobs/not-a-uuid")
+        mockMvc.perform(get("/api/v1/admin/capture/jobs/not-a-uuid")
                         .header(HttpHeaders.AUTHORIZATION, bearer(regular.token())))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
 
-        mockMvc.perform(post("/api/v1/admin/jobs/not-a-uuid/requeue")
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/not-a-uuid/requeue")
                         .header(HttpHeaders.AUTHORIZATION, bearer(regular.token())))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
 
-        mockMvc.perform(get("/api/v1/admin/jobs/not-a-uuid")
+        mockMvc.perform(get("/api/v1/admin/capture/jobs/not-a-uuid")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
-        mockMvc.perform(post("/api/v1/admin/jobs/not-a-uuid/requeue")
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/not-a-uuid/requeue")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
-        mockMvc.perform(post("/api/v1/admin/jobs/not-a-uuid/mark-dead")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/not-a-uuid/mark-dead")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"invalid identifier test\"}"))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
@@ -266,14 +270,14 @@ class AdminCaptureOperationsWebTest {
         );
         int outboxBefore = count("event_publication");
 
-        mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/requeue", retryable.jobId())
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/requeue", retryable.jobId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(regular.token())))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         assertThat(jobStatus(retryable.jobId())).isEqualTo("dead");
         assertThat(count("event_publication")).isEqualTo(outboxBefore);
 
-        mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/requeue", retryable.jobId())
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/requeue", retryable.jobId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.status").value("queued"))
@@ -286,7 +290,7 @@ class AdminCaptureOperationsWebTest {
         assertThat(captureStatus(retryable.captureId())).isEqualTo("processing");
         assertThat(count("event_publication")).isEqualTo(outboxBefore + 1);
 
-        mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/requeue", retryable.jobId())
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/requeue", retryable.jobId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PROCESSING_JOB_REQUEUE_NOT_ALLOWED"));
@@ -299,7 +303,7 @@ class AdminCaptureOperationsWebTest {
                 null
         );
         int beforePolicyReject = count("event_publication");
-        mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/requeue", contentTerminal.jobId())
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/requeue", contentTerminal.jobId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PROCESSING_JOB_REQUEUE_NOT_ALLOWED"));
@@ -317,7 +321,7 @@ class AdminCaptureOperationsWebTest {
         insertJob(capacityOwner, "queued", createdAt.minusSeconds(3), null, Instant.now().plusSeconds(60));
         int beforeCapacityReject = count("event_publication");
 
-        mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/requeue", capacityTarget.jobId())
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/requeue", capacityTarget.jobId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "17"))
@@ -340,14 +344,18 @@ class AdminCaptureOperationsWebTest {
                 null
         );
 
-        mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/mark-dead", processing.jobId())
-                        .cookie(new MockCookie(AuthCookieNames.ACCESS_COOKIE_NAME, admin.token())))
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/mark-dead", processing.jobId())
+                        .cookie(new MockCookie(AuthCookieNames.ACCESS_COOKIE_NAME, admin.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"csrf test\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         assertThat(jobStatus(processing.jobId())).isEqualTo("processing");
 
-        mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/mark-dead", processing.jobId())
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/mark-dead", processing.jobId())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"stale worker must be fenced\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("dead"))
                 .andExpect(jsonPath("$.data.lastErrorCode").value("operator_marked_dead"))
@@ -356,6 +364,15 @@ class AdminCaptureOperationsWebTest {
 
         assertThat(jobStatus(processing.jobId())).isEqualTo("dead");
         assertThat(captureStatus(processing.captureId())).isEqualTo("failed");
+        assertThat(jdbcTemplate.queryForObject(
+                """
+                select count(*) from capture_admin_job_operations
+                where job_id = ? and operation = 'mark_dead'
+                  and reason = 'stale worker must be fenced'
+                """,
+                Integer.class,
+                processing.jobId()
+        )).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject(
                 "select lease_owner is null and lease_expires_at is null from processing_jobs where id = ?",
                 Boolean.class,
@@ -373,8 +390,10 @@ class AdminCaptureOperationsWebTest {
         assertThat(staleCommit).isFalse();
         assertThat(jobStatus(processing.jobId())).isEqualTo("dead");
 
-        mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/mark-dead", processing.jobId())
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
+        mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/mark-dead", processing.jobId())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"duplicate operation\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PROCESSING_JOB_MARK_DEAD_NOT_ALLOWED"));
     }
@@ -433,7 +452,7 @@ class AdminCaptureOperationsWebTest {
         insertOutbox(false, "other.Event", "capture-text-job-redis-publisher", now.minusSeconds(400));
         insertOutbox(false, TextCaptureQueuedEvent.class.getName(), "other-listener", now.minusSeconds(500));
 
-        MvcResult result = mockMvc.perform(get("/api/v1/admin/outbox/summary")
+        MvcResult result = mockMvc.perform(get("/api/v1/admin/capture/outbox/summary")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.backlogCount").value(2))
@@ -519,7 +538,7 @@ class AdminCaptureOperationsWebTest {
     ) throws Exception {
         ready.countDown();
         start.await();
-        return mockMvc.perform(post("/api/v1/admin/jobs/{jobId}/requeue", job.jobId())
+        return mockMvc.perform(post("/api/v1/admin/capture/jobs/{jobId}/requeue", job.jobId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
                 .andReturn()
                 .getResponse()

@@ -30,6 +30,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
     private final ApplicationEventPublisher eventPublisher;
     private final CaptureProcessingSettingsPort settings;
     private final JpaCaptureAdmissionGuard admissionGuard;
+    private final JpaCaptureJobRestartCoordinator restartCoordinator;
 
     public JpaCaptureWorkflowAdapter(
             CaptureRepository captureRepository,
@@ -38,7 +39,8 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
             CaptureIdempotencyKeyRepository idempotencyRepository,
             ApplicationEventPublisher eventPublisher,
             CaptureProcessingSettingsPort settings,
-            JpaCaptureAdmissionGuard admissionGuard
+            JpaCaptureAdmissionGuard admissionGuard,
+            JpaCaptureJobRestartCoordinator restartCoordinator
     ) {
         this.captureRepository = captureRepository;
         this.captureItemRepository = captureItemRepository;
@@ -47,6 +49,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
         this.eventPublisher = eventPublisher;
         this.settings = settings;
         this.admissionGuard = admissionGuard;
+        this.restartCoordinator = restartCoordinator;
     }
 
     @Override
@@ -156,21 +159,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort {
                 .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_NOT_RETRYABLE));
         CaptureEntity capture = captureRepository.findLockedByIdAndUserId(captureId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_NOT_FOUND));
-        if (!ProcessingStatus.FAILED.value().equals(capture.processingStatus())
-                || !ProcessingJobStatus.DEAD.value().equals(job.status())
-                || !job.manualRetryAllowed()) {
-            throw new AppException(ErrorCode.CAPTURE_NOT_RETRYABLE);
-        }
-
-        admissionGuard.acquireGlobalMutex();
-        admissionGuard.requireCapacity(userId, now);
-
-        captureItemRepository.deleteByCaptureId(captureId);
-        capture.restart();
-        job.restart(now, now.plus(settings.dispatchRetryDelay(job.dispatchGeneration() + 1)));
-        captureRepository.flush();
-        jobRepository.flush();
-        publishDispatch(job);
+        restartCoordinator.restart(job, capture, now, ErrorCode.CAPTURE_NOT_RETRYABLE);
         return toCaptureResult(capture, job);
     }
 

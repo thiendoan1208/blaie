@@ -41,6 +41,8 @@ public class RetentionCleanupScheduler {
                 now.minus(properties.completedProcessingJobs()), properties.batchSize()));
         cleanupCategory("audit_events", () -> store.deleteExpiredAuditEvents(
                 now.minus(properties.auditEvents()), properties.batchSize()));
+        cleanupCategory("capture_admin_job_operations", () -> store.deleteExpiredCaptureAdminJobOperations(
+                now.minus(properties.auditEvents()), properties.batchSize()));
     }
 
     private void cleanupCategory(String category, IntSupplier deleteBatch) {

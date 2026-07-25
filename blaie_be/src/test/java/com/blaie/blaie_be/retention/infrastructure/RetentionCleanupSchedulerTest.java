@@ -28,6 +28,8 @@ class RetentionCleanupSchedulerTest {
         when(store.deleteCompletedOutboxEvents(NOW.minus(Duration.ofDays(7)), 2)).thenReturn(0);
         when(store.deleteCompletedProcessingJobs(NOW.minus(Duration.ofDays(90)), 2)).thenReturn(0);
         when(store.deleteExpiredAuditEvents(NOW.minus(Duration.ofDays(365)), 2)).thenReturn(0);
+        when(store.deleteExpiredCaptureAdminJobOperations(NOW.minus(Duration.ofDays(365)), 2))
+                .thenReturn(0);
 
         new RetentionCleanupScheduler(
                 store,
@@ -39,5 +41,6 @@ class RetentionCleanupSchedulerTest {
         verify(store).deleteCompletedOutboxEvents(NOW.minus(Duration.ofDays(7)), 2);
         verify(store).deleteCompletedProcessingJobs(NOW.minus(Duration.ofDays(90)), 2);
         verify(store).deleteExpiredAuditEvents(NOW.minus(Duration.ofDays(365)), 2);
+        verify(store).deleteExpiredCaptureAdminJobOperations(NOW.minus(Duration.ofDays(365)), 2);
     }
 }

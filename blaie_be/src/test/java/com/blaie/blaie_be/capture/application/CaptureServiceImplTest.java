@@ -1,5 +1,7 @@
 package com.blaie.blaie_be.capture.application;
 
+import com.blaie.blaie_be.authz.application.AuthorizationService;
+import com.blaie.blaie_be.authz.domain.PermissionAction;
 import com.blaie.blaie_be.capture.application.port.CaptureItemStorePort;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
@@ -30,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 class CaptureServiceImplTest {
@@ -223,6 +226,42 @@ class CaptureServiceImplTest {
                         assertThat(exception.errorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
     }
 
+    @Test
+    void everyUserOperationRequiresItsExplicitPermissionBeforeUsingOwnedStores() {
+        UUID userId = UUID.randomUUID();
+        AuthorizationService authorization = mock(AuthorizationService.class);
+        InMemoryWorkflowStore workflowStore = new InMemoryWorkflowStore();
+        InMemoryCaptureItemStore itemStore = new InMemoryCaptureItemStore();
+        CaptureItemResult item = itemStore.add(userId, "Authorized item");
+        CaptureService service = service(
+                itemStore,
+                workflowStore,
+                true,
+                mock(CaptureTelemetryPort.class),
+                authorization
+        );
+
+        CaptureResult capture = runAs(userId, () ->
+                service.captureText("Authorized capture", IDEMPOTENCY_KEY.toString()));
+        runAs(userId, () -> service.capture(capture.id()));
+        runAs(userId, () -> service.resolveCapture(IDEMPOTENCY_KEY.toString()));
+        runAs(userId, () -> service.processingCaptures(20));
+        runAs(userId, () -> service.retry(capture.id()));
+        runAs(userId, () -> service.inbox(null, 20));
+        runAs(userId, () -> service.inboxItem(item.id()));
+        runAs(userId, () -> {
+            service.delete(capture.id());
+            return null;
+        });
+
+        verify(authorization).require(PermissionAction.CAPTURE_CREATE);
+        verify(authorization, times(3)).require(PermissionAction.CAPTURE_READ);
+        verify(authorization).require(PermissionAction.CAPTURE_UPDATE);
+        verify(authorization).require(PermissionAction.CAPTURE_DELETE);
+        verify(authorization).require(PermissionAction.INBOX_READ);
+        verify(authorization).require(PermissionAction.ITEM_READ);
+    }
+
     private CaptureService service(CaptureItemStorePort itemStore, CaptureWorkflowStorePort workflowStore) {
         return service(itemStore, workflowStore, true);
     }
@@ -245,6 +284,22 @@ class CaptureServiceImplTest {
             CaptureWorkflowStorePort workflowStore,
             boolean acceptAsyncEnabled,
             CaptureTelemetryPort telemetry
+    ) {
+        return service(
+                itemStore,
+                workflowStore,
+                acceptAsyncEnabled,
+                telemetry,
+                mock(AuthorizationService.class)
+        );
+    }
+
+    private CaptureService service(
+            CaptureItemStorePort itemStore,
+            CaptureWorkflowStorePort workflowStore,
+            boolean acceptAsyncEnabled,
+            CaptureTelemetryPort telemetry,
+            AuthorizationService authorization
     ) {
         CaptureProcessingSettingsPort settings = new CaptureProcessingSettingsPort() {
             @Override
@@ -309,7 +364,8 @@ class CaptureServiceImplTest {
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 telemetry,
                 cursorCodec(),
-                new CaptureContentPolicy()
+                new CaptureContentPolicy(),
+                authorization
         );
     }
 

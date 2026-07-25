@@ -162,6 +162,14 @@ class InboxWebFlowTest {
                 """, UUID.class, ownerUsername.toLowerCase());
         assertThat(jdbcTemplate.queryForObject("""
                 select count(*) from audit_events
+                where actor_id = ? and action = 'capture.create' and outcome = 'success'
+                """, Integer.class, ownerId.toString())).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from audit_events
+                where actor_id = ? and action = 'capture.create' and outcome = 'rejected'
+                """, Integer.class, ownerId.toString())).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from audit_events
                 where actor_id = ? and action = 'inbox.list'
                   and resource_id = ? and outcome = 'success'
                 """, Integer.class, ownerId.toString(), ownerId.toString())).isEqualTo(1);

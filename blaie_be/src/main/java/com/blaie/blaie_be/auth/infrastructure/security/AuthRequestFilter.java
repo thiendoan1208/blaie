@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -49,8 +50,11 @@ public class AuthRequestFilter extends OncePerRequestFilter {
     private void setCurrentUser(UserEntity user) {
         CurrentUser currentUser = new CurrentUser(user.id().toString(), user.admin(), Set.of());
         CurrentUserHolder.set(currentUser);
+        List<SimpleGrantedAuthority> authorities = user.admin()
+                ? List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))
+                : List.of();
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(currentUser, null, List.of())
+                new UsernamePasswordAuthenticationToken(currentUser, null, authorities)
         );
     }
 
