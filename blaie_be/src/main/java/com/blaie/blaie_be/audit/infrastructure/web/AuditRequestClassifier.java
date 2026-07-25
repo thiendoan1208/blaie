@@ -11,6 +11,9 @@ public class AuditRequestClassifier {
         String method = request.getMethod();
         String path = request.getRequestURI();
 
+        if ("POST".equals(method) && "/api/v1/captures/text".equals(path)) {
+            return access("capture.create", "capture", null);
+        }
         if ("GET".equals(method) && "/api/v1/captures".equals(path)) {
             return access("capture.list", "capture", null);
         }

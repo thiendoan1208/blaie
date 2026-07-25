@@ -5,6 +5,7 @@ import com.blaie.blaie_be.auth.infrastructure.security.AuthProperties;
 import com.blaie.blaie_be.auth.infrastructure.security.AuthRequestFilter;
 import com.blaie.blaie_be.auth.infrastructure.security.BearerTokenResolver;
 import com.blaie.blaie_be.auth.infrastructure.security.EmailVerificationRequiredFilter;
+import com.blaie.blaie_be.authz.infrastructure.web.AuthorizationContextFilter;
 import com.blaie.blaie_be.core.ratelimit.filter.RateLimitFilter;
 import com.blaie.blaie_be.core.security.AppAccessDeniedHandler;
 import com.blaie.blaie_be.core.security.AppAuthenticationEntryPoint;
@@ -44,6 +45,7 @@ public class ApplicationSecurityConfiguration {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             AuthRequestFilter authRequestFilter,
+            AuthorizationContextFilter authorizationContextFilter,
             AuditAccessFilter auditAccessFilter,
             RateLimitFilter rateLimitFilter,
             EmailVerificationRequiredFilter emailVerificationRequiredFilter,
@@ -85,7 +87,8 @@ public class ApplicationSecurityConfiguration {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .addFilterBefore(authRequestFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(auditAccessFilter, AuthRequestFilter.class)
+                .addFilterAfter(authorizationContextFilter, AuthRequestFilter.class)
+                .addFilterAfter(auditAccessFilter, AuthorizationContextFilter.class)
                 .addFilterAfter(rateLimitFilter, AuditAccessFilter.class)
                 .addFilterAfter(emailVerificationRequiredFilter, RateLimitFilter.class)
                 .build();
@@ -98,6 +101,13 @@ public class ApplicationSecurityConfiguration {
 
     @Bean
     FilterRegistrationBean<AuthRequestFilter> authRequestFilterRegistration(AuthRequestFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    FilterRegistrationBean<AuthorizationContextFilter> authorizationContextFilterRegistration(
+            AuthorizationContextFilter filter
+    ) {
         return securityChainOnly(filter);
     }
 

@@ -1,5 +1,7 @@
 package com.blaie.blaie_be.capture.application;
 
+import com.blaie.blaie_be.authz.application.AuthorizationService;
+import com.blaie.blaie_be.authz.domain.PermissionAction;
 import com.blaie.blaie_be.capture.application.port.CaptureItemStorePort;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
@@ -37,6 +39,7 @@ public class CaptureServiceImpl implements CaptureService {
     private final CaptureTelemetryPort telemetry;
     private final SignedCursorCodec cursorCodec;
     private final CaptureContentPolicy contentPolicy;
+    private final AuthorizationService authorization;
 
     public CaptureServiceImpl(
             CaptureItemStorePort captureItemStore,
@@ -45,7 +48,8 @@ public class CaptureServiceImpl implements CaptureService {
             Clock clock,
             CaptureTelemetryPort telemetry,
             SignedCursorCodec cursorCodec,
-            CaptureContentPolicy contentPolicy
+            CaptureContentPolicy contentPolicy,
+            AuthorizationService authorization
     ) {
         this.captureItemStore = captureItemStore;
         this.workflowStore = workflowStore;
@@ -54,10 +58,12 @@ public class CaptureServiceImpl implements CaptureService {
         this.telemetry = telemetry;
         this.cursorCodec = cursorCodec;
         this.contentPolicy = contentPolicy;
+        this.authorization = authorization;
     }
 
     @Override
     public CaptureResult captureText(String text, String idempotencyKey) {
+        authorization.require(PermissionAction.CAPTURE_CREATE);
         requireAsyncAcceptance();
         String originalText = requireText(text);
         requireSafeContent(originalText);
@@ -77,12 +83,14 @@ public class CaptureServiceImpl implements CaptureService {
 
     @Override
     public CaptureResult capture(UUID captureId) {
+        authorization.require(PermissionAction.CAPTURE_READ);
         return workflowStore.findOwned(captureId, currentUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_NOT_FOUND));
     }
 
     @Override
     public CaptureResult resolveCapture(String idempotencyKey) {
+        authorization.require(PermissionAction.CAPTURE_READ);
         return workflowStore.findOwnedByIdempotencyKey(
                         requireIdempotencyKey(idempotencyKey),
                         currentUserId(),
@@ -93,11 +101,13 @@ public class CaptureServiceImpl implements CaptureService {
 
     @Override
     public List<CaptureResult> processingCaptures(int limit) {
+        authorization.require(PermissionAction.CAPTURE_READ);
         return workflowStore.findOwnedProcessing(currentUserId(), validateLimit(limit));
     }
 
     @Override
     public CaptureResult retry(UUID captureId) {
+        authorization.require(PermissionAction.CAPTURE_UPDATE);
         requireAsyncAcceptance();
         CaptureResult result = workflowStore.retryOwned(captureId, currentUserId(), clock.instant());
         telemetry.incrementRetry(RetrySource.MANUAL);
@@ -106,6 +116,7 @@ public class CaptureServiceImpl implements CaptureService {
 
     @Override
     public void delete(UUID captureId) {
+        authorization.require(PermissionAction.CAPTURE_DELETE);
         workflowStore.deleteOwned(captureId, currentUserId());
     }
 
@@ -117,6 +128,7 @@ public class CaptureServiceImpl implements CaptureService {
 
     @Override
     public InboxPageResult inbox(String cursor, int limit) {
+        authorization.require(PermissionAction.INBOX_READ);
         int safeLimit = validateLimit(limit);
         UUID userId = currentUserId();
         Cursor decodedCursor = cursor == null || cursor.isBlank() ? null : decodeCursor(cursor, userId);
@@ -132,6 +144,7 @@ public class CaptureServiceImpl implements CaptureService {
 
     @Override
     public CaptureItemResult inboxItem(UUID itemId) {
+        authorization.require(PermissionAction.ITEM_READ);
         return captureItemStore.findOwned(itemId, currentUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_ITEM_NOT_FOUND));
     }

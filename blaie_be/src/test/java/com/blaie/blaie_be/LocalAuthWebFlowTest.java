@@ -863,7 +863,7 @@ class LocalAuthWebFlowTest {
         }
 
         @GetMapping("/api/v1/test/permission")
-        @PreAuthorize("@defaultAuthorizationService.can(T(com.blaie.blaie_be.authz.domain.PermissionAction).ITEM_READ)")
+        @PreAuthorize("@defaultAuthorizationService.can(T(com.blaie.blaie_be.authz.domain.PermissionAction).TASK_READ)")
         ResponseEntity<Void> permission() {
             return ResponseEntity.noContent().build();
         }

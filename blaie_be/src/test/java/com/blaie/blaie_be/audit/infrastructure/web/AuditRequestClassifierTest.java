@@ -25,6 +25,26 @@ class AuditRequestClassifierTest {
         assertThat(classifier.classify(request)).isEmpty();
     }
 
+    @Test
+    void classifiesEveryCurrentUserCaptureAndInboxOperation() {
+        assertThat(classify("POST", "/api/v1/captures/text"))
+                .isEqualTo(new AuditAccess("capture.create", "capture", null));
+        assertThat(classify("GET", "/api/v1/captures"))
+                .isEqualTo(new AuditAccess("capture.list", "capture", null));
+        assertThat(classify("GET", "/api/v1/captures/resolve"))
+                .isEqualTo(new AuditAccess("capture.resolve", "capture", null));
+        assertThat(classify("GET", "/api/v1/captures/capture-1"))
+                .isEqualTo(new AuditAccess("capture.read", "capture", "capture-1"));
+        assertThat(classify("POST", "/api/v1/captures/capture-1/retry"))
+                .isEqualTo(new AuditAccess("capture.retry", "capture", "capture-1"));
+        assertThat(classify("DELETE", "/api/v1/captures/capture-1"))
+                .isEqualTo(new AuditAccess("capture.delete", "capture", "capture-1"));
+        assertThat(classify("GET", "/api/v1/inbox"))
+                .isEqualTo(new AuditAccess("inbox.list", "inbox", null));
+        assertThat(classify("GET", "/api/v1/inbox/items/item-1"))
+                .isEqualTo(new AuditAccess("inbox_item.read", "inbox_item", "item-1"));
+    }
+
     private AuditAccess classify(String method, String path) {
         MockHttpServletRequest request = new MockHttpServletRequest(method, path);
         return classifier.classify(request).orElseThrow();
