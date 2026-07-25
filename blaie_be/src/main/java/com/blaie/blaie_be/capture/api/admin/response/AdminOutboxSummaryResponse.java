@@ -1,6 +1,6 @@
-package com.blaie.blaie_be.capture.api.response;
+package com.blaie.blaie_be.capture.api.admin.response;
 
-import com.blaie.blaie_be.capture.application.result.AdminOutboxSummaryResult;
+import com.blaie.blaie_be.capture.application.admin.result.AdminOutboxSummaryResult;
 import java.time.Instant;
 
 public record AdminOutboxSummaryResponse(

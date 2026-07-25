@@ -1,6 +1,10 @@
-package com.blaie.blaie_be.auth.infrastructure.security;
+package com.blaie.blaie_be.configuration.security;
 
 import com.blaie.blaie_be.audit.infrastructure.web.AuditAccessFilter;
+import com.blaie.blaie_be.auth.infrastructure.security.AuthProperties;
+import com.blaie.blaie_be.auth.infrastructure.security.AuthRequestFilter;
+import com.blaie.blaie_be.auth.infrastructure.security.BearerTokenResolver;
+import com.blaie.blaie_be.auth.infrastructure.security.EmailVerificationRequiredFilter;
 import com.blaie.blaie_be.core.ratelimit.filter.RateLimitFilter;
 import com.blaie.blaie_be.core.security.AppAccessDeniedHandler;
 import com.blaie.blaie_be.core.security.AppAuthenticationEntryPoint;
@@ -35,7 +39,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableMethodSecurity
-public class SecurityConfig {
+public class ApplicationSecurityConfiguration {
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
@@ -72,6 +76,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/google/callback",
                                 "/error"
                         ).permitAll()
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)

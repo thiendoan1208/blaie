@@ -1,6 +1,6 @@
-package com.blaie.blaie_be.capture.api.response;
+package com.blaie.blaie_be.capture.api.admin.response;
 
-import com.blaie.blaie_be.capture.application.result.AdminProcessingJobResult;
+import com.blaie.blaie_be.capture.application.admin.result.AdminProcessingJobResult;
 import java.time.Instant;
 import java.util.UUID;
 

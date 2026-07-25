@@ -93,4 +93,23 @@ public class JdbcRetentionCleanupStoreAdapter implements RetentionCleanupStorePo
                   AND target.occurred_at < ?
                 """, Timestamp.from(cutoff), batchSize, Timestamp.from(cutoff));
     }
+
+    @Override
+    @Transactional
+    public int deleteExpiredCaptureAdminJobOperations(Instant cutoff, int batchSize) {
+        return jdbcTemplate.update("""
+                WITH candidates AS MATERIALIZED (
+                    SELECT id
+                    FROM capture_admin_job_operations
+                    WHERE occurred_at < ?
+                    ORDER BY occurred_at, id
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT ?
+                )
+                DELETE FROM capture_admin_job_operations target
+                USING candidates
+                WHERE target.id = candidates.id
+                  AND target.occurred_at < ?
+                """, Timestamp.from(cutoff), batchSize, Timestamp.from(cutoff));
+    }
 }

@@ -10,4 +10,6 @@ public interface RetentionCleanupStorePort {
     int deleteCompletedProcessingJobs(Instant cutoff, int batchSize);
 
     int deleteExpiredAuditEvents(Instant cutoff, int batchSize);
+
+    int deleteExpiredCaptureAdminJobOperations(Instant cutoff, int batchSize);
 }

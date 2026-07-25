@@ -1,4 +1,4 @@
-package com.blaie.blaie_be.capture.application.result;
+package com.blaie.blaie_be.capture.application.admin.result;
 
 import java.util.List;
 

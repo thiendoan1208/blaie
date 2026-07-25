@@ -1,5 +1,7 @@
-package com.blaie.blaie_be.auth.infrastructure.security;
+package com.blaie.blaie_be.configuration.security;
 
+import com.blaie.blaie_be.auth.infrastructure.security.AuthRequestFilter;
+import com.blaie.blaie_be.auth.infrastructure.security.EmailVerificationRequiredFilter;
 import com.blaie.blaie_be.core.ratelimit.filter.RateLimitFilter;
 import org.junit.jupiter.api.Test;
 
@@ -7,7 +9,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 class SecurityFilterRegistrationTest {
-    private final SecurityConfig securityConfig = new SecurityConfig();
+    private final ApplicationSecurityConfiguration securityConfig =
+            new ApplicationSecurityConfiguration();
 
     @Test
     void customSecurityFiltersAreNotAutoRegisteredOutsideSecurityFilterChain() {

@@ -54,14 +54,15 @@ class CaptureObservabilityMigrationUpgradeTest {
         Flyway latestFlyway = flywayAt(null);
         MigrateResult latestResult = latestFlyway.migrate();
 
-        assertEquals(3, latestResult.migrationsExecuted);
-        assertEquals("17", latestResult.targetSchemaVersion);
+        assertEquals(4, latestResult.migrationsExecuted);
+        assertEquals("18", latestResult.targetSchemaVersion);
         assertSeededCaptureWasPreserved(seed);
         assertSeededJobWasPreservedAndBackfilled(seed);
         assertSeededOutboxEventWasPreserved(seed);
         assertOriginRequestIdSchemaAndDefault(seed);
         assertObservabilityAndAdminIndexesExist();
         assertPrivacyRetentionSchemaExists();
+        assertCaptureAdminOperationSchemaExists();
         latestFlyway.validate();
     }
 
@@ -328,6 +329,25 @@ class CaptureObservabilityMigrationUpgradeTest {
                 .replace(")", "")
                 .replaceAll("\\s+", " ");
         assertTrue(completedJobCleanupIndex.contains("WHERE status = 'completed'"));
+    }
+
+    private void assertCaptureAdminOperationSchemaExists() throws SQLException {
+        assertTrue(columnExists("capture_admin_job_operations", "reason"));
+        assertTrue(columnExists("capture_admin_job_operations", "request_id"));
+        try (Connection connection = connection();
+                PreparedStatement statement = connection.prepareStatement("""
+                    SELECT COUNT(*)
+                    FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND indexname IN (
+                          'idx_capture_admin_job_operations_job_occurred',
+                          'idx_capture_admin_job_operations_occurred'
+                      )
+                    """);
+                ResultSet result = statement.executeQuery()) {
+            assertTrue(result.next());
+            assertEquals(2, result.getInt(1));
+        }
     }
 
     private void insertUser(Connection connection, UUID userId) throws SQLException {

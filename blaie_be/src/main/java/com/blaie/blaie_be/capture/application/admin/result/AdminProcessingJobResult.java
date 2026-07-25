@@ -1,4 +1,4 @@
-package com.blaie.blaie_be.capture.application.result;
+package com.blaie.blaie_be.capture.application.admin.result;
 
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
