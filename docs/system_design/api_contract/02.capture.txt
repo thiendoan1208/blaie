@@ -32,6 +32,8 @@ Durability and delivery semantics:
 Authentication and ownership:
 - The user must be authenticated and email verified.
 - user_id always comes from the current authenticated user. Clients cannot submit userId.
+- Operations require explicit application permissions: capture.create for submit, capture.read for capture/list/resolve,
+  capture.update for retry and capture.delete for delete.
 - Every read, retry and delete query filters by both resource id and current user id.
 - A missing or foreign capture returns the same CAPTURE_NOT_FOUND response.
 
@@ -92,6 +94,23 @@ Response 202:
     "updatedAt": "2026-07-16T10:00:00Z"
   }
 }
+
+----------------------------------------------------------------------
+
+GET /api/v1/captures/resolve?idempotencyKey={uuid}
+
+Returns the current user's Capture associated with an existing Idempotency-Key. This endpoint is for uncertain
+network outcomes: the client may not know whether POST /captures/text committed before its response was lost.
+Resolution never creates a Capture, never changes the key and never bypasses ownership.
+
+Response 200: the same Capture response schema as POST/GET.
+
+Errors:
+  400  IDEMPOTENCY_KEY_REQUIRED | IDEMPOTENCY_KEY_INVALID
+  404  CAPTURE_NOT_FOUND - key is not committed for the current user (or no longer exists)
+
+The frontend retries bounded 404/transient/network failures and may refetch unresolved records on reconnect or
+window focus. It reuses the original key and never stores raw text in recovery storage.
 
 ----------------------------------------------------------------------
 

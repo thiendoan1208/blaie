@@ -71,7 +71,7 @@ than one application instance. Set BLAIE_RETENTION_ENABLED=false only during a c
 
 Current coverage:
 
-- Capture list, read, retry and delete;
+- Capture create, resolve, list, read, retry and delete;
 - Inbox list and item read;
 - admin job list, read, requeue and mark-dead;
 - admin outbox summary and audit-event list.

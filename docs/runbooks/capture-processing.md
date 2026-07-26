@@ -18,8 +18,9 @@ published as an application port. Prometheus scrapes `/actuator/prometheus`; hea
 - Use the secured admin endpoints for mutations. The SQL in this document is read-only.
 - Use bearer authentication for command-line admin mutations. Never paste a real token into a ticket, chat,
   committed script, shell history, or dashboard annotation.
-- Record the alert, UTC time, admin identity, request ID, job ID and action taken. Persistent audit-log storage is
-  deferred to the privacy/retention work, so the structured application log is the current operation record.
+- Record the alert, UTC time, admin identity, request ID, job ID and action taken. Persistent access-audit events
+  are available through `GET /api/v1/admin/audit-events`; structured logs remain the source for technical
+  correlation fields that are deliberately absent from audit rows.
 - Do not edit an already-applied Flyway migration and do not update `event_publication` manually.
 
 ## What healthy looks like
@@ -80,7 +81,7 @@ visible. Counters and timers describe work performed by individual instances and
 
 ### Outbox publication is old
 
-- `GET /api/v1/admin/outbox/summary` shows safe backlog metadata.
+- `GET /api/v1/admin/capture/outbox/summary` shows safe backlog metadata.
 - Confirm Redis connectivity and that at least one publisher and one recovery role are enabled.
 - The recovery scheduler resubmits old incomplete `TextCaptureQueuedEvent` publications automatically.
 - Do not mark the publication complete or delete it. Doing so before a durable job is terminal can lose its wake-up
@@ -114,25 +115,25 @@ Authorization: Bearer <short-lived-admin-access-token>
 List dead jobs:
 
 ```http
-GET /api/v1/admin/jobs?status=dead&limit=50
+GET /api/v1/admin/capture/jobs?status=dead&limit=50
 ```
 
 List active jobs whose recovery timestamp is due:
 
 ```http
-GET /api/v1/admin/jobs?stuck=true&limit=50
+GET /api/v1/admin/capture/jobs?stuck=true&limit=50
 ```
 
 Inspect one job without returning user content:
 
 ```http
-GET /api/v1/admin/jobs/{jobId}
+GET /api/v1/admin/capture/jobs/{jobId}
 ```
 
 Requeue one eligible dead job:
 
 ```http
-POST /api/v1/admin/jobs/{jobId}/requeue
+POST /api/v1/admin/capture/jobs/{jobId}/requeue
 ```
 
 This reuses the same capture/job, applies normal admission limits and returns 409 for content-terminal or non-dead
@@ -141,7 +142,12 @@ work. A 429/503 includes `Retry-After`; wait rather than looping.
 Fence and mark one active job dead:
 
 ```http
-POST /api/v1/admin/jobs/{jobId}/mark-dead
+POST /api/v1/admin/capture/jobs/{jobId}/mark-dead
+Content-Type: application/json
+
+{
+  "reason": "Operator intervention after provider incident"
+}
 ```
 
 This may finish an already-started provider request at the network level, but cleared lease ownership prevents that
@@ -150,7 +156,7 @@ stale worker from committing over the operator decision.
 Inspect the safe outbox summary:
 
 ```http
-GET /api/v1/admin/outbox/summary
+GET /api/v1/admin/capture/outbox/summary
 ```
 
 There is deliberately no generic outbox purge endpoint.

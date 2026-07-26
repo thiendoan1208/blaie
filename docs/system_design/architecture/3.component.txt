@@ -2,16 +2,60 @@ C4 LEVEL 3 - COMPONENT DIAGRAMS
 
 Purpose
 -------
-This document zooms into the two most important containers in MVP V1:
+This document contains the current implementation snapshot followed by the target MVP V1 component model.
 
-- Backend API
-- AI Processing Worker
+Current implementation note (2026-07-26)
+----------------------------------------
 
-This is not a code diagram. It shows modules/components and responsibilities, not
-classes/interfaces.
+The backend currently runs as one deployable Spring Boot modular monolith. API, outbox publication, Redis Stream
+worker, job recovery, observability and retention schedulers can be enabled independently through configuration,
+but they are not separate codebases.
 
+Implemented top-level modules:
 
-1. Backend API Component Diagram
+- auth: identity/session lifecycle, local auth, Google OAuth, verification, password reset and account credentials.
+- authz: regular-user permission enrichment and permission-plus-ownership decisions.
+- capture: text Capture/Inbox API, durable workflow, Redis transport, AI classification and admin job operations.
+- audit: privacy-safe access audit recording and admin audit query.
+- retention: scheduled bounded cleanup for completed jobs/outbox rows, expired idempotency keys and audit events.
+- configuration: application-wide Spring Security filter-chain composition.
+- core: shared request/error/cursor/rate-limit/security/observability primitives without business ownership.
+
+Implemented protected-request order:
+
+  RequestContextFilter
+    -> AuthRequestFilter
+    -> AuthorizationContextFilter
+    -> AuditAccessFilter
+    -> RateLimitFilter
+    -> EmailVerificationRequiredFilter
+    -> Controller/Application service
+
+Implemented text Capture path:
+
+  Web cookie + CSRF + Idempotency-Key
+    -> CaptureService permission check
+    -> owner-scoped PostgreSQL capture/job/outbox transaction
+    -> Spring Modulith outbox listener
+    -> Redis Stream identifier message
+    -> generation/lease-fenced worker
+    -> content and PII policy
+    -> AI provider adapter
+    -> PostgreSQL Capture/Inbox terminal result
+
+PostgreSQL is authoritative. Redis is at-least-once wake-up transport and does not carry raw Capture text.
+Voice/audio and image ingestion, object storage and their processors are target components, not implemented
+components. Tasks, Calendar, Reminders and Information currently exist as navigation/category concepts; their
+standalone CRUD modules are not implemented.
+
+Target-model scope
+------------------
+
+The diagrams below zoom into the intended Backend API and AI Processing Worker responsibilities. They show
+modules/components and responsibilities, not classes/interfaces. Entries for voice, image, object storage,
+notifications and standalone item-management views describe future scope.
+
+1. Target Backend API Component Diagram
 --------------------------------
 
 +----------------+       +----------------+       +----------------+
@@ -113,7 +157,7 @@ Object Storage Adapter
 - Keeps backend business logic independent from a specific storage provider.
 
 
-2. AI Processing Worker Component Diagram
+2. Target AI Processing Worker Component Diagram
 -----------------------------------------
 
 +-------------------+

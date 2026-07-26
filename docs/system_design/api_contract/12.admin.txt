@@ -1,6 +1,8 @@
 API Contract - 12. Admin operations
 
-Base path: /api/v1/admin
+Base paths:
+- Capture operations: /api/v1/admin/capture
+- Audit query: /api/v1/admin/audit-events
 
 This contract covers the operational endpoints for durable text-capture processing. User-management and product
 analytics endpoints are not part of the current implementation.
@@ -8,8 +10,9 @@ analytics endpoints are not part of the current implementation.
 Authentication and authorization:
 - A valid authenticated session and a verified email are required.
 - The current server-side user must be an administrator. The client never submits an admin role or user id.
-- Read endpoints require admin.read. Mutation endpoints require admin.job.manage. The current implementation grants
-  both permissions to users whose server-side admin flag is true.
+- Job reads require admin.capture.job.read; job mutations require admin.capture.job.manage; the outbox summary
+  requires admin.capture.outbox.read; audit queries require admin.audit.read. Server-side administrators bypass
+  individual permission checks. The client never grants or submits permissions.
 - Missing/invalid authentication returns 401 UNAUTHORIZED. An authenticated non-admin returns 403 FORBIDDEN.
 - Cookie-authenticated mutations require the normal CSRF token. Bearer-only requests do not use cookie CSRF.
 
@@ -33,7 +36,7 @@ completed and failed. pending and failed are not processing-job statuses.
 
 1. List capture processing jobs
 
-GET /api/v1/admin/jobs
+GET /api/v1/admin/capture/jobs
 
 Query params:
   status  - optional: queued | processing | retry_wait | completed | dead
@@ -87,7 +90,7 @@ Errors:
 
 2. Get one capture processing job
 
-GET /api/v1/admin/jobs/{jobId}
+GET /api/v1/admin/capture/jobs/{jobId}
 
 Returns the same safe operational job schema as the list endpoint. It does not return raw capture text, provider
 payloads, stack traces or serialized outbox data.
@@ -107,7 +110,7 @@ Errors:
 
 3. Requeue a dead job
 
-POST /api/v1/admin/jobs/{jobId}/requeue
+POST /api/v1/admin/capture/jobs/{jobId}/requeue
 
 Request body: none
 
@@ -149,9 +152,12 @@ Errors:
 
 4. Mark an active job dead
 
-POST /api/v1/admin/jobs/{jobId}/mark-dead
+POST /api/v1/admin/capture/jobs/{jobId}/mark-dead
 
-Request body: none
+Request body:
+{
+  "reason": "non-blank operator reason, max 500 characters"
+}
 
 Behavior:
 - Lock the job and capture and require the job to be queued, processing or retry_wait while its capture is still
@@ -184,7 +190,7 @@ Errors:
 
 5. Inspect the capture outbox backlog
 
-GET /api/v1/admin/outbox/summary
+GET /api/v1/admin/capture/outbox/summary
 
 The summary covers incomplete TextCaptureQueuedEvent publications for listener
 capture-text-job-redis-publisher only. It is safe for dashboards and incident triage and never deserializes or
