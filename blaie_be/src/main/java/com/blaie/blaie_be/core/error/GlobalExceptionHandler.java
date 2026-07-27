@@ -14,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -71,6 +73,20 @@ public class GlobalExceptionHandler {
             default -> ErrorCode.INTERNAL_SERVER_ERROR;
         };
         return buildResponse(errorCode, exception.getReason(), null);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException exception
+    ) {
+        return buildResponse(ErrorCode.AUDIO_TOO_LARGE, ErrorCode.AUDIO_TOO_LARGE.defaultMessage(), null);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingServletRequestPartException(
+            MissingServletRequestPartException exception
+    ) {
+        return buildResponse(ErrorCode.AUDIO_REQUIRED, ErrorCode.AUDIO_REQUIRED.defaultMessage(), null);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

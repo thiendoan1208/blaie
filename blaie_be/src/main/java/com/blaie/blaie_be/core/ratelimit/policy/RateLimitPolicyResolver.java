@@ -9,6 +9,8 @@ import com.blaie.blaie_be.core.security.AuthCookieNames;
 import com.blaie.blaie_be.core.security.CurrentUserHolder;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
@@ -85,10 +87,24 @@ public class RateLimitPolicyResolver {
         if (HttpMethod.POST.matches(method) && "/api/v1/captures/text".equals(path)) {
             return request("capture-text", properties.captureText(), userSubject(), ipSubject);
         }
+        if (HttpMethod.POST.matches(method) && "/api/v1/transcriptions/audio".equals(path)) {
+            return request("transcription", properties.transcription(), userSubject(), ipSubject);
+        }
         if (HttpMethod.POST.matches(method) && isCaptureRetryPath(path)) {
             return request("capture-retry", properties.captureRetry(), userSubject(), ipSubject);
         }
         return Optional.empty();
+    }
+
+    public List<RateLimitRequest> resolveAll(HttpServletRequest request) {
+        List<RateLimitRequest> requests = new ArrayList<>();
+        resolve(request).ifPresent(requests::add);
+        if (HttpMethod.POST.matches(request.getMethod())
+                && "/api/v1/transcriptions/audio".equals(request.getRequestURI())) {
+            request("transcription-global", properties.transcriptionGlobal(), "global")
+                    .ifPresent(requests::add);
+        }
+        return List.copyOf(requests);
     }
 
     private Optional<RateLimitRequest> request(String policyName, RateLimitPolicy policy, String... subjectParts) {

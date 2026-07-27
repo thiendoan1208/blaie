@@ -9,6 +9,7 @@ import {
   useDeleteCaptureMutation,
   useRetryCaptureMutation,
 } from "@/features/inbox/model/inbox.mutations";
+import { useTranscribeAudioMutation } from "@/features/inbox/model/transcription.mutations";
 import {
   useInboxItemsQuery,
   usePendingCaptureResolutionQueries,
@@ -33,6 +34,47 @@ vi.mock("@/features/inbox/model/inbox.mutations", () => ({
   useCreateTextCaptureMutation: vi.fn(),
   useDeleteCaptureMutation: vi.fn(),
   useRetryCaptureMutation: vi.fn(),
+}));
+
+vi.mock("@/features/inbox/model/transcription.mutations", () => ({
+  useTranscribeAudioMutation: vi.fn(),
+}));
+
+vi.mock("@/features/inbox/ui/voice-recorder", () => ({
+  VoiceRecorder: ({
+    disabled,
+    failureMessage,
+    phase,
+    onRetry,
+    onSend,
+  }: {
+    disabled: boolean;
+    failureMessage: string | null;
+    phase: "idle" | "transcribing" | "saving";
+    onRetry: () => Promise<void>;
+    onSend: (audio: Blob) => Promise<void>;
+  }) => (
+    <>
+      {phase === "transcribing" && <span>Transcribing your recording…</span>}
+      {phase === "saving" && <span>Saving your capture…</span>}
+      {failureMessage && <span>{failureMessage}</span>}
+      {failureMessage && (
+        <button
+          aria-label="Retry voice capture"
+          onClick={() => void onRetry()}
+        >
+          Retry
+        </button>
+      )}
+      <button
+        aria-label="Send voice"
+        disabled={disabled}
+        onClick={() => void onSend(new Blob(["voice"], { type: "audio/webm" }))}
+      >
+        Send voice
+      </button>
+    </>
+  ),
 }));
 
 vi.mock("@/features/inbox/model/inbox.queries", async (importOriginal) => {
@@ -69,6 +111,7 @@ const markCaptureResolved = vi.fn();
 const rememberCapture = vi.fn();
 const rememberRecoveredCapture = vi.fn();
 const createCapture = vi.fn();
+const transcribeAudio = vi.fn();
 const retryCapture = vi.fn();
 const deleteCapture = vi.fn();
 
@@ -170,6 +213,10 @@ describe("InboxPanel", () => {
     vi.mocked(useCreateTextCaptureMutation).mockReturnValue({
       isPending: false,
       mutateAsync: createCapture,
+    } as never);
+    vi.mocked(useTranscribeAudioMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: transcribeAudio,
     } as never);
     vi.mocked(useRetryCaptureMutation).mockReturnValue({
       isPending: false,
@@ -404,6 +451,74 @@ describe("InboxPanel", () => {
 
     resolveCapture(capture("capture-1", "processing"));
     await waitFor(() => expect(rememberCapture).toHaveBeenCalledOnce());
+  });
+
+  it("transcribes one recording and automatically reuses the text capture path", async () => {
+    transcribeAudio.mockResolvedValue({ text: "Nhắc tôi gọi cho mẹ" });
+    createCapture.mockResolvedValue(capture("voice-capture", "processing"));
+    renderInbox();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send voice" }));
+
+    await waitFor(() =>
+      expect(transcribeAudio).toHaveBeenCalledWith(expect.any(Blob)),
+    );
+    expect(beginSubmission).toHaveBeenCalledWith("Nhắc tôi gọi cho mẹ");
+    expect(createCapture).toHaveBeenCalledWith({
+      text: "Nhắc tôi gọi cho mẹ",
+      idempotencyKey: "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+    });
+    expect(rememberCapture).toHaveBeenCalledOnce();
+    expect(toast.success).toHaveBeenCalledWith(
+      "Saved. Processing in background — you can safely leave.",
+    );
+  });
+
+  it("retries capture with the in-memory transcript without transcribing again", async () => {
+    transcribeAudio.mockResolvedValue({ text: "Call mom" });
+    createCapture
+      .mockRejectedValueOnce(
+        createAppError({
+          code: "NETWORK_ERROR",
+          status: 0,
+          message: "Network failed",
+        }),
+      )
+      .mockResolvedValueOnce(capture("voice-retry", "processing"));
+    renderInbox();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send voice" }));
+    await screen.findByRole("button", { name: "Retry voice capture" });
+    fireEvent.click(screen.getByRole("button", { name: "Retry voice capture" }));
+
+    await waitFor(() => expect(createCapture).toHaveBeenCalledTimes(2));
+    expect(transcribeAudio).toHaveBeenCalledOnce();
+    expect(beginSubmission).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not claim the voice capture is safe before text capture returns 202", async () => {
+    let acceptCapture!: (value: TextCapture) => void;
+    transcribeAudio.mockResolvedValue({ text: "Call mom" });
+    createCapture.mockReturnValue(
+      new Promise<TextCapture>((resolve) => {
+        acceptCapture = resolve;
+      }),
+    );
+    renderInbox();
+
+    fireEvent.click(screen.getByRole("button", { name: "Send voice" }));
+    await screen.findByText("Saving your capture…");
+
+    expect(toast.success).not.toHaveBeenCalledWith(
+      "Saved. Processing in background — you can safely leave.",
+    );
+
+    acceptCapture(capture("voice-pending", "processing"));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Saved. Processing in background — you can safely leave.",
+      ),
+    );
   });
 
   it("pauses idempotency recovery while a normal capture POST is pending", async () => {

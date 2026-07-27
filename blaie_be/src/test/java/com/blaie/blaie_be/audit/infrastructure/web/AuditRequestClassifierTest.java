@@ -29,6 +29,8 @@ class AuditRequestClassifierTest {
     void classifiesEveryCurrentUserCaptureAndInboxOperation() {
         assertThat(classify("POST", "/api/v1/captures/text"))
                 .isEqualTo(new AuditAccess("capture.create", "capture", null));
+        assertThat(classify("POST", "/api/v1/transcriptions/audio"))
+                .isEqualTo(new AuditAccess("capture.transcribe", "capture", null));
         assertThat(classify("GET", "/api/v1/captures"))
                 .isEqualTo(new AuditAccess("capture.list", "capture", null));
         assertThat(classify("GET", "/api/v1/captures/resolve"))

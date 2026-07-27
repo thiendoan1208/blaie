@@ -88,6 +88,19 @@ public class RateLimitProperties {
             new RateLimitWindow(20, Duration.ofMinutes(10))
     ));
 
+    @Valid
+    private RateLimitPolicy transcription = failClosed(new RateLimitPolicy(
+            new RateLimitWindow(3, Duration.ofMinutes(1)),
+            new RateLimitWindow(20, Duration.ofHours(1)),
+            new RateLimitWindow(100, Duration.ofDays(1))
+    ));
+
+    @Valid
+    private RateLimitPolicy transcriptionGlobal = failClosed(new RateLimitPolicy(
+            new RateLimitWindow(8, Duration.ofMinutes(1)),
+            new RateLimitWindow(450, Duration.ofDays(1))
+    ));
+
     private static RateLimitPolicy failClosed(RateLimitPolicy policy) {
         policy.setFailOpen(false);
         return policy;
@@ -227,5 +240,21 @@ public class RateLimitProperties {
 
     public void setCaptureRetry(RateLimitPolicy captureRetry) {
         this.captureRetry = captureRetry;
+    }
+
+    public RateLimitPolicy transcription() {
+        return transcription;
+    }
+
+    public void setTranscription(RateLimitPolicy transcription) {
+        this.transcription = transcription;
+    }
+
+    public RateLimitPolicy transcriptionGlobal() {
+        return transcriptionGlobal;
+    }
+
+    public void setTranscriptionGlobal(RateLimitPolicy transcriptionGlobal) {
+        this.transcriptionGlobal = transcriptionGlobal;
     }
 }

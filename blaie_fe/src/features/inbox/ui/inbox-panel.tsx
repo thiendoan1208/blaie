@@ -45,11 +45,17 @@ import {
   useTrackedCaptureQueries,
 } from "../model/inbox.queries";
 import { useInboxTracking } from "../model/inbox-tracking";
+import { transcriptionRequestErrorMessage } from "../model/transcription-errors";
+import { useTranscribeAudioMutation } from "../model/transcription.mutations";
 import type {
   InboxCategory,
   InboxItem,
   TextCapture,
 } from "../types/inbox";
+import {
+  VoiceRecorder,
+  type VoiceCapturePhase,
+} from "./voice-recorder";
 
 const categoryLabels: Record<InboxCategory, string> = {
   task: "Task",
@@ -76,10 +82,20 @@ export function InboxPanel() {
 function InboxPanelContent({ userId }: { userId: string }) {
   const [text, setText] = useState("");
   const [preparingSubmission, setPreparingSubmission] = useState(false);
+  const [voicePhase, setVoicePhase] = useState<VoiceCapturePhase>("idle");
+  const [voiceFailureMessage, setVoiceFailureMessage] = useState<string | null>(
+    null,
+  );
+  const [voiceRetry, setVoiceRetry] = useState<{
+    audio: Blob;
+    transcript: string | null;
+  } | null>(null);
+  const [voiceRecording, setVoiceRecording] = useState(false);
   const [hiddenCaptureIds, setHiddenCaptureIds] = useState<Set<string>>(
     () => new Set(),
   );
   const submitInFlight = useRef(false);
+  const voiceInFlight = useRef(false);
   const notifiedTerminalStates = useRef(new Set<string>());
   const recoveredResolutionStates = useRef(new Set<string>());
   const queryClient = useQueryClient();
@@ -115,6 +131,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
     processingQuery.data ?? [],
   );
   const captureMutation = useCreateTextCaptureMutation(userId);
+  const transcriptionMutation = useTranscribeAudioMutation();
   const retryMutation = useRetryCaptureMutation(userId);
   const deleteMutation = useDeleteCaptureMutation(userId);
 
@@ -189,9 +206,43 @@ function InboxPanelContent({ userId }: { userId: string }) {
     }
   }, [captures, inboxQuery, markCaptureResolved, queryClient, userId]);
 
+  const submitCaptureText = useCallback(
+    async (captureText: string) => {
+      if (submitInFlight.current) {
+        throw new Error("A capture submission is already in progress");
+      }
+      submitInFlight.current = true;
+      setPreparingSubmission(true);
+      let submission: Awaited<ReturnType<typeof beginSubmission>> | undefined;
+      try {
+        submission = await beginSubmission(captureText);
+        const capture = await captureMutation.mutateAsync({
+          text: captureText,
+          idempotencyKey: submission.idempotencyKey,
+        });
+        rememberCapture(submission, capture);
+        return capture;
+      } catch (error) {
+        if (submission && shouldDiscardCaptureSubmission(error)) {
+          discardSubmission(submission.idempotencyKey);
+        }
+        throw error;
+      } finally {
+        submitInFlight.current = false;
+        setPreparingSubmission(false);
+      }
+    },
+    [
+      beginSubmission,
+      captureMutation,
+      discardSubmission,
+      rememberCapture,
+    ],
+  );
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitInFlight.current) return;
+    if (submitInFlight.current || voiceInFlight.current || voiceRecording) return;
 
     const trimmedText = text.trim();
     if (!trimmedText) {
@@ -199,28 +250,63 @@ function InboxPanelContent({ userId }: { userId: string }) {
       return;
     }
 
-    submitInFlight.current = true;
-    setPreparingSubmission(true);
-    let submission: Awaited<ReturnType<typeof beginSubmission>> | undefined;
     try {
-      submission = await beginSubmission(trimmedText);
-      const capture = await captureMutation.mutateAsync({
-        text: trimmedText,
-        idempotencyKey: submission.idempotencyKey,
-      });
-      rememberCapture(submission, capture);
+      await submitCaptureText(trimmedText);
       setText("");
-      toast.success("Capture accepted and queued for classification.");
+      toast.success(
+        "Saved. Processing in background — you can safely leave.",
+      );
     } catch (error) {
-      if (submission && shouldDiscardCaptureSubmission(error)) {
-        discardSubmission(submission.idempotencyKey);
-      }
       toast.error(captureRequestErrorMessage(error));
-    } finally {
-      submitInFlight.current = false;
-      setPreparingSubmission(false);
     }
   }
+
+  const processVoice = useCallback(
+    async (audio: Blob, reusableTranscript: string | null = null) => {
+      if (voiceInFlight.current) return;
+      voiceInFlight.current = true;
+      setVoiceFailureMessage(null);
+      let transcript = reusableTranscript;
+      try {
+        if (!transcript) {
+          setVoicePhase("transcribing");
+          const result = await transcriptionMutation.mutateAsync(audio);
+          transcript = result.text;
+          setVoiceRetry({ audio, transcript });
+        }
+
+        setVoicePhase("saving");
+        await submitCaptureText(transcript);
+        setVoiceRetry(null);
+        setVoicePhase("idle");
+        toast.success(
+          "Saved. Processing in background — you can safely leave.",
+        );
+      } catch (error) {
+        const message = transcript
+          ? captureRequestErrorMessage(error)
+          : transcriptionRequestErrorMessage(error);
+        setVoiceRetry({ audio, transcript });
+        setVoiceFailureMessage(message);
+        setVoicePhase("idle");
+        toast.error(message);
+      } finally {
+        voiceInFlight.current = false;
+      }
+    },
+    [submitCaptureText, transcriptionMutation],
+  );
+
+  const retryVoice = useCallback(async () => {
+    if (!voiceRetry) return;
+    await processVoice(voiceRetry.audio, voiceRetry.transcript);
+  }, [processVoice, voiceRetry]);
+
+  const clearVoiceAttempt = useCallback(() => {
+    if (voiceInFlight.current) return;
+    setVoiceFailureMessage(null);
+    setVoiceRetry(null);
+  }, []);
 
   async function remove(captureId: string) {
     if (!window.confirm("Delete this source capture and all Inbox items created from it?")) return;
@@ -253,7 +339,9 @@ function InboxPanelContent({ userId }: { userId: string }) {
     }
   }
 
-  const submitting = preparingSubmission || captureMutation.isPending;
+  const textSubmitting = preparingSubmission || captureMutation.isPending;
+  const voiceBusy = voicePhase !== "idle" || transcriptionMutation.isPending;
+  const interactionBusy = textSubmitting || voiceBusy || voiceRecording;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -286,7 +374,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
             id="inbox-text"
             value={text}
             maxLength={10_000}
-            disabled={submitting}
+            disabled={interactionBusy}
             onChange={(event) => setText(event.target.value)}
             placeholder="Example: I have a meeting at 5 PM, then I need to run and finish my homework"
             className="min-h-32 w-full resize-y rounded-lg border border-input bg-background p-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -295,15 +383,24 @@ function InboxPanelContent({ userId }: { userId: string }) {
             <span className="text-xs text-muted-foreground">
               {text.length}/10,000
             </span>
-            <Button disabled={submitting} type="submit">
-              {submitting ? (
+            <Button disabled={interactionBusy} type="submit">
+              {textSubmitting ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
                 <Send />
               )}
-              {submitting ? "Submitting..." : "Capture text"}
+              {textSubmitting ? "Submitting..." : "Capture text"}
             </Button>
           </div>
+          <VoiceRecorder
+            disabled={textSubmitting || voiceBusy}
+            failureMessage={voiceFailureMessage}
+            phase={voicePhase}
+            onNewRecording={clearVoiceAttempt}
+            onRecordingChange={setVoiceRecording}
+            onRetry={retryVoice}
+            onSend={(audio) => processVoice(audio)}
+          />
         </form>
 
         {unresolvedSubmissionCount > 0 && (

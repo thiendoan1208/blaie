@@ -13,7 +13,6 @@ import jakarta.servlet.FilterChain;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -25,6 +24,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class RateLimitFilterTest {
@@ -78,6 +78,33 @@ class RateLimitFilterTest {
         verifyNoInteractions(fixture.chain);
     }
 
+    @Test
+    void everyResolvedPolicyMustAllowBeforeTheApplicationIsCalled() throws Exception {
+        Fixture fixture = fixture();
+        RateLimitRequest global = new RateLimitRequest(
+                "transcription-global",
+                "global",
+                List.of(new RateLimitWindow(8, Duration.ofMinutes(1))),
+                false
+        );
+        when(fixture.resolver.resolveAll(any()))
+                .thenReturn(List.of(fixture.request, global));
+        when(fixture.rateLimiter.check(fixture.request))
+                .thenReturn(RateLimitDecision.allowed("transcription"));
+        when(fixture.rateLimiter.check(global))
+                .thenReturn(RateLimitDecision.denied(
+                        "transcription-global",
+                        Duration.ofSeconds(30)
+                ));
+
+        fixture.filter.doFilterInternal(fixture.httpRequest, fixture.response, fixture.chain);
+
+        verify(fixture.rateLimiter).check(fixture.request);
+        verify(fixture.rateLimiter).check(global);
+        verifyNoMoreInteractions(fixture.rateLimiter);
+        verifyNoInteractions(fixture.chain);
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private ArgumentCaptor<Map<String, String>> headersCaptor() {
         return ArgumentCaptor.forClass((Class) Map.class);
@@ -98,12 +125,13 @@ class RateLimitFilterTest {
                 List.of(new RateLimitWindow(10, Duration.ofMinutes(1))),
                 false
         );
-        when(resolver.resolve(any())).thenReturn(Optional.of(request));
-        return new Fixture(filter, rateLimiter, errorWriter, httpRequest, response, chain, request);
+        when(resolver.resolveAll(any())).thenReturn(List.of(request));
+        return new Fixture(filter, resolver, rateLimiter, errorWriter, httpRequest, response, chain, request);
     }
 
     private record Fixture(
             RateLimitFilter filter,
+            RateLimitPolicyResolver resolver,
             RateLimiter rateLimiter,
             SecurityErrorResponseWriter errorWriter,
             MockHttpServletRequest httpRequest,

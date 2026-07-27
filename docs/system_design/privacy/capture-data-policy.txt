@@ -5,6 +5,8 @@ Architecture decision: ADR-020
 
 ## What Blaie stores
 
+- Voice Capture V1 does not retain raw microphone audio. Audio exists temporarily in browser/request memory and is
+  sent to the configured transcription provider. Only the returned transcript enters the normal text Capture flow.
 - The original text Capture and its classified Inbox items are stored in PostgreSQL until the owner explicitly
   deletes the source Capture.
 - A processing job and idempotency record belong to the source Capture. Deleting the Capture also deletes those
@@ -71,7 +73,7 @@ than one application instance. Set BLAIE_RETENTION_ENABLED=false only during a c
 
 Current coverage:
 
-- Capture create, resolve, list, read, retry and delete;
+- Capture create, voice transcription, resolve, list, read, retry and delete;
 - Inbox list and item read;
 - admin job list, read, requeue and mark-dead;
 - admin outbox summary and audit-event list.

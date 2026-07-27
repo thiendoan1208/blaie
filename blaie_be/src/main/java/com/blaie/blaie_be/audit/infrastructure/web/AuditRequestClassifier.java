@@ -14,6 +14,9 @@ public class AuditRequestClassifier {
         if ("POST".equals(method) && "/api/v1/captures/text".equals(path)) {
             return access("capture.create", "capture", null);
         }
+        if ("POST".equals(method) && "/api/v1/transcriptions/audio".equals(path)) {
+            return access("capture.transcribe", "capture", null);
+        }
         if ("GET".equals(method) && "/api/v1/captures".equals(path)) {
             return access("capture.list", "capture", null);
         }

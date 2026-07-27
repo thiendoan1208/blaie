@@ -57,6 +57,35 @@ class RateLimitPolicyResolverTest {
         assertThat(resolver.resolve(read)).isEmpty();
     }
 
+    @Test
+    void transcriptionUsesUserAndIpQuotaPlusASeparateGlobalQuota() {
+        RateLimitProperties properties = properties();
+        SubjectHasher hasher = new SubjectHasher(properties);
+        RateLimitPolicyResolver resolver = resolver(properties, hasher);
+        UUID userId = UUID.randomUUID();
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST",
+                "/api/v1/transcriptions/audio"
+        );
+        request.setRemoteAddr("203.0.113.10");
+
+        var resolved = CurrentUserHolder.runAs(
+                new CurrentUser(userId.toString(), false, Set.of()),
+                () -> resolver.resolveAll(request)
+        );
+
+        assertThat(resolved).extracting(RateLimitRequest::policyName)
+                .containsExactly("transcription", "transcription-global");
+        assertThat(resolved.getFirst().subject()).isEqualTo(
+                "user." + hasher.hash("user", userId.toString())
+                        + ":ip." + hasher.hash("ip", "203.0.113.10")
+        );
+        assertThat(resolved.getFirst().windows()).hasSize(3);
+        assertThat(resolved.getLast().subject()).isEqualTo("global");
+        assertThat(resolved.getLast().windows()).hasSize(2);
+        assertThat(resolved).allMatch(requestPolicy -> !requestPolicy.failOpen());
+    }
+
     private RateLimitPolicyResolver resolver(RateLimitProperties properties, SubjectHasher hasher) {
         return new RateLimitPolicyResolver(
                 properties,

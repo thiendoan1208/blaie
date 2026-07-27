@@ -1,0 +1,85 @@
+API Contract - 13. Voice Capture V1
+
+Voice Capture V1 is a synchronous speech-to-text adapter in front of the existing asynchronous text Capture flow.
+It does not create a Capture itself and does not introduce a second classification pipeline.
+
+Client flow:
+
+  MediaRecorder -> POST /api/v1/transcriptions/audio -> transcript
+                -> POST /api/v1/captures/text -> 202 -> existing durable processing
+
+The two HTTP requests are triggered by one user Send action. The client may claim that it is safe to leave only
+after POST /captures/text returns 202.
+
+----------------------------------------------------------------------
+
+POST /api/v1/transcriptions/audio
+
+Authentication and authorization:
+- Authenticated and email-verified user required.
+- Requires capture.create.
+- Cookie-authenticated browser requests require the existing CSRF cookie/header pair.
+
+Content-Type:
+  multipart/form-data
+
+Parts:
+  file: required, exactly one audio file, non-empty, maximum 10 MB
+  language: optional language code, default vi
+
+Accepted media types:
+  audio/webm
+  audio/mp4
+  audio/ogg
+  audio/wav
+  audio/mpeg
+  audio/mp3
+  audio/m4a
+
+Response 200:
+{
+  "data": {
+    "text": "Nhac toi goi cho me luc 8 gio"
+  }
+}
+
+Behavior:
+- Validate permission, file size and media type before provider use.
+- Acquire the existing Redis-backed provider concurrency permit. The Groq transcription route defaults to two
+  concurrent requests across the deployment.
+- Send a multipart request to Groq /audio/transcriptions using whisper-large-v3-turbo, response_format=json,
+  temperature=0 and the requested/default language.
+- Return only the normalized transcript text.
+- Do not persist the audio, place it in Redis/object storage, write it to logs/metrics/audit events, create a
+  Capture, call the classifier or start a background job.
+- Empty transcripts and transcripts over the existing 10,000-character text Capture limit are rejected, never
+  silently truncated.
+
+Rate limits:
+- Authenticated user + IP composite subject: 3/minute, 20/hour, 100/day.
+- Deployment-wide subject: 8/minute, 450/day.
+- Both policies fail closed when their Redis backend is unavailable.
+- Groq project limits remain an external final backstop.
+
+Errors:
+  401  UNAUTHORIZED
+  403  FORBIDDEN | EMAIL_NOT_VERIFIED
+  413  AUDIO_TOO_LARGE
+  415  AUDIO_TYPE_UNSUPPORTED
+  422  AUDIO_REQUIRED | AUDIO_EMPTY | TRANSCRIPTION_EMPTY | TRANSCRIPTION_TOO_LONG | VALIDATION_ERROR
+  429  RATE_LIMITED (with Retry-After)
+  503  TRANSCRIPTION_NOT_CONFIGURED | TRANSCRIPTION_UNAVAILABLE | SERVICE_UNAVAILABLE
+
+Retry behavior:
+- Timeout, network, provider 429/5xx or malformed provider response returns TRANSCRIPTION_UNAVAILABLE. The browser
+  retains the Blob in memory so Retry repeats transcription without recording again.
+- If transcription succeeds but POST /captures/text fails, the browser retains the transcript and retries only the
+  existing text Capture request. It does not call Groq again.
+- Browser refresh/close before /captures/text returns 202 loses the in-memory Blob/transcript. This is the accepted
+  V1 durability boundary.
+
+Privacy:
+- Audio exists only in browser/request memory and at the configured transcription provider.
+- Blaie does not retain raw voice audio.
+- The transcript becomes captures.original_text only through POST /captures/text and then follows the existing
+  sensitive-content, PII masking, retention, ownership and deletion policies.

@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
@@ -49,36 +50,39 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         HttpServletRequest effectiveRequest = maybeCacheBody(request);
-        RateLimitRequest rateLimitRequest = policyResolver.resolve(effectiveRequest).orElse(null);
-        if (rateLimitRequest == null) {
+        List<RateLimitRequest> rateLimitRequests = policyResolver.resolveAll(effectiveRequest);
+        if (rateLimitRequests.isEmpty()) {
             filterChain.doFilter(effectiveRequest, response);
             return;
         }
 
-        RateLimitDecision decision;
-        try {
-            decision = rateLimiter.check(rateLimitRequest);
-        } catch (RateLimitBackendUnavailableException exception) {
+        for (RateLimitRequest rateLimitRequest : rateLimitRequests) {
+            RateLimitDecision decision;
+            try {
+                decision = rateLimiter.check(rateLimitRequest);
+            } catch (RateLimitBackendUnavailableException exception) {
+                errorResponseWriter.write(
+                        response,
+                        ErrorCode.SERVICE_UNAVAILABLE,
+                        "Capture submission is temporarily unavailable",
+                        Map.of("Retry-After", "30")
+                );
+                return;
+            }
+            if (decision.allowed()) {
+                continue;
+            }
+
+            long retryAfterSeconds = retryAfterSeconds(decision.retryAfter());
             errorResponseWriter.write(
                     response,
-                    ErrorCode.SERVICE_UNAVAILABLE,
-                    "Capture submission is temporarily unavailable",
-                    Map.of("Retry-After", "30")
+                    ErrorCode.RATE_LIMITED,
+                    ErrorCode.RATE_LIMITED.defaultMessage(),
+                    Map.of("Retry-After", String.valueOf(retryAfterSeconds))
             );
             return;
         }
-        if (decision.allowed()) {
-            filterChain.doFilter(effectiveRequest, response);
-            return;
-        }
-
-        long retryAfterSeconds = retryAfterSeconds(decision.retryAfter());
-        errorResponseWriter.write(
-                response,
-                ErrorCode.RATE_LIMITED,
-                ErrorCode.RATE_LIMITED.defaultMessage(),
-                Map.of("Retry-After", String.valueOf(retryAfterSeconds))
-        );
+        filterChain.doFilter(effectiveRequest, response);
     }
 
     private HttpServletRequest maybeCacheBody(HttpServletRequest request) throws IOException {
