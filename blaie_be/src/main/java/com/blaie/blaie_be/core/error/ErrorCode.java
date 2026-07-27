@@ -55,7 +55,7 @@ public enum ErrorCode {
     IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "Idempotency key was reused with another request"),
     AUDIO_REQUIRED(HttpStatus.UNPROCESSABLE_CONTENT, "Audio file is required"),
     AUDIO_EMPTY(HttpStatus.UNPROCESSABLE_CONTENT, "Audio file is empty"),
-    AUDIO_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Audio file exceeds the 10 MB limit"),
+    AUDIO_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "Audio file exceeds the 10 MB limit"),
     AUDIO_TYPE_UNSUPPORTED(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Audio type is not supported"),
     TRANSCRIPTION_EMPTY(HttpStatus.UNPROCESSABLE_CONTENT, "No speech was detected"),
     TRANSCRIPTION_TOO_LONG(HttpStatus.UNPROCESSABLE_CONTENT, "Transcript exceeds the capture text limit"),

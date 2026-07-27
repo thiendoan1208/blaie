@@ -1,8 +1,8 @@
 # Blaie
 
 Blaie is an authenticated productivity application that turns unstructured input into structured Inbox items.
-The current production path accepts text, persists the workflow durably, classifies it asynchronously, and exposes
-the result through the web Inbox. Voice and image capture remain planned work; voice input is the next feature.
+The current production path accepts text or voice, persists the text Capture workflow durably, classifies it
+asynchronously, and exposes the result through the web Inbox. Image capture remains planned work.
 
 ## Current architecture
 
@@ -19,7 +19,8 @@ The backend is a modular monolith with top-level modules:
 
 - `auth`: local authentication, Google OAuth, cookie/token lifecycle, verification and password reset.
 - `authz`: permission enrichment and permission-plus-ownership decisions.
-- `capture`: text ingestion, Inbox queries, durable processing, AI classification and admin job operations.
+- `capture`: text/voice ingestion, durable processing, AI classification, Capture item writes and admin job operations.
+- `inbox`: owner-scoped read-only queries over completed `capture_items`.
 - `audit`: privacy-safe access audit capture and admin audit queries.
 - `retention`: bounded scheduled cleanup for expired operational records.
 - `configuration`: application-wide security composition.
@@ -70,7 +71,7 @@ npm run build
 ```
 
 Backend integration tests use Docker/Testcontainers for PostgreSQL and Redis. The latest full backend verification
-after regular-user audit/authz work passed 287 tests.
+after the Inbox module split passed 317 tests.
 
 ## Documentation
 

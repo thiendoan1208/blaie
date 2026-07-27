@@ -14,6 +14,7 @@ class ArchitectureRulesTest {
     private static final String AUTH = BASE + "auth..";
     private static final String AUTHZ = BASE + "authz..";
     private static final String CAPTURE = BASE + "capture..";
+    private static final String INBOX = BASE + "inbox..";
     private static final String AUDIT = BASE + "audit..";
     private static final String RETENTION = BASE + "retention..";
 
@@ -89,6 +90,7 @@ class ArchitectureRulesTest {
                         AUTH,
                         AUTHZ,
                         CAPTURE,
+                        INBOX,
                         AUDIT,
                         RETENTION
                 )
@@ -102,6 +104,7 @@ class ArchitectureRulesTest {
                 .should().dependOnClassesThat().resideInAnyPackage(
                         AUTHZ,
                         CAPTURE,
+                        INBOX,
                         AUDIT,
                         RETENTION
                 )
@@ -114,6 +117,20 @@ class ArchitectureRulesTest {
                 .that().resideInAPackage(CAPTURE)
                 .should().dependOnClassesThat().resideInAnyPackage(
                         AUTH,
+                        INBOX,
+                        AUDIT,
+                        RETENTION
+                )
+                .check(PRODUCTION_CLASSES);
+    }
+
+    @Test
+    void inboxShouldOnlyUseCoreAndAuthzOutsideItsModule() {
+        noClasses()
+                .that().resideInAPackage(INBOX)
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        AUTH,
+                        CAPTURE,
                         AUDIT,
                         RETENTION
                 )
@@ -127,6 +144,7 @@ class ArchitectureRulesTest {
                 .should().dependOnClassesThat().resideInAnyPackage(
                         AUTH,
                         CAPTURE,
+                        INBOX,
                         RETENTION
                 )
                 .check(PRODUCTION_CLASSES);
@@ -138,6 +156,7 @@ class ArchitectureRulesTest {
                 .that().resideInAPackage(BASE + "auth.infrastructure..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         BASE + "capture.infrastructure..",
+                        BASE + "inbox.infrastructure..",
                         BASE + "audit.infrastructure..",
                         BASE + "retention.infrastructure.."
                 )
@@ -147,6 +166,17 @@ class ArchitectureRulesTest {
                 .that().resideInAPackage(BASE + "capture.infrastructure..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         BASE + "auth.infrastructure..",
+                        BASE + "inbox.infrastructure..",
+                        BASE + "audit.infrastructure..",
+                        BASE + "retention.infrastructure.."
+                )
+                .check(PRODUCTION_CLASSES);
+
+        noClasses()
+                .that().resideInAPackage(BASE + "inbox.infrastructure..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        BASE + "auth.infrastructure..",
+                        BASE + "capture.infrastructure..",
                         BASE + "audit.infrastructure..",
                         BASE + "retention.infrastructure.."
                 )
@@ -157,6 +187,7 @@ class ArchitectureRulesTest {
                 .should().dependOnClassesThat().resideInAnyPackage(
                         BASE + "auth.infrastructure..",
                         BASE + "capture.infrastructure..",
+                        BASE + "inbox.infrastructure..",
                         BASE + "retention.infrastructure.."
                 )
                 .check(PRODUCTION_CLASSES);

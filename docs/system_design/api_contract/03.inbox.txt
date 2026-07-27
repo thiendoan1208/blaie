@@ -10,6 +10,12 @@ helpers chi an/hien UI; backend application service va owner-scoped persistence 
 Inbox read endpoints van hoat dong khi asynchronous capture acceptance bi tat (vi du drain mode). Tat acceptance
 chi chan submit/retry moi; no khong an cac CaptureItem da completed cua current user.
 
+Implementation boundary:
+- Capture module la write owner cua capture_items va tiep tuc ghi/xoa item trong processing transaction hien tai.
+- Inbox la top-level read-only module rieng, query capture_items qua InboxItemQueryPort va JDBC adapter cua chinh no.
+- Inbox khong goi CaptureService; Capture va Inbox khong import Java type cua nhau.
+- Viec tach module khong them HTTP request, khong doi database schema va khong doi API contract.
+
 ----------------------------------------------------------------------
 
 GET /api/v1/inbox

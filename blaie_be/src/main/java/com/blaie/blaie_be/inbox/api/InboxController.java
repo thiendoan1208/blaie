@@ -1,10 +1,10 @@
-package com.blaie.blaie_be.capture.api;
+package com.blaie.blaie_be.inbox.api;
 
-import com.blaie.blaie_be.capture.api.response.CaptureItemResponse;
-import com.blaie.blaie_be.capture.application.CaptureService;
-import com.blaie.blaie_be.capture.application.result.InboxPageResult;
 import com.blaie.blaie_be.core.response.ApiResponse;
 import com.blaie.blaie_be.core.response.PageMeta;
+import com.blaie.blaie_be.inbox.api.response.InboxItemResponse;
+import com.blaie.blaie_be.inbox.application.InboxQueryService;
+import com.blaie.blaie_be.inbox.application.result.InboxPageResult;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.List;
@@ -20,27 +20,27 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RequestMapping("/api/v1/inbox")
 public class InboxController {
-    private final CaptureService captureService;
+    private final InboxQueryService inboxQueryService;
 
-    public InboxController(CaptureService captureService) {
-        this.captureService = captureService;
+    public InboxController(InboxQueryService inboxQueryService) {
+        this.inboxQueryService = inboxQueryService;
     }
 
     @GetMapping
-    public ApiResponse<List<CaptureItemResponse>> inbox(
+    public ApiResponse<List<InboxItemResponse>> inbox(
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int limit
     ) {
-        InboxPageResult page = captureService.inbox(cursor, limit);
+        InboxPageResult page = inboxQueryService.inbox(cursor, limit);
         return ApiResponse.of(
-                page.items().stream().map(CaptureItemResponse::from).toList(),
+                page.items().stream().map(InboxItemResponse::from).toList(),
                 null,
                 PageMeta.of(page.nextCursor(), page.hasMore(), page.limit())
         );
     }
 
     @GetMapping("/items/{itemId}")
-    public ApiResponse<CaptureItemResponse> inboxItem(@PathVariable UUID itemId) {
-        return ApiResponse.of(CaptureItemResponse.from(captureService.inboxItem(itemId)));
+    public ApiResponse<InboxItemResponse> inboxItem(@PathVariable UUID itemId) {
+        return ApiResponse.of(InboxItemResponse.from(inboxQueryService.inboxItem(itemId)));
     }
 }

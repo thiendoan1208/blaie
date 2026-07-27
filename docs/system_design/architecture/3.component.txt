@@ -4,7 +4,7 @@ Purpose
 -------
 This document contains the current implementation snapshot followed by the target MVP V1 component model.
 
-Current implementation note (2026-07-26)
+Current implementation note (2026-07-27)
 ----------------------------------------
 
 The backend currently runs as one deployable Spring Boot modular monolith. API, outbox publication, Redis Stream
@@ -15,7 +15,10 @@ Implemented top-level modules:
 
 - auth: identity/session lifecycle, local auth, Google OAuth, verification, password reset and account credentials.
 - authz: regular-user permission enrichment and permission-plus-ownership decisions.
-- capture: text Capture/Inbox API, durable workflow, Redis transport, AI classification and admin job operations.
+- capture: text/voice Capture ingestion, durable workflow, Redis transport, AI classification, Capture item writes
+  and admin job operations.
+- inbox: owner-scoped read-only query module over the completed capture_items projection. It does not call
+  CaptureService; Capture and Inbox have no direct Java dependency.
 - audit: privacy-safe access audit recording and admin audit query.
 - retention: scheduled bounded cleanup for completed jobs/outbox rows, expired idempotency keys and audit events.
 - configuration: application-wide Spring Security filter-chain composition.
@@ -41,11 +44,22 @@ Implemented text Capture path:
     -> generation/lease-fenced worker
     -> content and PII policy
     -> AI provider adapter
-    -> PostgreSQL Capture/Inbox terminal result
+    -> PostgreSQL Capture terminal result and capture_items projection
+
+Implemented Inbox read path:
+
+  GET /api/v1/inbox
+    -> InboxQueryService permission and signed-cursor validation
+    -> InboxItemQueryPort
+    -> read-only JDBC query over capture_items
+
+Capture owns writes to capture_items inside the existing processing transaction. Inbox owns only the read API and
+query adapter. Neither module imports the other; their incremental modular-monolith integration is the database
+projection contract.
 
 PostgreSQL is authoritative. Redis is at-least-once wake-up transport and does not carry raw Capture text.
-Voice/audio and image ingestion, object storage and their processors are target components, not implemented
-components. Tasks, Calendar, Reminders and Information currently exist as navigation/category concepts; their
+Image ingestion, object storage and its processor are target components, not implemented components. Tasks,
+Calendar, Reminders and Information currently exist as navigation/category concepts; their
 standalone CRUD modules are not implemented.
 
 Target-model scope

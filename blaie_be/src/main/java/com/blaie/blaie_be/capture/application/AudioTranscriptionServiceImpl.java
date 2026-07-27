@@ -39,7 +39,8 @@ public class AudioTranscriptionServiceImpl implements AudioTranscriptionService 
         String requestedLanguage = requireLanguage(language);
 
         String transcript;
-        try (TranscriptionConcurrencyPort.Permit ignored = concurrency.acquire()) {
+        TranscriptionConcurrencyPort.Permit permit = concurrency.acquire();
+        try (permit) {
             transcript = speechToText.transcribe(audio, requestedLanguage);
         }
         if (transcript == null || transcript.trim().isEmpty()) {

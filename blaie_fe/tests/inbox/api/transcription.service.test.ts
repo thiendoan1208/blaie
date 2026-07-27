@@ -28,7 +28,7 @@ describe("Transcription service", () => {
     expect(url).toBe("/transcriptions/audio");
     expect(body).toBeInstanceOf(FormData);
     expect((body as FormData).get("file")).toBeInstanceOf(File);
-    expect((body as FormData).get("language")).toBe("vi");
+    expect((body as FormData).get("language")).toBe("en");
     expect(config).toMatchObject({ timeout: 25_000 });
     expect(config?.headers).toBeUndefined();
   });

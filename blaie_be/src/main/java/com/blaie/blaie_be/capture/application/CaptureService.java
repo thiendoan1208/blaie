@@ -1,10 +1,8 @@
 package com.blaie.blaie_be.capture.application;
 
-import com.blaie.blaie_be.capture.application.result.CaptureItemResult;
 import com.blaie.blaie_be.capture.application.result.CaptureResult;
-import com.blaie.blaie_be.capture.application.result.InboxPageResult;
-import java.util.UUID;
 import java.util.List;
+import java.util.UUID;
 
 public interface CaptureService {
     CaptureResult captureText(String text, String idempotencyKey);
@@ -18,8 +16,4 @@ public interface CaptureService {
     CaptureResult retry(UUID captureId);
 
     void delete(UUID captureId);
-
-    InboxPageResult inbox(String cursor, int limit);
-
-    CaptureItemResult inboxItem(UUID itemId);
 }

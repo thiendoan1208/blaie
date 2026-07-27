@@ -2,16 +2,12 @@ package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.authz.application.AuthorizationService;
 import com.blaie.blaie_be.authz.domain.PermissionAction;
-import com.blaie.blaie_be.capture.application.port.CaptureItemStorePort;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
 import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
-import com.blaie.blaie_be.capture.application.result.CaptureItemResult;
 import com.blaie.blaie_be.capture.application.result.CaptureResult;
-import com.blaie.blaie_be.capture.application.result.InboxPageResult;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.core.cursor.SignedCursorCodec;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.request.RequestContextHolder;
@@ -30,33 +26,26 @@ import org.springframework.stereotype.Service;
 public class CaptureServiceImpl implements CaptureService {
     private static final int MAX_LIMIT = 50;
     private static final int MAX_TEXT_LENGTH = 10_000;
-    private static final String INBOX_CURSOR_AUDIENCE = "inbox-items";
 
-    private final CaptureItemStorePort captureItemStore;
     private final CaptureWorkflowStorePort workflowStore;
     private final CaptureProcessingSettingsPort settings;
     private final Clock clock;
     private final CaptureTelemetryPort telemetry;
-    private final SignedCursorCodec cursorCodec;
     private final CaptureContentPolicy contentPolicy;
     private final AuthorizationService authorization;
 
     public CaptureServiceImpl(
-            CaptureItemStorePort captureItemStore,
             CaptureWorkflowStorePort workflowStore,
             CaptureProcessingSettingsPort settings,
             Clock clock,
             CaptureTelemetryPort telemetry,
-            SignedCursorCodec cursorCodec,
             CaptureContentPolicy contentPolicy,
             AuthorizationService authorization
     ) {
-        this.captureItemStore = captureItemStore;
         this.workflowStore = workflowStore;
         this.settings = settings;
         this.clock = clock;
         this.telemetry = telemetry;
-        this.cursorCodec = cursorCodec;
         this.contentPolicy = contentPolicy;
         this.authorization = authorization;
     }
@@ -126,29 +115,6 @@ public class CaptureServiceImpl implements CaptureService {
         }
     }
 
-    @Override
-    public InboxPageResult inbox(String cursor, int limit) {
-        authorization.require(PermissionAction.INBOX_READ);
-        int safeLimit = validateLimit(limit);
-        UUID userId = currentUserId();
-        Cursor decodedCursor = cursor == null || cursor.isBlank() ? null : decodeCursor(cursor, userId);
-        List<CaptureItemResult> records = decodedCursor == null
-                ? captureItemStore.findFirstPage(userId, safeLimit + 1)
-                : captureItemStore.findPageAfter(userId, decodedCursor.createdAt(), decodedCursor.itemId(), safeLimit + 1);
-
-        boolean hasMore = records.size() > safeLimit;
-        List<CaptureItemResult> items = hasMore ? records.subList(0, safeLimit) : records;
-        String nextCursor = hasMore ? encodeCursor(items.getLast(), userId) : null;
-        return new InboxPageResult(List.copyOf(items), nextCursor, hasMore, safeLimit);
-    }
-
-    @Override
-    public CaptureItemResult inboxItem(UUID itemId) {
-        authorization.require(PermissionAction.ITEM_READ);
-        return captureItemStore.findOwned(itemId, currentUserId())
-                .orElseThrow(() -> new AppException(ErrorCode.CAPTURE_ITEM_NOT_FOUND));
-    }
-
     private UUID currentUserId() {
         try {
             return UUID.fromString(CurrentUserHolder.requireCurrentUser().userId());
@@ -206,24 +172,4 @@ public class CaptureServiceImpl implements CaptureService {
         return limit;
     }
 
-    private String encodeCursor(CaptureItemResult item, UUID userId) {
-        String value = userId + "|" + item.createdAt() + "|" + item.id();
-        return cursorCodec.encode(INBOX_CURSOR_AUDIENCE, value);
-    }
-
-    private Cursor decodeCursor(String cursor, UUID userId) {
-        try {
-            String decoded = cursorCodec.decode(INBOX_CURSOR_AUDIENCE, cursor);
-            String[] parts = decoded.split("\\|", -1);
-            if (parts.length != 3 || !userId.equals(UUID.fromString(parts[0]))) {
-                throw new IllegalArgumentException();
-            }
-            return new Cursor(Instant.parse(parts[1]), UUID.fromString(parts[2]));
-        } catch (IllegalArgumentException exception) {
-            throw new AppException(ErrorCode.VALIDATION_ERROR, "cursor is invalid");
-        }
-    }
-
-    private record Cursor(Instant createdAt, UUID itemId) {
-    }
 }
