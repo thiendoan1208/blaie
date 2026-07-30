@@ -5,8 +5,8 @@ import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.Provider
 import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.core.request.MdcContextScope;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -48,8 +48,8 @@ public class AiProviderRouter implements TextClassifierPort {
 
     @Override
     public CaptureAnalysis classify(String text) {
-        TextClassificationException lastProviderRetryableFailure = null;
-        TextClassificationException lastProviderTerminalFailure = null;
+        CaptureAnalysisException lastProviderRetryableFailure = null;
+        CaptureAnalysisException lastProviderTerminalFailure = null;
         for (String providerId : route()) {
             TextClassifierProvider provider = providers.get(providerId);
             if (provider == null) {
@@ -62,8 +62,8 @@ public class AiProviderRouter implements TextClassifierPort {
             ))) {
                 try (ProviderConcurrencyLimiter.Permit _ = concurrencyLimiter.acquire(providerId)) {
                     return classifyWithProviderMetrics(provider, providerId, text);
-                } catch (TextClassificationException exception) {
-                    TextClassificationFailureClass failureClass = exception.failureClass();
+                } catch (CaptureAnalysisException exception) {
+                    CaptureFailureClass failureClass = exception.failureClass();
                     if (!failureClass.providerFallbackAllowed()) {
                         throw exception;
                     }
@@ -73,7 +73,7 @@ public class AiProviderRouter implements TextClassifierPort {
                             exception.failureCode(),
                             failureClass.value()
                     );
-                    if (failureClass == TextClassificationFailureClass.PROVIDER_RETRYABLE) {
+                    if (failureClass == CaptureFailureClass.PROVIDER_RETRYABLE) {
                         lastProviderRetryableFailure = exception;
                     } else {
                         lastProviderTerminalFailure = exception;
@@ -104,7 +104,7 @@ public class AiProviderRouter implements TextClassifierPort {
                     ProviderOutcome.SUCCESS
             );
             return analysis;
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             telemetry.recordProviderDuration(
                     elapsed(startedAtNanos),
                     providerId,
@@ -118,14 +118,14 @@ public class AiProviderRouter implements TextClassifierPort {
                     providerId,
                     ProviderOutcome.FAILURE
             );
-            telemetry.incrementProviderError(providerId, TextClassificationFailureClass.SYSTEM_RETRYABLE);
+            telemetry.incrementProviderError(providerId, CaptureFailureClass.SYSTEM_RETRYABLE);
             throw exception;
         }
     }
 
-    private TextClassificationFailureClass safeFailureClass(TextClassificationFailureClass failureClass) {
+    private CaptureFailureClass safeFailureClass(CaptureFailureClass failureClass) {
         return failureClass == null
-                ? TextClassificationFailureClass.SYSTEM_RETRYABLE
+                ? CaptureFailureClass.SYSTEM_RETRYABLE
                 : failureClass;
     }
 
@@ -133,14 +133,14 @@ public class AiProviderRouter implements TextClassifierPort {
         return Duration.ofNanos(System.nanoTime() - startedAtNanos);
     }
 
-    private TextClassificationException providerNotConfigured(String providerId) {
+    private CaptureAnalysisException providerNotConfigured(String providerId) {
         String message = providerId.isBlank()
                 ? "No AI provider is configured"
                 : "AI provider is not configured: " + providerId;
-        return new TextClassificationException(
+        return new CaptureAnalysisException(
                 "ai_provider_not_configured",
                 message,
-                TextClassificationFailureClass.PROVIDER_TERMINAL
+                CaptureFailureClass.PROVIDER_TERMINAL
         );
     }
 

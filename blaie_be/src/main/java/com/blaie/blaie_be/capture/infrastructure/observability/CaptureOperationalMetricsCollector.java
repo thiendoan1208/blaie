@@ -206,7 +206,7 @@ public class CaptureOperationalMetricsCollector {
                 .description("Number of capture jobs with an active database lease")
                 .register(registry);
         Gauge.builder("capture.outbox.backlog", outboxBacklog, AtomicLong::doubleValue)
-                .description("Incomplete text-capture outbox publications")
+                .description("Incomplete capture-job outbox publications")
                 .register(registry);
         TimeGauge.builder(
                         "capture.outbox.oldest.age",
@@ -214,7 +214,7 @@ public class CaptureOperationalMetricsCollector {
                         TimeUnit.SECONDS,
                         AtomicReference::get
                 )
-                .description("Age of the oldest incomplete text-capture outbox publication")
+                .description("Age of the oldest incomplete capture-job outbox publication")
                 .register(registry);
         Gauge.builder(
                         "capture.storage.deletion.depth",

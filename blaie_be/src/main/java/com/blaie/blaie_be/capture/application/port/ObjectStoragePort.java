@@ -12,6 +12,8 @@ public interface ObjectStoragePort {
 
     void delete(String objectKey);
 
+    boolean exists(String objectKey);
+
     default StoredObjectPage list(String prefix, String continuationToken, int limit) {
         throw new UnsupportedOperationException("Object listing is not supported");
     }

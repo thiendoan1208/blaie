@@ -2,14 +2,13 @@ package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.ImageAnalysisInput;
 import com.blaie.blaie_be.capture.application.port.ImageAnalyzerPort;
-import com.blaie.blaie_be.capture.application.port.ImageCaptureSettingsPort;
 import com.blaie.blaie_be.capture.application.port.ObjectStoragePort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.result.ProcessingAssetResult;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -19,22 +18,18 @@ public class CaptureAnalysisRouter {
     private final ObjectStoragePort objectStorage;
     private final CaptureContentPolicy contentPolicy;
     private final CapturePiiPolicy piiPolicy;
-    private final ImageCaptureSettingsPort imageSettings;
-
     public CaptureAnalysisRouter(
             TextClassifierPort textClassifier,
             ImageAnalyzerPort imageAnalyzer,
             ObjectStoragePort objectStorage,
             CaptureContentPolicy contentPolicy,
-            CapturePiiPolicy piiPolicy,
-            ImageCaptureSettingsPort imageSettings
+            CapturePiiPolicy piiPolicy
     ) {
         this.textClassifier = textClassifier;
         this.imageAnalyzer = imageAnalyzer;
         this.objectStorage = objectStorage;
         this.contentPolicy = contentPolicy;
         this.piiPolicy = piiPolicy;
-        this.imageSettings = imageSettings;
     }
 
     public CaptureAnalysis analyze(ProcessingJobResult job) {
@@ -54,13 +49,6 @@ public class CaptureAnalysisRouter {
     }
 
     private CaptureAnalysis analyzeImage(ProcessingJobResult job) {
-        if (!imageSettings.workerEnabled()) {
-            throw new TextClassificationException(
-                    "image_worker_disabled",
-                    "Image worker capability is disabled",
-                    TextClassificationFailureClass.SYSTEM_RETRYABLE
-            );
-        }
         if (job.assets().size() != 1) {
             throw terminal("image_asset_missing", "Image capture asset is missing");
         }
@@ -69,10 +57,10 @@ public class CaptureAnalysisRouter {
         try {
             bytes = objectStorage.get(asset.objectKey());
         } catch (RuntimeException exception) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "image_storage_unavailable",
                     "Image storage read failed",
-                    TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                    CaptureFailureClass.SYSTEM_RETRYABLE,
                     exception
             );
         }
@@ -92,11 +80,11 @@ public class CaptureAnalysisRouter {
         return prepared == null ? analysis : piiPolicy.restore(prepared, analysis);
     }
 
-    private TextClassificationException terminal(String code, String message) {
-        return new TextClassificationException(
+    private CaptureAnalysisException terminal(String code, String message) {
+        return new CaptureAnalysisException(
                 code,
                 message,
-                TextClassificationFailureClass.CONTENT_TERMINAL
+                CaptureFailureClass.CONTENT_TERMINAL
         );
     }
 }

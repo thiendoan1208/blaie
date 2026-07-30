@@ -4,14 +4,14 @@ import com.blaie.blaie_be.core.request.RequestIdPolicy;
 import java.util.Objects;
 import java.util.UUID;
 
-public record TextCaptureQueuedEvent(
+public record CaptureJobQueuedEvent(
         UUID eventId,
         UUID jobId,
         UUID captureId,
         int dispatchGeneration,
         String originRequestId
 ) {
-    public TextCaptureQueuedEvent {
+    public CaptureJobQueuedEvent {
         Objects.requireNonNull(eventId, "eventId");
         Objects.requireNonNull(jobId, "jobId");
         Objects.requireNonNull(captureId, "captureId");

@@ -1,11 +1,11 @@
 package com.blaie.blaie_be.capture.infrastructure.async;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult.RecoveryOutcome;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -53,13 +53,13 @@ class CaptureJobRecoverySchedulerTest {
                         UUID.randomUUID(),
                         UUID.randomUUID(),
                         RecoveryOutcome.RETRY_SCHEDULED,
-                        TextClassificationFailureClass.SYSTEM_RETRYABLE
+                        CaptureFailureClass.SYSTEM_RETRYABLE
                 ),
                 new RecoveredJobResult(
                         UUID.randomUUID(),
                         UUID.randomUUID(),
                         RecoveryOutcome.DEAD,
-                        TextClassificationFailureClass.SYSTEM_RETRYABLE
+                        CaptureFailureClass.SYSTEM_RETRYABLE
                 )
         ));
         CaptureJobRecoveryScheduler scheduler = new CaptureJobRecoveryScheduler(
@@ -76,7 +76,7 @@ class CaptureJobRecoverySchedulerTest {
         verify(telemetry).incrementRetry(CaptureTelemetryPort.RetrySource.STALE_RECOVERY);
         verify(telemetry).incrementDead(
                 CaptureTelemetryPort.DeadSource.STALE_RECOVERY,
-                TextClassificationFailureClass.SYSTEM_RETRYABLE
+                CaptureFailureClass.SYSTEM_RETRYABLE
         );
     }
 
@@ -121,8 +121,8 @@ class CaptureJobRecoverySchedulerTest {
         return publication;
     }
 
-    private TextCaptureQueuedEvent queueEvent() {
-        return new TextCaptureQueuedEvent(
+    private CaptureJobQueuedEvent queueEvent() {
+        return new CaptureJobQueuedEvent(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),

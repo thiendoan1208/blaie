@@ -2,7 +2,6 @@ package com.blaie.blaie_be.capture.application;
 
 import com.blaie.blaie_be.capture.application.port.ImageAnalysisInput;
 import com.blaie.blaie_be.capture.application.port.ImageAnalyzerPort;
-import com.blaie.blaie_be.capture.application.port.ImageCaptureSettingsPort;
 import com.blaie.blaie_be.capture.application.port.ObjectStoragePort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.result.ProcessingAssetResult;
@@ -29,14 +28,12 @@ class CaptureAnalysisRouterTest {
     private final TextClassifierPort textClassifier = mock(TextClassifierPort.class);
     private final ImageAnalyzerPort imageAnalyzer = mock(ImageAnalyzerPort.class);
     private final ObjectStoragePort storage = mock(ObjectStoragePort.class);
-    private final ImageCaptureSettingsPort imageSettings = () -> true;
     private final CaptureAnalysisRouter router = new CaptureAnalysisRouter(
             textClassifier,
             imageAnalyzer,
             storage,
             new CaptureContentPolicy(),
-            new CapturePiiPolicy(() -> CapturePiiMode.MASK_STRUCTURED),
-            imageSettings
+            new CapturePiiPolicy(() -> CapturePiiMode.MASK_STRUCTURED)
     );
 
     @Test

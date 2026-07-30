@@ -356,5 +356,10 @@ class ImageCaptureServiceTest {
         public void delete(String objectKey) {
             deleteObjectKey = objectKey;
         }
+
+        @Override
+        public boolean exists(String objectKey) {
+            return false;
+        }
     }
 }

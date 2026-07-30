@@ -14,7 +14,6 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "blaie.capture.image")
 public class ImageCaptureProperties implements ImageCaptureSettingsPort {
     private boolean enabled;
-    private boolean workerEnabled;
 
     @NotNull
     private DataSize maxFileSize = DataSize.ofMegabytes(10);
@@ -33,11 +32,6 @@ public class ImageCaptureProperties implements ImageCaptureSettingsPort {
 
     public boolean enabled() {
         return enabled;
-    }
-
-    @Override
-    public boolean workerEnabled() {
-        return workerEnabled;
     }
 
     public DataSize maxFileSize() {
@@ -62,10 +56,6 @@ public class ImageCaptureProperties implements ImageCaptureSettingsPort {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
-    }
-
-    public void setWorkerEnabled(boolean workerEnabled) {
-        this.workerEnabled = workerEnabled;
     }
 
     public void setMaxFileSize(DataSize maxFileSize) {

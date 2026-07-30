@@ -4,7 +4,7 @@ import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.CapturePiiMode;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -61,7 +61,7 @@ class CapturePiiPolicyTest {
                 placeholder + " __BLAIE_PII_broken__"
         )) {
             assertThatThrownBy(() -> policy.restore(prepared, analysis(invalid)))
-                    .isInstanceOfSatisfying(TextClassificationException.class, exception ->
+                    .isInstanceOfSatisfying(CaptureAnalysisException.class, exception ->
                             assertThat(exception.failureCode()).isEqualTo("ai_invalid_response"));
         }
     }

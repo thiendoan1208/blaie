@@ -13,7 +13,7 @@ import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.DeadSource;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.core.cursor.SignedCursorCodec;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
@@ -119,7 +119,7 @@ public class CaptureJobAdminServiceImpl implements CaptureJobAdminService {
                 context.requestId(),
                 clock.instant()
         );
-        telemetry.incrementDead(DeadSource.OPERATOR, TextClassificationFailureClass.SYSTEM_RETRYABLE);
+        telemetry.incrementDead(DeadSource.OPERATOR, CaptureFailureClass.SYSTEM_RETRYABLE);
         logOperation("mark_dead", mutation);
         return mutation.job();
     }

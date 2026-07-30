@@ -1,7 +1,7 @@
 package com.blaie.blaie_be.capture.application.admin.result;
 
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -19,7 +19,7 @@ public record AdminProcessingJobResult(
         Instant availableAt,
         Instant leaseExpiresAt,
         String lastErrorCode,
-        TextClassificationFailureClass lastFailureClass,
+        CaptureFailureClass lastFailureClass,
         boolean manualRetryAllowed,
         Instant lastDispatchedAt,
         Instant nextDispatchAt,

@@ -1,7 +1,7 @@
 package com.blaie.blaie_be;
 
 import com.blaie.blaie_be.auth.infrastructure.security.AuthTokenService;
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.core.request.RequestContextFilter;
@@ -148,7 +148,7 @@ class AdminCaptureOperationsWebTest {
                 "provider_retryable",
                 null
         );
-        insertOutbox(false, TextCaptureQueuedEvent.class.getName(), "capture-text-job-redis-publisher", base);
+        insertOutbox(false, CaptureJobQueuedEvent.class.getName(), "capture-job-redis-publisher", base);
 
         mockMvc.perform(get("/api/v1/admin/capture/jobs"))
                 .andExpect(status().isUnauthorized())
@@ -433,24 +433,24 @@ class AdminCaptureOperationsWebTest {
         Instant now = Instant.now();
         insertOutbox(
                 false,
-                TextCaptureQueuedEvent.class.getName(),
-                "capture-text-job-redis-publisher",
+                CaptureJobQueuedEvent.class.getName(),
+                "capture-job-redis-publisher",
                 now.minusSeconds(120)
         );
         insertOutbox(
                 false,
-                TextCaptureQueuedEvent.class.getName(),
-                "capture-text-job-redis-publisher",
+                CaptureJobQueuedEvent.class.getName(),
+                "capture-job-redis-publisher",
                 now.minusSeconds(30)
         );
         insertOutbox(
                 true,
-                TextCaptureQueuedEvent.class.getName(),
-                "capture-text-job-redis-publisher",
+                CaptureJobQueuedEvent.class.getName(),
+                "capture-job-redis-publisher",
                 now.minusSeconds(300)
         );
-        insertOutbox(false, "other.Event", "capture-text-job-redis-publisher", now.minusSeconds(400));
-        insertOutbox(false, TextCaptureQueuedEvent.class.getName(), "other-listener", now.minusSeconds(500));
+        insertOutbox(false, "other.Event", "capture-job-redis-publisher", now.minusSeconds(400));
+        insertOutbox(false, CaptureJobQueuedEvent.class.getName(), "other-listener", now.minusSeconds(500));
 
         MvcResult result = mockMvc.perform(get("/api/v1/admin/capture/outbox/summary")
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.token())))
@@ -562,8 +562,8 @@ class AdminCaptureOperationsWebTest {
                 : null;
         jdbcTemplate.update("""
                 insert into captures (
-                    id, user_id, original_text, processing_status, failure_code, created_at, updated_at
-                ) values (?, ?, ?, ?, ?, ?, ?)
+                    id, user_id, input_type, original_text, processing_status, failure_code, created_at, updated_at
+                ) values (?, ?, 'text', ?, ?, ?, ?, ?)
                 """,
                 captureId,
                 userId,
@@ -675,7 +675,7 @@ class AdminCaptureOperationsWebTest {
             case "content_terminal" -> "sensitive_credential_detected";
             case "provider_terminal" -> "ai_provider_rejected";
             case "provider_retryable" -> "ai_provider_unavailable";
-            default -> "unexpected_classification_error";
+            default -> "unexpected_analysis_error";
         };
     }
 

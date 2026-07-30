@@ -2,8 +2,8 @@ package com.blaie.blaie_be.capture.infrastructure.ai;
 
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.ConcurrencyWaitOutcome;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -98,14 +98,14 @@ class RedisProviderConcurrencyLimiterTest {
         RedisProviderConcurrencyLimiter limiter = limiter(redisTemplate, properties);
 
         assertThatThrownBy(() -> limiter.acquire("deepseek"))
-                .isInstanceOf(TextClassificationException.class)
+                .isInstanceOf(CaptureAnalysisException.class)
                 .satisfies(exception -> {
-                    TextClassificationException classificationException =
-                            (TextClassificationException) exception;
+                    CaptureAnalysisException classificationException =
+                            (CaptureAnalysisException) exception;
                     assertThat(classificationException.failureCode())
                             .isEqualTo("ai_concurrency_backend_unavailable");
                     assertThat(classificationException.failureClass())
-                            .isEqualTo(TextClassificationFailureClass.SYSTEM_RETRYABLE);
+                            .isEqualTo(CaptureFailureClass.SYSTEM_RETRYABLE);
                     assertThat(classificationException.getCause()).isSameAs(redisFailure);
                 });
     }
@@ -118,14 +118,14 @@ class RedisProviderConcurrencyLimiterTest {
         Thread.currentThread().interrupt();
         try {
             assertThatThrownBy(() -> limiter.acquire("deepseek"))
-                    .isInstanceOf(TextClassificationException.class)
+                    .isInstanceOf(CaptureAnalysisException.class)
                     .satisfies(exception -> {
-                        TextClassificationException classificationException =
-                                (TextClassificationException) exception;
+                        CaptureAnalysisException classificationException =
+                                (CaptureAnalysisException) exception;
                         assertThat(classificationException.failureCode())
                                 .isEqualTo("ai_concurrency_wait_interrupted");
                         assertThat(classificationException.failureClass())
-                                .isEqualTo(TextClassificationFailureClass.SYSTEM_RETRYABLE);
+                                .isEqualTo(CaptureFailureClass.SYSTEM_RETRYABLE);
                     });
             verifyNoInteractions(redisTemplate);
         } finally {

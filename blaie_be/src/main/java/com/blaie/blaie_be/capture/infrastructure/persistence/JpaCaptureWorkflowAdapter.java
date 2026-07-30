@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.port.CaptureJobDispatchPort;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.application.port.CaptureAssetDraft;
@@ -20,7 +20,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +34,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort, Imag
     private final CaptureItemRepository captureItemRepository;
     private final ProcessingJobRepository jobRepository;
     private final CaptureIdempotencyKeyRepository idempotencyRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final CaptureJobDispatchPort jobDispatch;
     private final CaptureProcessingSettingsPort settings;
     private final JpaCaptureAdmissionGuard admissionGuard;
     private final JpaCaptureJobRestartCoordinator restartCoordinator;
@@ -47,7 +46,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort, Imag
             CaptureItemRepository captureItemRepository,
             ProcessingJobRepository jobRepository,
             CaptureIdempotencyKeyRepository idempotencyRepository,
-            ApplicationEventPublisher eventPublisher,
+            CaptureJobDispatchPort jobDispatch,
             CaptureProcessingSettingsPort settings,
             JpaCaptureAdmissionGuard admissionGuard,
             JpaCaptureJobRestartCoordinator restartCoordinator,
@@ -58,7 +57,7 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort, Imag
         this.captureItemRepository = captureItemRepository;
         this.jobRepository = jobRepository;
         this.idempotencyRepository = idempotencyRepository;
-        this.eventPublisher = eventPublisher;
+        this.jobDispatch = jobDispatch;
         this.settings = settings;
         this.admissionGuard = admissionGuard;
         this.restartCoordinator = restartCoordinator;
@@ -285,13 +284,12 @@ public class JpaCaptureWorkflowAdapter implements CaptureWorkflowStorePort, Imag
     }
 
     private void publishDispatch(ProcessingJobEntity job) {
-        eventPublisher.publishEvent(new TextCaptureQueuedEvent(
-                UUID.randomUUID(),
+        jobDispatch.publish(
                 job.id(),
                 job.captureId(),
                 job.dispatchGeneration(),
                 job.originRequestId()
-        ));
+        );
     }
 
     private CaptureResult resolveExisting(

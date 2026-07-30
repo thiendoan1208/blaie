@@ -3,6 +3,8 @@ package com.blaie.blaie_be.capture.infrastructure.storage;
 import com.blaie.blaie_be.capture.application.port.ObjectStoragePort;
 import com.blaie.blaie_be.capture.application.port.StoredObject;
 import com.blaie.blaie_be.capture.application.port.StoredObjectPage;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.StorageOperation;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import java.net.URI;
@@ -18,20 +20,32 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 @Component
 public class R2ObjectStorageAdapter implements ObjectStoragePort {
     private final R2Properties properties;
+    private final CaptureTelemetryPort telemetry;
     private volatile S3Client s3;
     private volatile S3Presigner presigner;
 
     @Autowired
-    public R2ObjectStorageAdapter(R2Properties properties) {
+    public R2ObjectStorageAdapter(
+            R2Properties properties,
+            CaptureTelemetryPort telemetry
+    ) {
         this.properties = properties;
+        this.telemetry = telemetry;
+    }
+
+    R2ObjectStorageAdapter(R2Properties properties) {
+        this.properties = properties;
+        this.telemetry = null;
     }
 
     R2ObjectStorageAdapter(
@@ -39,7 +53,17 @@ public class R2ObjectStorageAdapter implements ObjectStoragePort {
             S3Client s3,
             S3Presigner presigner
     ) {
+        this(properties, s3, presigner, null);
+    }
+
+    R2ObjectStorageAdapter(
+            R2Properties properties,
+            S3Client s3,
+            S3Presigner presigner,
+            CaptureTelemetryPort telemetry
+    ) {
         this.properties = properties;
+        this.telemetry = telemetry;
         this.s3 = s3;
         this.presigner = presigner;
     }
@@ -57,7 +81,11 @@ public class R2ObjectStorageAdapter implements ObjectStoragePort {
                     RequestBody.fromBytes(bytes)
             );
         } catch (SdkException exception) {
+            recordError(StorageOperation.UPLOAD);
             throw unavailable(exception);
+        } catch (AppException exception) {
+            recordError(StorageOperation.UPLOAD);
+            throw exception;
         }
     }
 
@@ -69,7 +97,11 @@ public class R2ObjectStorageAdapter implements ObjectStoragePort {
                     .key(objectKey)
                     .build()).asByteArray();
         } catch (SdkException exception) {
+            recordError(StorageOperation.DOWNLOAD);
             throw unavailable(exception);
+        } catch (AppException exception) {
+            recordError(StorageOperation.DOWNLOAD);
+            throw exception;
         }
     }
 
@@ -83,8 +115,13 @@ public class R2ObjectStorageAdapter implements ObjectStoragePort {
                             .key(objectKey))
                     .build()).url().toURI();
         } catch (SdkException exception) {
+            recordError(StorageOperation.SIGN_READ);
             throw unavailable(exception);
+        } catch (AppException exception) {
+            recordError(StorageOperation.SIGN_READ);
+            throw exception;
         } catch (Exception exception) {
+            recordError(StorageOperation.SIGN_READ);
             throw new AppException(ErrorCode.IMAGE_STORAGE_UNAVAILABLE);
         }
     }
@@ -97,7 +134,34 @@ public class R2ObjectStorageAdapter implements ObjectStoragePort {
                     .key(objectKey)
                     .build());
         } catch (SdkException exception) {
+            recordError(StorageOperation.DELETE);
             throw unavailable(exception);
+        } catch (AppException exception) {
+            recordError(StorageOperation.DELETE);
+            throw exception;
+        }
+    }
+
+    @Override
+    public boolean exists(String objectKey) {
+        try {
+            client().headObject(HeadObjectRequest.builder()
+                    .bucket(requireBucket())
+                    .key(objectKey)
+                    .build());
+            return true;
+        } catch (S3Exception exception) {
+            if (exception.statusCode() == 404) {
+                return false;
+            }
+            recordError(StorageOperation.HEAD);
+            throw unavailable(exception);
+        } catch (SdkException exception) {
+            recordError(StorageOperation.HEAD);
+            throw unavailable(exception);
+        } catch (AppException exception) {
+            recordError(StorageOperation.HEAD);
+            throw exception;
         }
     }
 
@@ -120,7 +184,11 @@ public class R2ObjectStorageAdapter implements ObjectStoragePort {
                             : null
             );
         } catch (SdkException exception) {
+            recordError(StorageOperation.LIST);
             throw unavailable(exception);
+        } catch (AppException exception) {
+            recordError(StorageOperation.LIST);
+            throw exception;
         }
     }
 
@@ -184,5 +252,11 @@ public class R2ObjectStorageAdapter implements ObjectStoragePort {
 
     private AppException unavailable(SdkException exception) {
         return new AppException(ErrorCode.IMAGE_STORAGE_UNAVAILABLE);
+    }
+
+    private void recordError(StorageOperation operation) {
+        if (telemetry != null) {
+            telemetry.incrementStorageError(operation);
+        }
     }
 }

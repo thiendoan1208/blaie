@@ -4,7 +4,7 @@ import com.blaie.blaie_be.capture.application.admin.port.AdminProcessingJobComma
 import com.blaie.blaie_be.capture.application.admin.result.AdminProcessingJobMutationResult;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.capture.infrastructure.persistence.CaptureEntity;
 import com.blaie.blaie_be.capture.infrastructure.persistence.CaptureItemRepository;
 import com.blaie.blaie_be.capture.infrastructure.persistence.CaptureRepository;
@@ -80,7 +80,7 @@ public class JpaAdminProcessingJobCommandAdapter implements AdminProcessingJobCo
             throw new AppException(ErrorCode.PROCESSING_JOB_MARK_DEAD_NOT_ALLOWED);
         }
 
-        job.dead(OPERATOR_MARKED_DEAD, TextClassificationFailureClass.SYSTEM_RETRYABLE, now);
+        job.dead(OPERATOR_MARKED_DEAD, CaptureFailureClass.SYSTEM_RETRYABLE, now);
         capture.fail(OPERATOR_MARKED_DEAD);
         captureItemRepository.deleteByCaptureId(capture.id());
         captureRepository.flush();

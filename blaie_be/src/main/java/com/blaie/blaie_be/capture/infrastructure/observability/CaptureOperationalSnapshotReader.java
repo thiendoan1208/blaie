@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.observability;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import java.sql.Timestamp;
 import java.time.Instant;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,7 +26,7 @@ public class CaptureOperationalSnapshotReader {
             FROM event_publication
             WHERE completion_date IS NULL
               AND event_type = ?
-              AND listener_id = 'capture-text-job-redis-publisher'
+              AND listener_id = 'capture-job-redis-publisher'
             """;
     static final String STORAGE_DELETION_SNAPSHOT_SQL = """
             SELECT COUNT(*) FILTER (
@@ -64,7 +64,7 @@ public class CaptureOperationalSnapshotReader {
                         resultSet.getLong("backlog_count"),
                         instant(resultSet.getTimestamp("oldest_publication_at"))
                 ),
-                TextCaptureQueuedEvent.class.getName()
+                CaptureJobQueuedEvent.class.getName()
         );
     }
 

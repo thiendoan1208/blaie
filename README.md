@@ -39,7 +39,7 @@ The backend is a modular monolith with top-level modules:
    storage before the database workflow is accepted.
 5. PostgreSQL atomically stores the Capture, optional asset metadata, processing job and transactional outbox
    publication.
-6. The unchanged legacy outbox listener publishes bounded identifiers to Redis.
+6. The generic capture-job outbox listener publishes bounded identifiers to Redis.
 7. A worker claims the durable job, reads `processing_jobs.job_type`, then calls DeepSeek for
    `text_classification` or reads the private object and calls Gemini for `image_analysis`.
 8. The frontend tracks processing Captures, resolves uncertain submissions and refreshes the Inbox.

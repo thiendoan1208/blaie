@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.application.result;
 
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -8,7 +8,7 @@ public record RecoveredJobResult(
         UUID jobId,
         UUID captureId,
         RecoveryOutcome outcome,
-        TextClassificationFailureClass failureClass
+        CaptureFailureClass failureClass
 ) {
     public RecoveredJobResult {
         Objects.requireNonNull(jobId, "jobId");

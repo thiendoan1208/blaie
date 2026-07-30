@@ -4,7 +4,7 @@
 
 Accepted
 
-The durable text-capture implementation and its recovery/retention semantics are refined by ADR-019.
+The durable Capture-analysis implementation and its recovery/retention semantics are refined by ADR-019.
 
 ## Context
 

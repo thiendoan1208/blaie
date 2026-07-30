@@ -12,8 +12,8 @@ import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CapturePiiMode;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -88,17 +88,17 @@ class CaptureJobProcessorTest {
     void transientFailureSchedulesBackoffWhileAttemptsRemain() {
         FakeJobStore store = new FakeJobStore(job(1, 4));
         CaptureJobProcessor processor = processor(store, text -> {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_provider_unavailable",
                     "safe internal detail",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+                    CaptureFailureClass.PROVIDER_RETRYABLE
             );
         }, new FakeHeartbeat());
 
         assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
         assertThat(store.retryError).isEqualTo("ai_provider_unavailable");
         assertThat(store.retryFailureClass)
-                .isEqualTo(TextClassificationFailureClass.PROVIDER_RETRYABLE);
+                .isEqualTo(CaptureFailureClass.PROVIDER_RETRYABLE);
         assertThat(store.retryAt).isEqualTo(NOW.plusSeconds(2));
         assertThat(store.retryWorkerId).isEqualTo("worker-1");
         assertThat(store.retryAttemptCount).isEqualTo(store.job.attemptCount());
@@ -110,17 +110,17 @@ class CaptureJobProcessorTest {
     void finalFailureMarksJobDead() {
         FakeJobStore store = new FakeJobStore(job(4, 4));
         CaptureJobProcessor processor = processor(store, text -> {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_invalid_response",
                     "invalid response",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+                    CaptureFailureClass.PROVIDER_RETRYABLE
             );
         }, new FakeHeartbeat());
 
         assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
         assertThat(store.deadError).isEqualTo("ai_invalid_response");
         assertThat(store.deadFailureClass)
-                .isEqualTo(TextClassificationFailureClass.PROVIDER_RETRYABLE);
+                .isEqualTo(CaptureFailureClass.PROVIDER_RETRYABLE);
         assertThat(store.deadWorkerId).isEqualTo("worker-1");
         assertThat(store.deadAttemptCount).isEqualTo(store.job.attemptCount());
         assertThat(store.deadRetryGeneration).isEqualTo(store.job.retryGeneration());
@@ -131,17 +131,17 @@ class CaptureJobProcessorTest {
     void providerTerminalFailureStopsAutomaticRetriesButAllowsPolicyAwareManualRetry() {
         FakeJobStore store = new FakeJobStore(job(1, 4));
         CaptureJobProcessor processor = processor(store, text -> {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_provider_rejected",
                     "provider configuration was rejected",
-                    TextClassificationFailureClass.PROVIDER_TERMINAL
+                    CaptureFailureClass.PROVIDER_TERMINAL
             );
         }, new FakeHeartbeat());
 
         assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
         assertThat(store.deadError).isEqualTo("ai_provider_rejected");
         assertThat(store.deadFailureClass)
-                .isEqualTo(TextClassificationFailureClass.PROVIDER_TERMINAL);
+                .isEqualTo(CaptureFailureClass.PROVIDER_TERMINAL);
         assertThat(store.deadFailureClass.manualRetryAllowed()).isTrue();
         assertThat(store.retryAt).isNull();
     }
@@ -168,7 +168,7 @@ class CaptureJobProcessorTest {
         )).isTrue();
         assertThat(store.deadError).isEqualTo("sensitive_credential_detected");
         assertThat(store.deadFailureClass)
-                .isEqualTo(TextClassificationFailureClass.CONTENT_TERMINAL);
+                .isEqualTo(CaptureFailureClass.CONTENT_TERMINAL);
         assertThat(store.deadFailureClass.manualRetryAllowed()).isFalse();
         assertThat(store.retryAt).isNull();
     }
@@ -177,17 +177,17 @@ class CaptureJobProcessorTest {
     void invalidFailureCodeFallsBackToSafeSystemRetryableFailure() {
         FakeJobStore store = new FakeJobStore(job(1, 4));
         CaptureJobProcessor processor = processor(store, text -> {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "UNSAFE PROVIDER ERROR",
                     "unsafe detail",
-                    TextClassificationFailureClass.CONTENT_TERMINAL
+                    CaptureFailureClass.CONTENT_TERMINAL
             );
         }, new FakeHeartbeat());
 
         assertThat(processor.process(store.job.id(), store.job.dispatchGeneration(), "worker-1")).isTrue();
-        assertThat(store.retryError).isEqualTo("unexpected_classification_error");
+        assertThat(store.retryError).isEqualTo("unexpected_analysis_error");
         assertThat(store.retryFailureClass)
-                .isEqualTo(TextClassificationFailureClass.SYSTEM_RETRYABLE);
+                .isEqualTo(CaptureFailureClass.SYSTEM_RETRYABLE);
         assertThat(store.deadError).isNull();
     }
 
@@ -213,10 +213,10 @@ class CaptureJobProcessorTest {
         FakeJobStore store = new FakeJobStore(job(1, 4));
         CaptureTelemetryPort telemetry = mock(CaptureTelemetryPort.class);
         CaptureJobProcessor processor = processor(store, text -> {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_provider_unavailable",
                     "provider unavailable",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+                    CaptureFailureClass.PROVIDER_RETRYABLE
             );
         }, new FakeHeartbeat(), telemetry);
 
@@ -306,8 +306,7 @@ class CaptureJobProcessorTest {
                         mock(ImageAnalyzerPort.class),
                         mock(ObjectStoragePort.class),
                         new CaptureContentPolicy(),
-                        new CapturePiiPolicy(() -> CapturePiiMode.MASK_STRUCTURED),
-                        () -> true
+                        new CapturePiiPolicy(() -> CapturePiiMode.MASK_STRUCTURED)
                 ),
                 settings,
                 Clock.fixed(NOW, ZoneOffset.UTC),
@@ -346,13 +345,13 @@ class CaptureJobProcessorTest {
         private int completedAttemptCount;
         private int completedRetryGeneration;
         private String retryError;
-        private TextClassificationFailureClass retryFailureClass;
+        private CaptureFailureClass retryFailureClass;
         private Instant retryAt;
         private String retryWorkerId;
         private int retryAttemptCount;
         private int retryGeneration;
         private String deadError;
-        private TextClassificationFailureClass deadFailureClass;
+        private CaptureFailureClass deadFailureClass;
         private String deadWorkerId;
         private int deadAttemptCount;
         private int deadRetryGeneration;
@@ -409,7 +408,7 @@ class CaptureJobProcessorTest {
                 int attemptCount,
                 int retryGeneration,
                 String errorCode,
-                TextClassificationFailureClass failureClass,
+                CaptureFailureClass failureClass,
                 Instant availableAt,
                 Instant now
         ) {
@@ -429,7 +428,7 @@ class CaptureJobProcessorTest {
                 int attemptCount,
                 int retryGeneration,
                 String errorCode,
-                TextClassificationFailureClass failureClass,
+                CaptureFailureClass failureClass,
                 Instant now
         ) {
             deadWorkerId = workerId;

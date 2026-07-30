@@ -1,6 +1,6 @@
 package com.blaie.blaie_be;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -54,8 +54,8 @@ class CaptureObservabilityMigrationUpgradeTest {
         Flyway latestFlyway = flywayAt(null);
         MigrateResult latestResult = latestFlyway.migrate();
 
-        assertEquals(5, latestResult.migrationsExecuted);
-        assertEquals("19", latestResult.targetSchemaVersion);
+        assertEquals(6, latestResult.migrationsExecuted);
+        assertEquals("20", latestResult.targetSchemaVersion);
         assertSeededCaptureWasPreserved(seed);
         assertSeededJobWasPreservedAndBackfilled(seed);
         assertSeededOutboxEventWasPreserved(seed);
@@ -69,7 +69,7 @@ class CaptureObservabilityMigrationUpgradeTest {
     private void assertSeededCaptureWasPreserved(SeedData seed) throws SQLException {
         try (Connection connection = connection();
                 PreparedStatement statement = connection.prepareStatement("""
-                    SELECT user_id, original_text, processing_status, failure_code,
+                    SELECT user_id, input_type, original_text, processing_status, failure_code,
                            created_at, updated_at
                     FROM captures
                     WHERE id = ?
@@ -78,6 +78,7 @@ class CaptureObservabilityMigrationUpgradeTest {
             try (ResultSet result = statement.executeQuery()) {
                 assertTrue(result.next());
                 assertEquals(seed.userId(), result.getObject("user_id", UUID.class));
+                assertEquals("text", result.getString("input_type"));
                 assertEquals("Seeded upgrade text", result.getString("original_text"));
                 assertEquals("processing", result.getString("processing_status"));
                 assertNull(result.getString("failure_code"));
@@ -199,9 +200,9 @@ class CaptureObservabilityMigrationUpgradeTest {
             statement.setObject(1, seed.publicationId());
             try (ResultSet result = statement.executeQuery()) {
                 assertTrue(result.next());
-                assertEquals("capture-text-job-redis-publisher", result.getString("listener_id"));
+                assertEquals("capture-job-redis-publisher", result.getString("listener_id"));
                 assertEquals(seed.serializedEvent(), result.getString("serialized_event"));
-                assertEquals("com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent",
+                assertEquals("com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent",
                         result.getString("event_type"));
                 assertNull(result.getObject("completion_date"));
                 assertEquals("PUBLISHED", result.getString("status"));
@@ -209,9 +210,9 @@ class CaptureObservabilityMigrationUpgradeTest {
             }
         }
 
-        TextCaptureQueuedEvent legacyEvent = new ObjectMapper().readValue(
+        CaptureJobQueuedEvent legacyEvent = new ObjectMapper().readValue(
                 seed.serializedEvent(),
-                TextCaptureQueuedEvent.class
+                CaptureJobQueuedEvent.class
         );
         assertEquals(seed.eventId(), legacyEvent.eventId());
         assertEquals(seed.jobId(), legacyEvent.jobId());
@@ -224,7 +225,7 @@ class CaptureObservabilityMigrationUpgradeTest {
         UUID defaultCaptureId = UUID.randomUUID();
         UUID defaultJobId = UUID.randomUUID();
         try (Connection connection = connection()) {
-            insertCapture(connection, defaultCaptureId, seed.userId(), "Default correlation text",
+            insertCurrentTextCapture(connection, defaultCaptureId, seed.userId(), "Default correlation text",
                     seed.createdAt().plusDays(1));
             try (PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO processing_jobs (id, capture_id, user_id, job_type, status)
@@ -367,6 +368,23 @@ class CaptureObservabilityMigrationUpgradeTest {
                     id, user_id, original_text, processing_status, failure_code,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, 'processing', NULL, ?, ?)
+                """)) {
+            statement.setObject(1, captureId);
+            statement.setObject(2, userId);
+            statement.setString(3, originalText);
+            statement.setObject(4, createdAt);
+            statement.setObject(5, createdAt);
+            assertEquals(1, statement.executeUpdate());
+        }
+    }
+
+    private void insertCurrentTextCapture(Connection connection, UUID captureId, UUID userId,
+            String originalText, OffsetDateTime createdAt) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO captures (
+                    id, user_id, input_type, original_text, processing_status, failure_code,
+                    created_at, updated_at
+                ) VALUES (?, ?, 'text', ?, 'processing', NULL, ?, ?)
                 """)) {
             statement.setObject(1, captureId);
             statement.setObject(2, userId);

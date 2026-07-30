@@ -6,8 +6,8 @@ import com.blaie.blaie_be.capture.application.port.ImageAnalysisInput;
 import com.blaie.blaie_be.capture.application.port.ImageAnalyzerPort;
 import com.blaie.blaie_be.capture.application.port.ImageAnalyzerProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.core.request.MdcContextScope;
 import java.time.Duration;
 import java.util.List;
@@ -47,10 +47,10 @@ public class ImageProviderRouter implements ImageAnalyzerPort {
         String providerId = normalize(properties.provider());
         ImageAnalyzerProvider provider = providers.get(providerId);
         if (provider == null) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_provider_not_configured",
                     "Image AI provider is not configured",
-                    TextClassificationFailureClass.PROVIDER_TERMINAL
+                    CaptureFailureClass.PROVIDER_TERMINAL
             );
         }
         long startedAt = System.nanoTime();
@@ -61,7 +61,7 @@ public class ImageProviderRouter implements ImageAnalyzerPort {
             CaptureAnalysis analysis = provider.analyze(input);
             telemetry.recordProviderDuration(elapsed(startedAt), providerId, ProviderOutcome.SUCCESS);
             return analysis;
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             telemetry.recordProviderDuration(elapsed(startedAt), providerId, ProviderOutcome.FAILURE);
             telemetry.incrementProviderError(providerId, exception.failureClass());
             throw exception;

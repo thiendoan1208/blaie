@@ -4,8 +4,8 @@ import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.core.request.RequestContextFilter;
 import java.util.Map;
 import java.util.UUID;
@@ -492,19 +492,19 @@ class InboxWebFlowTest {
                 if (text.startsWith("RETRY_ONCE_")
                         && ATTEMPTS.computeIfAbsent(text, ignored -> new java.util.concurrent.atomic.AtomicInteger())
                         .incrementAndGet() == 1) {
-                    throw new TextClassificationException(
+                    throw new CaptureAnalysisException(
                             "ai_provider_unavailable",
                             "simulated retryable provider failure",
-                            TextClassificationFailureClass.PROVIDER_RETRYABLE
+                            CaptureFailureClass.PROVIDER_RETRYABLE
                     );
                 }
                 if (text.startsWith("MANUAL_RETRY_ONCE_")
                         && ATTEMPTS.computeIfAbsent(text, ignored -> new java.util.concurrent.atomic.AtomicInteger())
                         .incrementAndGet() == 1) {
-                    throw new TextClassificationException(
+                    throw new CaptureAnalysisException(
                             "ai_not_configured",
                             "simulated provider configuration failure",
-                            TextClassificationFailureClass.PROVIDER_TERMINAL
+                            CaptureFailureClass.PROVIDER_TERMINAL
                     );
                 }
                 java.util.List<ClassifiedTextItem> items = "CANCELLED_INPUT".equals(text)

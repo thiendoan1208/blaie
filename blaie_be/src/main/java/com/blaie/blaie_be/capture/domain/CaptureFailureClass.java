@@ -2,7 +2,7 @@ package com.blaie.blaie_be.capture.domain;
 
 import java.util.Arrays;
 
-public enum TextClassificationFailureClass {
+public enum CaptureFailureClass {
     CONTENT_TERMINAL("content_terminal", false, false, false),
     PROVIDER_TERMINAL("provider_terminal", false, true, true),
     PROVIDER_RETRYABLE("provider_retryable", true, true, true),
@@ -13,7 +13,7 @@ public enum TextClassificationFailureClass {
     private final boolean providerFallbackAllowed;
     private final boolean manualRetryAllowed;
 
-    TextClassificationFailureClass(
+    CaptureFailureClass(
             String value,
             boolean automaticRetryAllowed,
             boolean providerFallbackAllowed,
@@ -41,12 +41,12 @@ public enum TextClassificationFailureClass {
         return manualRetryAllowed;
     }
 
-    public static TextClassificationFailureClass fromValue(String value) {
+    public static CaptureFailureClass fromValue(String value) {
         return Arrays.stream(values())
                 .filter(failureClass -> failureClass.value.equals(value))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown text classification failure class: " + value
+                        "Unknown capture failure class: " + value
                 ));
     }
 }

@@ -123,8 +123,8 @@ Behavior:
   keeps only that hash/key/timestamp and never persists Blob or base64 data.
 - Resolves a committed matching key before sanitization/upload. A new request validates, decodes, checks dimensions,
   normalizes orientation, strips metadata and re-encodes before uploading only the sanitized raster to private R2.
-- Returns 202 only after R2 upload and the Capture, asset, image_analysis job, idempotency key and unchanged legacy
-  TextCaptureQueuedEvent outbox publication are durable.
+- Returns 202 only after R2 upload and the Capture, asset, image_analysis job, idempotency key and
+  CaptureJobQueuedEvent outbox publication are durable.
 - If the database transaction fails after upload, the backend attempts immediate deletion and durably queues a
   storage_deletion_job when immediate cleanup fails.
 - The worker reads job_type from PostgreSQL, downloads the private object, sends bytes plus optional PII-masked text

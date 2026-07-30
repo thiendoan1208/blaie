@@ -3,7 +3,7 @@ package com.blaie.blaie_be.capture.application.port;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -41,7 +41,7 @@ public interface ProcessingJobStorePort {
             int attemptCount,
             int retryGeneration,
             String errorCode,
-            TextClassificationFailureClass failureClass,
+            CaptureFailureClass failureClass,
             Instant availableAt,
             Instant now
     );
@@ -52,7 +52,7 @@ public interface ProcessingJobStorePort {
             int attemptCount,
             int retryGeneration,
             String errorCode,
-            TextClassificationFailureClass failureClass,
+            CaptureFailureClass failureClass,
             Instant now
     );
 

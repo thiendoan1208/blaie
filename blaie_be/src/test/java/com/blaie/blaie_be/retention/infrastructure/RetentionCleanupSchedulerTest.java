@@ -23,10 +23,13 @@ class RetentionCleanupSchedulerTest {
         properties.setMaxBatchesPerRun(2);
         properties.setCompletedOutbox(Duration.ofDays(7));
         properties.setCompletedProcessingJobs(Duration.ofDays(90));
+        properties.setCompletedStorageDeletionJobs(Duration.ofDays(30));
         properties.setAuditEvents(Duration.ofDays(365));
         when(store.deleteExpiredIdempotencyKeys(NOW, 2)).thenReturn(2, 1);
         when(store.deleteCompletedOutboxEvents(NOW.minus(Duration.ofDays(7)), 2)).thenReturn(0);
         when(store.deleteCompletedProcessingJobs(NOW.minus(Duration.ofDays(90)), 2)).thenReturn(0);
+        when(store.deleteCompletedStorageDeletionJobs(NOW.minus(Duration.ofDays(30)), 2))
+                .thenReturn(0);
         when(store.deleteExpiredAuditEvents(NOW.minus(Duration.ofDays(365)), 2)).thenReturn(0);
         when(store.deleteExpiredCaptureAdminJobOperations(NOW.minus(Duration.ofDays(365)), 2))
                 .thenReturn(0);
@@ -40,6 +43,7 @@ class RetentionCleanupSchedulerTest {
         verify(store, times(2)).deleteExpiredIdempotencyKeys(NOW, 2);
         verify(store).deleteCompletedOutboxEvents(NOW.minus(Duration.ofDays(7)), 2);
         verify(store).deleteCompletedProcessingJobs(NOW.minus(Duration.ofDays(90)), 2);
+        verify(store).deleteCompletedStorageDeletionJobs(NOW.minus(Duration.ofDays(30)), 2);
         verify(store).deleteExpiredAuditEvents(NOW.minus(Duration.ofDays(365)), 2);
         verify(store).deleteExpiredCaptureAdminJobOperations(NOW.minus(Duration.ofDays(365)), 2);
     }

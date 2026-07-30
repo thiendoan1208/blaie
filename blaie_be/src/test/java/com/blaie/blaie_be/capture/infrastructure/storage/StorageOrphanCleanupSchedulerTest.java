@@ -4,6 +4,7 @@ import com.blaie.blaie_be.capture.application.port.ObjectStoragePort;
 import com.blaie.blaie_be.capture.application.port.StorageDeletionQueuePort;
 import com.blaie.blaie_be.capture.application.port.StoredObject;
 import com.blaie.blaie_be.capture.application.port.StoredObjectPage;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.infrastructure.persistence.CaptureAssetRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -24,6 +25,7 @@ class StorageOrphanCleanupSchedulerTest {
         ObjectStoragePort storage = mock(ObjectStoragePort.class);
         CaptureAssetRepository assets = mock(CaptureAssetRepository.class);
         StorageDeletionQueuePort deletionQueue = mock(StorageDeletionQueuePort.class);
+        CaptureTelemetryPort telemetry = mock(CaptureTelemetryPort.class);
         StorageDeletionProperties properties = new StorageDeletionProperties();
         properties.setOrphanScanEnabled(true);
         properties.setOrphanMinAge(java.time.Duration.ofHours(1));
@@ -45,7 +47,8 @@ class StorageOrphanCleanupSchedulerTest {
                 assets,
                 deletionQueue,
                 properties,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                telemetry
         );
         scheduler.scan();
         scheduler.scan();
@@ -54,5 +57,6 @@ class StorageOrphanCleanupSchedulerTest {
         verify(deletionQueue, never()).enqueue("captures/referenced.png", NOW);
         verify(deletionQueue, never()).enqueue("captures/new-upload.png", NOW);
         verify(storage).list("captures/", "next-page", 10);
+        verify(telemetry).incrementStorageOrphansFound(1);
     }
 }

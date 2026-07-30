@@ -5,8 +5,8 @@ import com.blaie.blaie_be.capture.application.port.ImageAnalyzerProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -107,7 +107,7 @@ public class GeminiImageAnalyzerAdapter implements ImageAnalyzerProvider {
         if (properties.apiKey() == null || properties.apiKey().isBlank()) {
             throw failure(
                     "ai_not_configured",
-                    TextClassificationFailureClass.PROVIDER_TERMINAL,
+                    CaptureFailureClass.PROVIDER_TERMINAL,
                     null
             );
         }
@@ -122,7 +122,7 @@ public class GeminiImageAnalyzerAdapter implements ImageAnalyzerProvider {
                     .retrieve()
                     .body(GeminiResponse.class);
             return parse(response);
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             throw exception;
         } catch (RestClientResponseException exception) {
             int status = exception.getStatusCode().value();
@@ -130,20 +130,20 @@ public class GeminiImageAnalyzerAdapter implements ImageAnalyzerProvider {
             throw failure(
                     retryable ? "ai_provider_unavailable" : "ai_provider_rejected",
                     retryable
-                            ? TextClassificationFailureClass.PROVIDER_RETRYABLE
-                            : TextClassificationFailureClass.PROVIDER_TERMINAL,
+                            ? CaptureFailureClass.PROVIDER_RETRYABLE
+                            : CaptureFailureClass.PROVIDER_TERMINAL,
                     exception
             );
         } catch (RestClientException exception) {
             throw failure(
                     "ai_provider_unavailable",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    CaptureFailureClass.PROVIDER_RETRYABLE,
                     exception
             );
         } catch (RuntimeException exception) {
             throw failure(
                     "ai_invalid_response",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    CaptureFailureClass.PROVIDER_RETRYABLE,
                     exception
             );
         }
@@ -209,34 +209,34 @@ public class GeminiImageAnalyzerAdapter implements ImageAnalyzerProvider {
                 ));
             }
             return new CaptureAnalysis(items, "gemini", properties.model(), PROMPT_VERSION);
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             throw exception;
         } catch (RuntimeException exception) {
             throw failure(
                     "ai_invalid_response",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    CaptureFailureClass.PROVIDER_RETRYABLE,
                     exception
             );
         }
     }
 
-    private TextClassificationException invalid(String reason) {
+    private CaptureAnalysisException invalid(String reason) {
         log.warn("Gemini image response rejected: reason={}", reason);
         return failure(
                 "ai_invalid_response",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                CaptureFailureClass.PROVIDER_RETRYABLE,
                 null
         );
     }
 
-    private TextClassificationException failure(
+    private CaptureAnalysisException failure(
             String code,
-            TextClassificationFailureClass failureClass,
+            CaptureFailureClass failureClass,
             Throwable cause
     ) {
         return cause == null
-                ? new TextClassificationException(code, "Gemini image analysis failed", failureClass)
-                : new TextClassificationException(code, "Gemini image analysis failed", failureClass, cause);
+                ? new CaptureAnalysisException(code, "Gemini image analysis failed", failureClass)
+                : new CaptureAnalysisException(code, "Gemini image analysis failed", failureClass, cause);
     }
 
     private record GeminiResponse(List<Candidate> candidates) {

@@ -21,7 +21,7 @@
       }
     ]
   },
-  "description": "Durable text-capture queue, worker, AI provider, outbox and Redis Stream health. Global state gauges are aggregated with max across app instances.",
+  "description": "Durable text/image capture queue, worker, AI provider, outbox, Redis Stream and private-object-storage health. Global state gauges are aggregated with max across app instances.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -130,7 +130,7 @@
     },
     {
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "description": "Incomplete TextCaptureQueuedEvent publications.",
+      "description": "Incomplete CaptureJobQueuedEvent publications for the generic capture-job listener.",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
@@ -418,6 +418,55 @@
         {"editorMode": "code", "expr": "sum(rate(capture_queued_redispatched_total[$__rate_interval]))", "legendFormat": "queued redispatched/s", "range": true, "refId": "B"}
       ],
       "title": "Recovery activity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Durable R2 deletion jobs. Exhausted work requires operator investigation.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2}, "unit": "short"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 45},
+      "id": 15,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "max by (state) (capture_storage_deletion_depth and on(job, instance) (capture_observability_source_up{source=\"db\"} == 1))", "legendFormat": "{{state}}", "range": true, "refId": "A"}
+      ],
+      "title": "Storage deletion depth",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Failed private-object-storage calls by bounded operation.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2}, "unit": "ops"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 45},
+      "id": 16,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum by (operation) (rate(capture_storage_errors_total[$__rate_interval]))", "legendFormat": "{{operation}}/s", "range": true, "refId": "A"}
+      ],
+      "title": "Storage error rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Bidirectional reconciliation findings: orphan R2 objects and missing objects referenced by PostgreSQL.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "bars", "fillOpacity": 20, "lineWidth": 1}, "unit": "short"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 45},
+      "id": 17,
+      "options": {"legend": {"calcs": ["sum"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum(increase(capture_storage_orphans_found_total[$__rate_interval]))", "legendFormat": "orphans found", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "sum(increase(capture_storage_references_missing_total[$__rate_interval]))", "legendFormat": "references missing", "range": true, "refId": "B"}
+      ],
+      "title": "Storage reconciliation",
       "type": "timeseries"
     }
   ],

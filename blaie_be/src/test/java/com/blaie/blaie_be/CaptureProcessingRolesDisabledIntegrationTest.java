@@ -23,7 +23,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(properties = {
-        "blaie.capture.processing.enabled=false",
+        "blaie.capture.processing.accept-async-enabled=false",
+        "blaie.capture.processing.publisher-enabled=false",
+        "blaie.capture.processing.worker-enabled=false",
+        "blaie.capture.processing.recovery-enabled=false",
         "blaie.auth.access-token-secret=disabled-test-access-secret-at-least-32-bytes",
         "blaie.email.provider=log",
         "blaie.email.from=Blaie <no-reply@test.local>",
@@ -35,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "blaie.google.oauth.redirect-uri=http://localhost:8080/api/v1/auth/google/callback",
         "blaie.google.oauth.web-base-url=http://localhost:3000"
 })
-class CaptureProcessingDisabledIntegrationTest {
+class CaptureProcessingRolesDisabledIntegrationTest {
 
     @Autowired
     private CaptureProcessingProperties properties;
@@ -47,8 +50,7 @@ class CaptureProcessingDisabledIntegrationTest {
     private CaptureService captureService;
 
     @Test
-    void legacySwitchDisablesEveryAsyncRoleAndRejectsNewWorkBeforePersistence() {
-        assertThat(properties.enabled()).isFalse();
+    void roleSwitchesDisableEveryAsyncRoleAndRejectNewWorkBeforePersistence() {
         assertThat(properties.acceptAsyncEnabled()).isFalse();
         assertThat(properties.publisherEnabled()).isFalse();
         assertThat(properties.workerEnabled()).isFalse();

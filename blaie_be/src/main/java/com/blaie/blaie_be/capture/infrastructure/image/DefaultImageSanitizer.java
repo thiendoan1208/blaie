@@ -3,8 +3,8 @@ package com.blaie.blaie_be.capture.infrastructure.image;
 import com.blaie.blaie_be.capture.application.port.ImageInput;
 import com.blaie.blaie_be.capture.application.port.ImageSanitizerPort;
 import com.blaie.blaie_be.capture.application.port.SanitizedImage;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -112,7 +112,7 @@ public class DefaultImageSanitizer implements ImageSanitizerPort {
             } finally {
                 reader.dispose();
             }
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             throw exception;
         } catch (RuntimeException | IOException exception) {
             throw rejected("image_invalid", "Image could not be decoded", exception);
@@ -309,19 +309,19 @@ public class DefaultImageSanitizer implements ImageSanitizerPort {
         }
     }
 
-    private TextClassificationException rejected(String code, String message) {
-        return new TextClassificationException(
+    private CaptureAnalysisException rejected(String code, String message) {
+        return new CaptureAnalysisException(
                 code,
                 message,
-                TextClassificationFailureClass.CONTENT_TERMINAL
+                CaptureFailureClass.CONTENT_TERMINAL
         );
     }
 
-    private TextClassificationException rejected(String code, String message, Throwable cause) {
-        return new TextClassificationException(
+    private CaptureAnalysisException rejected(String code, String message, Throwable cause) {
+        return new CaptureAnalysisException(
                 code,
                 message,
-                TextClassificationFailureClass.CONTENT_TERMINAL,
+                CaptureFailureClass.CONTENT_TERMINAL,
                 cause
         );
     }

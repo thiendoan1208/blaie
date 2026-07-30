@@ -4,8 +4,8 @@ import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.ProviderOutcome;
 import com.blaie.blaie_be.capture.application.port.TextClassifierProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +33,7 @@ class AiProviderRouterTest {
                 List.of(
                         failingProvider("primary", failure(
                                 "ai_provider_unavailable",
-                                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                                CaptureFailureClass.PROVIDER_RETRYABLE
                         )),
                         provider("fallback", text -> expected)
                 ),
@@ -51,7 +51,7 @@ class AiProviderRouterTest {
                 List.of(
                         failingProvider("primary", failure(
                                 "ai_not_configured",
-                                TextClassificationFailureClass.PROVIDER_TERMINAL
+                                CaptureFailureClass.PROVIDER_TERMINAL
                         )),
                         provider("fallback", text -> expected)
                 ),
@@ -65,9 +65,9 @@ class AiProviderRouterTest {
     @Test
     void contentTerminalFailureStopsTheWholeRoute() {
         AtomicInteger fallbackCalls = new AtomicInteger();
-        TextClassificationException failure = failure(
+        CaptureAnalysisException failure = failure(
                 "sensitive_credential_detected",
-                TextClassificationFailureClass.CONTENT_TERMINAL
+                CaptureFailureClass.CONTENT_TERMINAL
         );
         AiProviderRouter router = router(
                 List.of(
@@ -89,9 +89,9 @@ class AiProviderRouterTest {
     @Test
     void systemFailureStopsProviderFallbackButRemainsAutomaticallyRetryable() {
         AtomicInteger fallbackCalls = new AtomicInteger();
-        TextClassificationException failure = failure(
-                "unexpected_classification_error",
-                TextClassificationFailureClass.SYSTEM_RETRYABLE
+        CaptureAnalysisException failure = failure(
+                "unexpected_analysis_error",
+                CaptureFailureClass.SYSTEM_RETRYABLE
         );
         AiProviderRouter router = router(
                 List.of(
@@ -113,16 +113,16 @@ class AiProviderRouterTest {
 
     @Test
     void anyRetryableProviderFailureWinsAfterTheWholeRouteFails() {
-        TextClassificationException retryableFailure = failure(
+        CaptureAnalysisException retryableFailure = failure(
                 "ai_provider_unavailable",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
         AiProviderRouter router = router(
                 List.of(
                         failingProvider("primary", retryableFailure),
                         failingProvider("fallback", failure(
                                 "ai_not_configured",
-                                TextClassificationFailureClass.PROVIDER_TERMINAL
+                                CaptureFailureClass.PROVIDER_TERMINAL
                         ))
                 ),
                 "primary",
@@ -135,15 +135,15 @@ class AiProviderRouterTest {
 
     @Test
     void lastTerminalProviderFailureIsReturnedWhenNoProviderCanRecoverAutomatically() {
-        TextClassificationException fallbackFailure = failure(
+        CaptureAnalysisException fallbackFailure = failure(
                 "ai_provider_rejected",
-                TextClassificationFailureClass.PROVIDER_TERMINAL
+                CaptureFailureClass.PROVIDER_TERMINAL
         );
         AiProviderRouter router = router(
                 List.of(
                         failingProvider("primary", failure(
                                 "ai_not_configured",
-                                TextClassificationFailureClass.PROVIDER_TERMINAL
+                                CaptureFailureClass.PROVIDER_TERMINAL
                         )),
                         failingProvider("fallback", fallbackFailure)
                 ),
@@ -172,14 +172,14 @@ class AiProviderRouterTest {
         AiProviderRouter router = router(List.of(), "missing");
 
         assertThatThrownBy(() -> router.classify("Buy milk"))
-                .isInstanceOf(TextClassificationException.class)
+                .isInstanceOf(CaptureAnalysisException.class)
                 .satisfies(exception -> {
-                    TextClassificationException classificationException =
-                            (TextClassificationException) exception;
+                    CaptureAnalysisException classificationException =
+                            (CaptureAnalysisException) exception;
                     assertThat(classificationException.failureCode())
                             .isEqualTo("ai_provider_not_configured");
                     assertThat(classificationException.failureClass())
-                            .isEqualTo(TextClassificationFailureClass.PROVIDER_TERMINAL);
+                            .isEqualTo(CaptureFailureClass.PROVIDER_TERMINAL);
                 });
     }
 
@@ -221,7 +221,7 @@ class AiProviderRouterTest {
                             lifecycle.add("classify:primary");
                             throw failure(
                                     "ai_provider_unavailable",
-                                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+                                    CaptureFailureClass.PROVIDER_RETRYABLE
                             );
                         }),
                         provider("fallback", text -> {
@@ -249,9 +249,9 @@ class AiProviderRouterTest {
     @Test
     void concurrencyBackendFailureStopsTheProviderRoute() {
         AtomicInteger providerCalls = new AtomicInteger();
-        TextClassificationException backendFailure = failure(
+        CaptureAnalysisException backendFailure = failure(
                 "ai_concurrency_backend_unavailable",
-                TextClassificationFailureClass.SYSTEM_RETRYABLE
+                CaptureFailureClass.SYSTEM_RETRYABLE
         );
         AiProviderRouter router = router(
                 List.of(
@@ -278,9 +278,9 @@ class AiProviderRouterTest {
     @Test
     void recordsEachActualProviderAttemptButNotConcurrencyAcquisitionFailures() {
         CaptureTelemetryPort telemetry = mock(CaptureTelemetryPort.class);
-        TextClassificationException primaryFailure = failure(
+        CaptureAnalysisException primaryFailure = failure(
                 "ai_provider_unavailable",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
         AiProviderRouter router = router(
                 List.of(
@@ -299,11 +299,11 @@ class AiProviderRouterTest {
         verify(telemetry).recordProviderDuration(any(Duration.class), eq("fallback"), eq(ProviderOutcome.SUCCESS));
         verify(telemetry).incrementProviderError(
                 "primary",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
         verify(telemetry, never()).incrementProviderError(
                 "fallback",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
     }
 
@@ -318,7 +318,7 @@ class AiProviderRouterTest {
                             assertThat(MDC.get("jobId")).isEqualTo("job-123");
                             throw failure(
                                     "ai_provider_unavailable",
-                                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+                                    CaptureFailureClass.PROVIDER_RETRYABLE
                             );
                         }),
                         provider("fallback", text -> {
@@ -388,16 +388,16 @@ class AiProviderRouterTest {
         return new CaptureAnalysis(List.of(), provider, "model", "v1");
     }
 
-    private TextClassificationException failure(
+    private CaptureAnalysisException failure(
             String failureCode,
-            TextClassificationFailureClass failureClass
+            CaptureFailureClass failureClass
     ) {
-        return new TextClassificationException(failureCode, "safe detail", failureClass);
+        return new CaptureAnalysisException(failureCode, "safe detail", failureClass);
     }
 
     private TextClassifierProvider failingProvider(
             String id,
-            TextClassificationException failure
+            CaptureAnalysisException failure
     ) {
         return provider(id, text -> {
             throw failure;

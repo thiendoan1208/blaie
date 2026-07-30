@@ -184,26 +184,26 @@ class CaptureDispatchDurabilityIntegrationTest {
     }
 
     @Test
-    void v11BinaryCanWriteJobsAfterV12AndReconcilerUpgradesLegacyDispatchMetadata() throws Exception {
+    void queuedJobWithHistoricalDispatchDefaultsIsReconciledAndProcessed() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID captureId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         jdbcTemplate.update(
                 "insert into users (id, display_name) values (?, ?)",
                 userId,
-                "Rolling Deploy Test User"
+                "Historical Dispatch Test User"
         );
         jdbcTemplate.update(
                 """
-                insert into captures (id, user_id, original_text, processing_status)
-                values (?, ?, ?, 'processing')
+                insert into captures (id, user_id, input_type, original_text, processing_status)
+                values (?, ?, 'text', ?, 'processing')
                 """,
                 captureId,
                 userId,
-                "Created by a V11 binary after V12 migration"
+                "Restored queued job with historical dispatch defaults"
         );
 
-        // V11 omits all V12 dispatch columns. Their database defaults must remain writable.
+        // A restored historical job can omit the later dispatch columns and use their database defaults.
         jdbcTemplate.update(
                 """
                 insert into processing_jobs (
@@ -222,12 +222,12 @@ class CaptureDispatchDurabilityIntegrationTest {
                 jobId
         )).isTrue();
 
-        // Simulate V11 claim -> retry_wait -> dispatch. V11 never writes V12 columns.
+        // Simulate an older queued record reaching retry_wait before generic reconciliation.
         jdbcTemplate.update(
                 """
                 update processing_jobs
                    set status = 'processing', attempt_count = 1,
-                       lease_owner = 'v11-worker',
+                       lease_owner = 'historical-worker',
                        lease_expires_at = CURRENT_TIMESTAMP + INTERVAL '30 seconds'
                  where id = ?
                 """,
@@ -251,12 +251,12 @@ class CaptureDispatchDurabilityIntegrationTest {
         assertThat(jobStore.redispatchStaleQueued(Instant.now(), 10)).isEqualTo(1);
         assertDispatchMetadata(jobId, 1, true, true);
 
-        // A V11 worker can claim and finish a durable V12 dispatch without touching its metadata.
+        // A restored historical attempt can be terminal without later failure metadata.
         jdbcTemplate.update(
                 """
                 update processing_jobs
                    set status = 'processing', attempt_count = 2,
-                       lease_owner = 'v11-worker',
+                       lease_owner = 'historical-worker',
                        lease_expires_at = CURRENT_TIMESTAMP + INTERVAL '30 seconds'
                  where id = ?
                 """,
@@ -273,8 +273,8 @@ class CaptureDispatchDurabilityIntegrationTest {
                 jobId
         );
 
-        // A pre-V13 worker cannot write last_failure_class. The new reader must
-        // still derive the manual-retry policy from its known safe error code.
+        // The reader derives manual-retry policy for historical rows whose safe error code
+        // predates persisted failure classes.
         assertThat(jdbcTemplate.queryForObject(
                 "select last_failure_class is null from processing_jobs where id = ?",
                 Boolean.class,
@@ -282,8 +282,7 @@ class CaptureDispatchDurabilityIntegrationTest {
         )).isTrue();
         assertThat(jobRepository.findById(jobId).orElseThrow().manualRetryAllowed()).isTrue();
 
-        // New binaries clear next_dispatch_at in terminal states. A V11 manual restart must
-        // still be accepted, and the reconciler must repair its missing dispatch schedule.
+        // A restored manual restart can lack a dispatch schedule; reconciliation repairs it.
         jdbcTemplate.update(
                 "update processing_jobs set next_dispatch_at = NULL where id = ?",
                 jobId
@@ -366,7 +365,7 @@ class CaptureDispatchDurabilityIntegrationTest {
                 """
                 select count(*)
                   from event_publication
-                 where listener_id = 'capture-text-job-redis-publisher'
+                 where listener_id = 'capture-job-redis-publisher'
                    and completion_date is not null
                 """,
                 Integer.class

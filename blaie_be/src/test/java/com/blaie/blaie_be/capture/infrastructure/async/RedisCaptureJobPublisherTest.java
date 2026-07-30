@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.async;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import java.util.UUID;
 import org.slf4j.MDC;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,7 @@ class RedisCaptureJobPublisherTest {
         CaptureProcessingProperties properties = new CaptureProcessingProperties();
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         StreamOperations<String, String, String> streams = mock();
-        TextCaptureQueuedEvent event = new TextCaptureQueuedEvent(
+        CaptureJobQueuedEvent event = new CaptureJobQueuedEvent(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
@@ -78,7 +78,7 @@ class RedisCaptureJobPublisherTest {
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         StreamOperations<String, String, String> streams = mock();
         RedisConnectionFailureException failure = new RedisConnectionFailureException("redis unavailable");
-        TextCaptureQueuedEvent event = new TextCaptureQueuedEvent(
+        CaptureJobQueuedEvent event = new CaptureJobQueuedEvent(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
@@ -105,7 +105,7 @@ class RedisCaptureJobPublisherTest {
     void missingLegacyOriginRequestIdFallsBackToEventId() {
         UUID eventId = UUID.randomUUID();
 
-        TextCaptureQueuedEvent event = new TextCaptureQueuedEvent(
+        CaptureJobQueuedEvent event = new CaptureJobQueuedEvent(
                 eventId,
                 UUID.randomUUID(),
                 UUID.randomUUID(),

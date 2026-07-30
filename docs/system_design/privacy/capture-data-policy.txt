@@ -69,8 +69,10 @@ account-wide deletion are not implemented by this endpoint and require a future 
 | Audit events | 365d | BLAIE_RETENTION_AUDIT_EVENTS | yes |
 | Raw Captures and Inbox items | owner deletion | none in this phase | no |
 | Sanitized image objects | owner deletion | durable deletion retry | yes after owner deletion |
-| Storage deletion jobs | until completed/exhausted | BLAIE_STORAGE_DELETION_* | yes/retry bounded |
+| Active/exhausted storage deletion jobs | until completed/exhausted | BLAIE_STORAGE_DELETION_* | yes/retry bounded |
+| Completed storage deletion jobs | 30d | BLAIE_RETENTION_COMPLETED_STORAGE_DELETION_JOBS | yes |
 | Unreferenced R2 objects | one-hour safety age by default | BLAIE_STORAGE_ORPHAN_* | paginated reconciliation |
+| Missing R2 objects referenced by PostgreSQL | hourly scan by default | BLAIE_STORAGE_REFERENCE_SCAN_* | metric/alert only |
 | Dead jobs | owner deletion | none | no; retained for manual retry |
 | Active jobs | until terminal | none | never while active |
 | Incomplete outbox rows | until completed | none | never while incomplete |

@@ -2,8 +2,8 @@ package com.blaie.blaie_be.capture.infrastructure.ai;
 
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.ConcurrencyWaitOutcome;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -175,29 +175,29 @@ public class RedisProviderConcurrencyLimiter implements ProviderConcurrencyLimit
         return number.longValue();
     }
 
-    private TextClassificationException backendUnavailable(String providerId, RuntimeException cause) {
-        return new TextClassificationException(
+    private CaptureAnalysisException backendUnavailable(String providerId, RuntimeException cause) {
+        return new CaptureAnalysisException(
                 "ai_concurrency_backend_unavailable",
                 "AI provider concurrency backend is unavailable for " + providerId,
-                TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                CaptureFailureClass.SYSTEM_RETRYABLE,
                 cause
         );
     }
 
-    private TextClassificationException interrupted(String providerId, Throwable cause) {
-        return new TextClassificationException(
+    private CaptureAnalysisException interrupted(String providerId, Throwable cause) {
+        return new CaptureAnalysisException(
                 "ai_concurrency_wait_interrupted",
                 "AI provider concurrency wait was interrupted for " + providerId,
-                TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                CaptureFailureClass.SYSTEM_RETRYABLE,
                 cause
         );
     }
 
-    private TextClassificationException renewalUnavailable(String providerId, RuntimeException cause) {
-        return new TextClassificationException(
+    private CaptureAnalysisException renewalUnavailable(String providerId, RuntimeException cause) {
+        return new CaptureAnalysisException(
                 "ai_concurrency_renewal_unavailable",
                 "AI provider concurrency renewal is unavailable for " + providerId,
-                TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                CaptureFailureClass.SYSTEM_RETRYABLE,
                 cause
         );
     }

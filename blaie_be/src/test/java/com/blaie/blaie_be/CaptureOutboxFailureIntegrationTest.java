@@ -1,6 +1,6 @@
 package com.blaie.blaie_be;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.CaptureAssetDraft;
 import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.application.port.ImageCaptureWorkflowStorePort;
@@ -79,6 +79,7 @@ class CaptureOutboxFailureIntegrationTest {
         jdbcTemplate.execute("delete from capture_idempotency_keys");
         jdbcTemplate.execute("delete from processing_jobs");
         jdbcTemplate.execute("delete from captures");
+        jdbcTemplate.execute("delete from storage_deletion_jobs");
         jdbcTemplate.execute("delete from auth_action_tokens");
         jdbcTemplate.execute("delete from refresh_tokens");
         jdbcTemplate.execute("delete from auth_identities");
@@ -121,7 +122,7 @@ class CaptureOutboxFailureIntegrationTest {
         )).isEqualTo("queued");
 
         eventPublications.resubmitIncompletePublications(publication ->
-                publication.getEvent() instanceof TextCaptureQueuedEvent
+                publication.getEvent() instanceof CaptureJobQueuedEvent
         );
 
         await(() -> publicationCount(true) == 1);
@@ -129,7 +130,7 @@ class CaptureOutboxFailureIntegrationTest {
     }
 
     @Test
-    void imageWorkflowPersistsGenericJobAndUsesTheUnchangedLegacyOutboxContract() throws Exception {
+    void imageWorkflowPersistsGenericJobAndUsesTheGenericOutboxContract() throws Exception {
         when(streams.add(any())).thenReturn(RecordId.of("2-0"));
         UUID userId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
@@ -196,8 +197,8 @@ class CaptureOutboxFailureIntegrationTest {
                 "select serialized_event from event_publication",
                 String.class
         );
-        assertThat(eventType).isEqualTo(TextCaptureQueuedEvent.class.getName());
-        assertThat(listenerId).isEqualTo("capture-text-job-redis-publisher");
+        assertThat(eventType).isEqualTo(CaptureJobQueuedEvent.class.getName());
+        assertThat(listenerId).isEqualTo("capture-job-redis-publisher");
         assertThat(serialized)
                 .contains("\"originRequestId\":\"image-outbox-request\"")
                 .doesNotContain("captures/")
@@ -228,7 +229,7 @@ class CaptureOutboxFailureIntegrationTest {
                 """
                 select count(*)
                   from event_publication
-                 where listener_id = 'capture-text-job-redis-publisher'
+                 where listener_id = 'capture-job-redis-publisher'
                    and %s
                 """.formatted(completionPredicate),
                 Integer.class

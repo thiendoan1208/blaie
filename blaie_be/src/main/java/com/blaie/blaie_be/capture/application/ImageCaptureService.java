@@ -12,7 +12,7 @@ import com.blaie.blaie_be.capture.application.port.ObjectStoragePort;
 import com.blaie.blaie_be.capture.application.port.SanitizedImage;
 import com.blaie.blaie_be.capture.application.port.StorageDeletionQueuePort;
 import com.blaie.blaie_be.capture.application.result.CaptureResult;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.request.RequestContextHolder;
@@ -124,7 +124,7 @@ public class ImageCaptureService {
         SanitizedImage sanitized;
         try {
             sanitized = sanitizer.sanitize(image);
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             throw imageValidationException(exception);
         }
 
@@ -202,7 +202,7 @@ public class ImageCaptureService {
     private void requireSafeContent(String text) {
         try {
             contentPolicy.validate(text);
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             throw new AppException(ErrorCode.CAPTURE_SENSITIVE_CONTENT);
         }
     }
@@ -242,7 +242,7 @@ public class ImageCaptureService {
         }
     }
 
-    private AppException imageValidationException(TextClassificationException exception) {
+    private AppException imageValidationException(CaptureAnalysisException exception) {
         ErrorCode errorCode = switch (exception.failureCode()) {
             case "image_empty" -> ErrorCode.IMAGE_EMPTY;
             case "image_too_large" -> ErrorCode.IMAGE_TOO_LARGE;

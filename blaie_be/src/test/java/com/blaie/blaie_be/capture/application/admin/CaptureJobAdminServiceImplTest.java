@@ -13,7 +13,7 @@ import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.DeadSource;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.core.cursor.CursorProperties;
 import com.blaie.blaie_be.core.cursor.SignedCursorCodec;
 import com.blaie.blaie_be.core.error.AppException;
@@ -157,7 +157,7 @@ class CaptureJobAdminServiceImplTest {
         verify(authorization).require(PermissionAction.ADMIN_CAPTURE_JOB_MANAGE);
         verify(telemetry).incrementDead(
                 DeadSource.OPERATOR,
-                TextClassificationFailureClass.SYSTEM_RETRYABLE
+                CaptureFailureClass.SYSTEM_RETRYABLE
         );
     }
 
@@ -176,8 +176,8 @@ class CaptureJobAdminServiceImplTest {
     }
 
     private AdminProcessingJobResult job(ProcessingJobStatus status, Instant createdAt) {
-        TextClassificationFailureClass failureClass = status == ProcessingJobStatus.DEAD
-                ? TextClassificationFailureClass.SYSTEM_RETRYABLE
+        CaptureFailureClass failureClass = status == ProcessingJobStatus.DEAD
+                ? CaptureFailureClass.SYSTEM_RETRYABLE
                 : null;
         return new AdminProcessingJobResult(
                 UUID.randomUUID(),

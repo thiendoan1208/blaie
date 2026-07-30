@@ -1,7 +1,7 @@
 package com.blaie.blaie_be.capture.infrastructure.image;
 
 import com.blaie.blaie_be.capture.application.port.ImageInput;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.Base64;
@@ -48,8 +48,8 @@ class DefaultImageSanitizerTest {
                 "image/webp",
                 compactWebp
         )))
-                .isInstanceOf(TextClassificationException.class)
-                .satisfies(error -> assertThat(((TextClassificationException) error).failureCode())
+                .isInstanceOf(CaptureAnalysisException.class)
+                .satisfies(error -> assertThat(((CaptureAnalysisException) error).failureCode())
                         .isEqualTo("image_too_large"));
     }
 
@@ -96,8 +96,8 @@ class DefaultImageSanitizerTest {
                 "image/png",
                 "not an image".getBytes(java.nio.charset.StandardCharsets.UTF_8)
         )))
-                .isInstanceOf(TextClassificationException.class)
-                .satisfies(error -> assertThat(((TextClassificationException) error).failureCode())
+                .isInstanceOf(CaptureAnalysisException.class)
+                .satisfies(error -> assertThat(((CaptureAnalysisException) error).failureCode())
                         .isEqualTo("image_type_unsupported"));
     }
 
@@ -111,8 +111,8 @@ class DefaultImageSanitizerTest {
                 "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"
                         .getBytes(java.nio.charset.StandardCharsets.UTF_8)
         )))
-                .isInstanceOf(TextClassificationException.class)
-                .satisfies(error -> assertThat(((TextClassificationException) error).failureCode())
+                .isInstanceOf(CaptureAnalysisException.class)
+                .satisfies(error -> assertThat(((CaptureAnalysisException) error).failureCode())
                         .isEqualTo("image_type_unsupported"));
     }
 
@@ -127,8 +127,8 @@ class DefaultImageSanitizerTest {
                 "image/png",
                 imageBytes(10, 10, "png")
         )))
-                .isInstanceOf(TextClassificationException.class)
-                .satisfies(error -> assertThat(((TextClassificationException) error).failureCode())
+                .isInstanceOf(CaptureAnalysisException.class)
+                .satisfies(error -> assertThat(((CaptureAnalysisException) error).failureCode())
                         .isEqualTo("image_dimensions_unsupported"));
     }
 

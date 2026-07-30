@@ -18,6 +18,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Testcontainers
@@ -39,7 +40,7 @@ class ImageCaptureMigrationUpgradeTest {
         Seed seed = seedLegacyWorkflow();
 
         MigrateResult latest = flywayAt(null).migrate();
-        assertEquals("19", latest.targetSchemaVersion);
+        assertEquals("20", latest.targetSchemaVersion);
         assertImageSchema();
         assertLegacyWorkflowPreserved(seed);
         latestFlyway().validate();
@@ -48,8 +49,10 @@ class ImageCaptureMigrationUpgradeTest {
     private void assertImageSchema() throws SQLException {
         assertTrue(columnExists("captures", "input_type"));
         assertTrue(columnNullable("captures", "original_text"));
+        assertNull(columnDefault("captures", "input_type"));
         assertTrue(tableExists("capture_assets"));
         assertTrue(tableExists("storage_deletion_jobs"));
+        assertTrue(indexExists("idx_storage_deletion_jobs_completed_cleanup"));
 
         try (Connection connection = connection();
                 PreparedStatement statement = connection.prepareStatement("""
@@ -103,10 +106,10 @@ class ImageCaptureMigrationUpgradeTest {
                 try (ResultSet result = statement.executeQuery()) {
                     assertTrue(result.next());
                     assertEquals(
-                            "com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent",
+                            "com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent",
                             result.getString("event_type")
                     );
-                    assertEquals("capture-text-job-redis-publisher", result.getString("listener_id"));
+                    assertEquals("capture-job-redis-publisher", result.getString("listener_id"));
                     assertEquals(seed.serializedEvent(), result.getString("serialized_event"));
                     assertEquals(null, result.getObject("completion_date"));
                     assertFalse(result.next());
@@ -227,6 +230,39 @@ class ImageCaptureMigrationUpgradeTest {
                         """)) {
             statement.setString(1, tableName);
             statement.setString(2, columnName);
+            try (ResultSet result = statement.executeQuery()) {
+                result.next();
+                return result.getBoolean(1);
+            }
+        }
+    }
+
+    private String columnDefault(String tableName, String columnName) throws SQLException {
+        try (Connection connection = connection();
+                PreparedStatement statement = connection.prepareStatement("""
+                        SELECT column_default
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+                        """)) {
+            statement.setString(1, tableName);
+            statement.setString(2, columnName);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getString(1);
+            }
+        }
+    }
+
+    private boolean indexExists(String indexName) throws SQLException {
+        try (Connection connection = connection();
+                PreparedStatement statement = connection.prepareStatement("""
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM pg_indexes
+                            WHERE schemaname = 'public' AND indexname = ?
+                        )
+                        """)) {
+            statement.setString(1, indexName);
             try (ResultSet result = statement.executeQuery()) {
                 result.next();
                 return result.getBoolean(1);

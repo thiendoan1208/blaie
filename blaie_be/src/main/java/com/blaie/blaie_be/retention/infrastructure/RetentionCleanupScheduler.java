@@ -39,6 +39,11 @@ public class RetentionCleanupScheduler {
                 now.minus(properties.completedOutbox()), properties.batchSize()));
         cleanupCategory("completed_processing_jobs", () -> store.deleteCompletedProcessingJobs(
                 now.minus(properties.completedProcessingJobs()), properties.batchSize()));
+        cleanupCategory("completed_storage_deletion_jobs", () ->
+                store.deleteCompletedStorageDeletionJobs(
+                        now.minus(properties.completedStorageDeletionJobs()),
+                        properties.batchSize()
+                ));
         cleanupCategory("audit_events", () -> store.deleteExpiredAuditEvents(
                 now.minus(properties.auditEvents()), properties.batchSize()));
         cleanupCategory("capture_admin_job_operations", () -> store.deleteExpiredCaptureAdminJobOperations(

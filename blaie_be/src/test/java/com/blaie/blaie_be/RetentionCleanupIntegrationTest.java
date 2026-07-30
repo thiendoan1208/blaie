@@ -93,8 +93,8 @@ class RetentionCleanupIntegrationTest {
     private UUID capture(UUID userId, String status, String failureCode) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
-                insert into captures (id, user_id, original_text, processing_status, failure_code)
-                values (?, ?, 'retention text', ?, ?)
+                insert into captures (id, user_id, input_type, original_text, processing_status, failure_code)
+                values (?, ?, 'text', 'retention text', ?, ?)
                 """, id, userId, status, failureCode);
         return id;
     }

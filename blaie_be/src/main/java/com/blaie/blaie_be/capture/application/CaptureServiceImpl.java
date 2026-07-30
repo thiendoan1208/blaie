@@ -7,7 +7,7 @@ import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
 import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.application.result.CaptureResult;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
 import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import com.blaie.blaie_be.core.request.RequestContextHolder;
@@ -160,7 +160,7 @@ public class CaptureServiceImpl implements CaptureService {
     private void requireSafeContent(String originalText) {
         try {
             contentPolicy.validate(originalText);
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             throw new AppException(ErrorCode.CAPTURE_SENSITIVE_CONTENT);
         }
     }

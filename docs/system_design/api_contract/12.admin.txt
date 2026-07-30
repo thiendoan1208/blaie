@@ -4,7 +4,7 @@ Base paths:
 - Capture operations: /api/v1/admin/capture
 - Audit query: /api/v1/admin/audit-events
 
-This contract covers the operational endpoints for durable text-capture processing. User-management and product
+This contract covers the operational endpoints for durable text/image Capture processing. User-management and product
 analytics endpoints are not part of the current implementation.
 
 Authentication and authorization:
@@ -192,8 +192,8 @@ Errors:
 
 GET /api/v1/admin/capture/outbox/summary
 
-The summary covers incomplete TextCaptureQueuedEvent publications for listener
-capture-text-job-redis-publisher only. It is safe for dashboards and incident triage and never deserializes or
+The summary covers incomplete CaptureJobQueuedEvent publications for listener
+capture-job-redis-publisher only. It is safe for dashboards and incident triage and never deserializes or
 returns event payloads.
 
 Response 200 when no backlog exists:

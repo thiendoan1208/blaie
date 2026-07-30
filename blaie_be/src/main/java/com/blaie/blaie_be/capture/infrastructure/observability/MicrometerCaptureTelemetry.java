@@ -1,7 +1,7 @@
 package com.blaie.blaie_be.capture.infrastructure.observability;
 
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -49,7 +49,7 @@ public class MicrometerCaptureTelemetry implements CaptureTelemetryPort {
     @Override
     public void incrementProviderError(
             String providerId,
-            TextClassificationFailureClass failureClass
+            CaptureFailureClass failureClass
     ) {
         safely("capture.provider.errors", () -> Counter.builder("capture.provider.errors")
                 .description("AI provider attempt failures grouped by bounded failure class")
@@ -71,7 +71,7 @@ public class MicrometerCaptureTelemetry implements CaptureTelemetryPort {
     @Override
     public void incrementDead(
             DeadSource source,
-            TextClassificationFailureClass failureClass
+            CaptureFailureClass failureClass
     ) {
         safely("capture.dead", () -> Counter.builder("capture.dead")
                 .description("Capture jobs that entered the dead state")
@@ -89,6 +89,33 @@ public class MicrometerCaptureTelemetry implements CaptureTelemetryPort {
     @Override
     public void incrementQueuedRedispatched(long count) {
         incrementCounter("capture.queued.redispatched", "Queued capture jobs redispatched", count);
+    }
+
+    @Override
+    public void incrementStorageError(StorageOperation operation) {
+        safely("capture.storage.errors", () -> Counter.builder("capture.storage.errors")
+                .description("Private object-storage operation failures")
+                .tag("operation", operation.value())
+                .register(registry)
+                .increment());
+    }
+
+    @Override
+    public void incrementStorageOrphansFound(long count) {
+        incrementCounter(
+                "capture.storage.orphans.found",
+                "Unreferenced private capture objects discovered",
+                count
+        );
+    }
+
+    @Override
+    public void incrementStorageReferencesMissing(long count) {
+        incrementCounter(
+                "capture.storage.references.missing",
+                "Capture asset metadata whose private object is missing",
+                count
+        );
     }
 
     @Override

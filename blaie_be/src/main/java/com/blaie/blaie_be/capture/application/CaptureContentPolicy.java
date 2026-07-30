@@ -1,7 +1,7 @@
 package com.blaie.blaie_be.capture.application;
 
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
@@ -28,25 +28,25 @@ public class CaptureContentPolicy {
 
     public void validate(String text) {
         if (RESERVED_PRIVACY_TOKEN.matcher(text).find()) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "reserved_privacy_token_detected",
                     "Capture contains a reserved privacy token",
-                    TextClassificationFailureClass.CONTENT_TERMINAL
+                    CaptureFailureClass.CONTENT_TERMINAL
             );
         }
         boolean containsSecret = SECRET_PATTERNS.stream().anyMatch(pattern -> pattern.matcher(text).find());
         if (containsSecret) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "sensitive_credential_detected",
                     "Capture contains a credential-like secret",
-                    TextClassificationFailureClass.CONTENT_TERMINAL
+                    CaptureFailureClass.CONTENT_TERMINAL
             );
         }
         if (US_SSN.matcher(text).find() || containsValidPaymentCard(text)) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "sensitive_personal_identifier_detected",
                     "Capture contains a high-risk personal identifier",
-                    TextClassificationFailureClass.CONTENT_TERMINAL
+                    CaptureFailureClass.CONTENT_TERMINAL
             );
         }
     }

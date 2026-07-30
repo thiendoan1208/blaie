@@ -34,12 +34,14 @@ published as an application port. Prometheus scrapes `/actuator/prometheus`; hea
 - Provider concurrency usage never exceeds its configured limit.
 - `capture_storage_deletion_depth{state="ready"}` returns to zero and
   `capture_storage_deletion_depth{state="exhausted"}` remains zero.
+- `sum(rate(capture_storage_errors_total[5m]))` is normally zero.
+- `increase(capture_storage_orphans_found_total[1h])` and
+  `increase(capture_storage_references_missing_total[1h])` remain zero after reconciliation.
 
-The V1 outbox intentionally still uses event class `TextCaptureQueuedEvent`, listener id
-`capture-text-job-redis-publisher`, and the existing Redis stream for both job types. This is compatibility, not
-routing. The payload contains identifiers/generations only. Every worker must read `processing_jobs.job_type` from
-PostgreSQL and route `text_classification` to DeepSeek or `image_analysis` to R2/Gemini. Do not rename the event or
-listener during the image rollout; Spring Modulith persists both names in incomplete publications.
+The capture outbox uses `CaptureJobQueuedEvent`, listener id `capture-job-redis-publisher`, stream
+`blaie:capture:jobs` and consumer group `capture-workers` for both job types. The payload contains bounded
+identifiers/generations only. Every worker reads `processing_jobs.job_type` from PostgreSQL and routes
+`text_classification` to DeepSeek or `image_analysis` to R2/Gemini.
 
 Global PostgreSQL/Redis gauges are observed by every app instance. Filter them to matching instances with
 `source_up == 1`, then aggregate with `max`, not `sum`; otherwise a failed replica can retain a stale last-good
@@ -91,7 +93,7 @@ visible. Counters and timers describe work performed by individual instances and
 
 - `GET /api/v1/admin/capture/outbox/summary` shows safe backlog metadata.
 - Confirm Redis connectivity and that at least one publisher and one recovery role are enabled.
-- The recovery scheduler resubmits old incomplete `TextCaptureQueuedEvent` publications automatically.
+- The recovery scheduler resubmits old incomplete `CaptureJobQueuedEvent` publications automatically.
 - Do not mark the publication complete or delete it. Doing so before a durable job is terminal can lose its wake-up
   path.
 
@@ -107,7 +109,7 @@ visible. Counters and timers describe work performed by individual instances and
 ### Gemini/image failures or storage deletion backlog
 
 - Group provider metrics by `provider="gemini"`; there is no DeepSeek fallback for image jobs.
-- Confirm `BLAIE_IMAGE_WORKER_ENABLED=true` on every active worker before enabling image admission.
+- Every current worker binary always supports `image_analysis`; there is no separate image-worker capability flag.
 - `BLAIE_GEMINI_API_KEY` must contain a server-side Gemini authorization key created in Google AI Studio. The
   adapter calls the native `generativelanguage.googleapis.com` API and sends the key only in the
   `x-goog-api-key` header; do not route new `AQ.*` keys through the OpenAI-compatible endpoint.
@@ -123,6 +125,13 @@ visible. Counters and timers describe work performed by individual instances and
 - `BLAIE_STORAGE_ORPHAN_SCAN_ENABLED` normally follows image admission. The scanner pages through `captures/`,
   ignores objects newer than `BLAIE_STORAGE_ORPHAN_MIN_AGE` (one hour by default), checks PostgreSQL references and
   idempotently enqueues only old unreferenced objects.
+- `BLAIE_STORAGE_REFERENCE_SCAN_ENABLED` also normally follows image admission. It pages through
+  `capture_assets`, uses an R2 HEAD request, and increments `capture_storage_references_missing_total` for database
+  references whose object is absent. This direction is diagnostic only: it never deletes metadata or recreates
+  content automatically.
+- Group `capture_storage_errors_total` by `operation` (`upload`, `download`, `sign_read`, `delete`, `head`, or
+  `list`) before changing configuration. A missing object found by a successful HEAD is counted as a missing
+  reference, not as a storage transport error.
 
 ### Redis pending work grows
 
@@ -200,9 +209,8 @@ There is deliberately no generic outbox purge endpoint.
 4. Verify read endpoints (`GET /captures`, `GET /captures/{id}`, `GET /inbox`) still work.
 5. Leave publisher, worker and recovery roles enabled so existing work drains.
 
-To pause only new image work, set `BLAIE_IMAGE_CAPTURE_ENABLED=false` on every API node first. Leave
-`BLAIE_IMAGE_WORKER_ENABLED=true` until every existing image_analysis job is terminal. Never roll all workers back
-to a text-only binary while an image job remains active.
+To pause only new image work, set `BLAIE_IMAGE_CAPTURE_ENABLED=false` on every API node. Existing
+`image_analysis` jobs continue draining because image support is an unconditional worker capability.
 
 The flag is startup configuration. Changing one process or one local variable is not a cluster-wide pause.
 
@@ -269,8 +277,8 @@ SELECT
     MAX(last_resubmission_date) AS last_resubmission_at,
     MAX(completion_attempts) AS max_completion_attempts
 FROM event_publication
-WHERE listener_id = 'capture-text-job-redis-publisher'
-  AND event_type = 'com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent'
+WHERE listener_id = 'capture-job-redis-publisher'
+  AND event_type = 'com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent'
   AND completion_date IS NULL;
 ```
 
@@ -293,16 +301,25 @@ GROUP BY safe_state
 ORDER BY safe_state;
 ```
 
-## Safe image rollout order
+## Development migration to the final generic job path
 
-1. Create a private R2 bucket and configure `BLAIE_R2_BUCKET`.
-2. Apply additive Flyway V19.
-3. Deploy the new backend everywhere with both image flags false.
-4. Enable `BLAIE_IMAGE_WORKER_ENABLED=true` everywhere and verify all workers understand image_analysis.
-5. Enable `BLAIE_IMAGE_CAPTURE_ENABLED=true` on API nodes.
-6. Deploy the attachment UI and monitor outbox, queue age, Gemini errors and storage deletion depth.
+This repository performs the pre-production cleanup in one maintenance step; it intentionally does not retain a
+dual-event or dual-stream compatibility window.
 
-Rollback reverses admission first. Drain image jobs with compatible workers before disabling image worker support.
+1. Stop all old backend/worker processes so no binary still publishes the legacy event or consumes the legacy
+   stream.
+2. Create a private R2 bucket and configure `BLAIE_R2_BUCKET`.
+3. Apply Flyway through V20. V20 converts the exact legacy event/listener pair, canonicalizes the generic failure
+   code, validates image-to-asset integrity, drops the temporary `captures.input_type` default and adds completed
+   storage-deletion cleanup indexing.
+4. Deploy the new backend everywhere. Every worker understands both `text_classification` and `image_analysis`.
+5. Confirm the generic outbox query above has no old incomplete publication, then remove the old Redis
+   `blaie:capture:text-jobs` stream/group only after it has no pending or unread records.
+6. Enable `BLAIE_IMAGE_CAPTURE_ENABLED=true`, deploy the attachment UI, and monitor queue age, provider failures,
+   storage errors, orphan detections, missing references and deletion depth.
+
+Rollback reverses admission first. Do not run a pre-V20 binary against the V20 database; forward-fix the
+pre-production schema/application together instead of editing Flyway history.
 
 ## Rollback and handoff
 

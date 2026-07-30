@@ -1,8 +1,8 @@
 package com.blaie.blaie_be.capture.infrastructure.deepseek;
 
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.net.SocketTimeoutException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -94,7 +94,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "ai_not_configured",
-                TextClassificationFailureClass.PROVIDER_TERMINAL
+                CaptureFailureClass.PROVIDER_TERMINAL
         );
     }
 
@@ -105,7 +105,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "ai_provider_unavailable",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
     }
 
@@ -116,7 +116,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "ai_provider_rejected",
-                TextClassificationFailureClass.PROVIDER_TERMINAL
+                CaptureFailureClass.PROVIDER_TERMINAL
         );
     }
 
@@ -128,7 +128,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "ai_provider_unavailable",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
     }
 
@@ -146,7 +146,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "ai_invalid_response",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
     }
 
@@ -159,7 +159,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "ai_invalid_response",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
     }
 
@@ -171,7 +171,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "ai_invalid_response",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
     }
 
@@ -181,7 +181,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "ai_invalid_response",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
     }
 
@@ -191,7 +191,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertFailure(
                 "content_policy_blocked",
-                TextClassificationFailureClass.CONTENT_TERMINAL
+                CaptureFailureClass.CONTENT_TERMINAL
         );
     }
 
@@ -215,13 +215,13 @@ class DeepSeekTextClassifierAdapterTest {
 
     private void assertFailure(
             String expectedCode,
-            TextClassificationFailureClass expectedClass
+            CaptureFailureClass expectedClass
     ) {
         assertThatThrownBy(() -> adapter.classify("Buy milk"))
-                .isInstanceOf(TextClassificationException.class)
+                .isInstanceOf(CaptureAnalysisException.class)
                 .satisfies(exception -> {
-                    TextClassificationException classificationException =
-                            (TextClassificationException) exception;
+                    CaptureAnalysisException classificationException =
+                            (CaptureAnalysisException) exception;
                     assertThat(classificationException.failureCode()).isEqualTo(expectedCode);
                     assertThat(classificationException.failureClass()).isEqualTo(expectedClass);
                 });

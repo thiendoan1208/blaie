@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.async;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.DeadSource;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
@@ -76,7 +76,7 @@ public class CaptureJobRecoveryScheduler {
     public void recoverOutbox() {
         Instant cutoff = clock.instant().minus(properties.outboxRecoveryAge());
         eventPublications.resubmitIncompletePublications(publication ->
-                publication.getEvent() instanceof TextCaptureQueuedEvent
+                publication.getEvent() instanceof CaptureJobQueuedEvent
                         && publication.getPublicationDate().isBefore(cutoff)
         );
     }

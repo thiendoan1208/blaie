@@ -9,8 +9,8 @@ import com.blaie.blaie_be.capture.application.port.JobLeaseHeartbeatPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.core.request.MdcContextScope;
 import java.time.Clock;
 import java.time.Duration;
@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class CaptureJobProcessor {
     private static final Logger log = LoggerFactory.getLogger(CaptureJobProcessor.class);
-    private static final String UNEXPECTED_ERROR = "unexpected_classification_error";
+    private static final String UNEXPECTED_ERROR = "unexpected_analysis_error";
 
     private final ProcessingJobStorePort jobStore;
     private final CaptureAnalysisRouter analysisRouter;
@@ -113,15 +113,15 @@ public class CaptureJobProcessor {
                     (System.nanoTime() - startedAtNanos) / 1_000_000
             );
             return true;
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             Failure failure = safeFailure(exception.failureCode(), exception.failureClass());
             outcome = handleFailure(job, workerId, failure);
             return true;
         } catch (RuntimeException exception) {
-            log.error("Unexpected text capture classification failure for job {}", job.id(), exception);
+            log.error("Unexpected capture analysis failure for job {}", job.id(), exception);
             outcome = handleFailure(job, workerId, new Failure(
                     UNEXPECTED_ERROR,
-                    TextClassificationFailureClass.SYSTEM_RETRYABLE
+                    CaptureFailureClass.SYSTEM_RETRYABLE
             ));
             return true;
         } finally {
@@ -186,14 +186,14 @@ public class CaptureJobProcessor {
 
     private Failure safeFailure(
             String errorCode,
-            TextClassificationFailureClass failureClass
+            CaptureFailureClass failureClass
     ) {
         if (errorCode == null
                 || !errorCode.matches("[a-z0-9_]{1,100}")
                 || failureClass == null) {
             return new Failure(
                     UNEXPECTED_ERROR,
-                    TextClassificationFailureClass.SYSTEM_RETRYABLE
+                    CaptureFailureClass.SYSTEM_RETRYABLE
             );
         }
         return new Failure(errorCode, failureClass);
@@ -201,7 +201,7 @@ public class CaptureJobProcessor {
 
     private record Failure(
             String errorCode,
-            TextClassificationFailureClass failureClass
+            CaptureFailureClass failureClass
     ) {
     }
 }

@@ -1,16 +1,16 @@
-ADR-019 - Use durable asynchronous processing for text capture
+ADR-019 - Use durable asynchronous processing for Capture analysis
 
 Status: Accepted
 
 ## Context
 
-The synchronous text capture request waits for the external AI provider. Provider latency and availability then
-consume web request threads and directly determine API latency. Client retries after a lost response can also
-create duplicate captures.
+Capture requests that wait for an external AI provider consume web request threads and expose clients directly to
+provider latency and availability. Client retries after a lost response can also create duplicate captures.
 
 ## Decision
 
-- POST /api/v1/captures/text returns 202 after committing a processing capture and queued job.
+- POST /api/v1/captures/text and POST /api/v1/captures/image return 202 after committing a processing Capture,
+  queued job and transactional outbox publication.
 - PostgreSQL processing_jobs is the durable execution source of truth.
 - Spring Modulith event_publication is the transactional outbox.
 - Redis Stream transports job identifiers using at-least-once delivery.
@@ -19,7 +19,8 @@ create duplicate captures.
 - Capture states are processing/completed/failed. Job states are queued/processing/retry_wait/completed/dead.
 - Automatic retries use backoff; leased processing jobs are recovered after the lease expires.
 - HTTP Idempotency-Key prevents duplicate captures when a response is lost.
-- Raw capture text stays in PostgreSQL and is never included in the Redis message.
+- Raw capture text stays in PostgreSQL; sanitized image bytes stay in private object storage. Neither content,
+  object keys nor provider payloads are included in Redis messages.
 - A provider router selects the configured provider and can try ordered fallback providers when the failure class
   permits provider fallback. Provider fallback and automatic job retry are independent policy decisions.
 - Credential-like secrets are rejected before any provider call and are not automatically retried.
@@ -44,7 +45,7 @@ create duplicate captures.
 
 ## Failure and retry semantics
 
-Text classification failures use a closed failure taxonomy instead of one overloaded retryable boolean. Each class
+Capture analysis failures use a closed failure taxonomy instead of one overloaded retryable boolean. Each class
 decides three different questions: whether the router may try the next provider, whether the job may retry
 automatically, and whether a user may manually replay a dead job later.
 
@@ -62,18 +63,16 @@ whose effective failure class permits manual retry. Starting a permitted retry c
 while the new retry generation runs. Replaying content-terminal input is rejected with CAPTURE_NOT_RETRYABLE and
 causes no state change or publication.
 
-During the rolling upgrade, known safe failure codes take precedence and map deterministically to a failure class;
-existing jobs are backfilled with the same mapping. A V12 binary can still omit the nullable class column. For an
-unknown code without stored class, the compatibility fallback is SYSTEM_RETRYABLE so an infrastructure failure
-does not become permanently stuck. Once V12 binaries are drained, a later migration may make the failure metadata
-strictly non-null for terminal jobs. Failed legacy captures without a durable job remain non-retryable.
+Known safe failure codes map deterministically to `CaptureFailureClass`. V20 canonicalizes the historical
+`unexpected_classification_error` value to `unexpected_analysis_error`; failed historical Captures without a
+durable job remain non-retryable.
 
 ## Durable dispatch and recovery
 
 The durable flow has two different delivery gaps and therefore two different repair loops:
 
 1. Transactional outbox recovery covers failure before Redis dispatch completes. Creating or redispatching a job
-   and recording TextCaptureQueuedEvent happen in the same PostgreSQL transaction. If the event listener or Redis
+   and recording CaptureJobQueuedEvent happen in the same PostgreSQL transaction. If the event listener or Redis
    XADD fails, Spring Modulith leaves event_publication incomplete and later resubmits that publication.
 2. Queued-job reconciliation covers failure after the outbox publication is already complete. A Redis record can
    still disappear or be deleted operationally. A queued processing_jobs row keeps last_dispatched_at,
@@ -107,13 +106,9 @@ immediately after the first group acknowledges.
 
 ## Startup roles and admission control
 
-The legacy blaie.capture.processing.enabled switch is deprecated. It remains a compatibility fallback for one
-release: each role-specific property defaults to the legacy value, while an explicitly configured role-specific
-property takes precedence.
-
 Role-specific startup properties:
 
-- accept-async-enabled controls whether POST text capture and manual retry accept new asynchronous work.
+- accept-async-enabled controls whether text/image POST and manual retry accept new asynchronous work.
 - publisher-enabled installs the transactional outbox listener that writes wake-up records to Redis.
 - worker-enabled installs the Redis consumer and AI job executor.
 - recovery-enabled installs stale-lease recovery, ready-retry dispatch, queued-job reconciliation and outbox
@@ -133,9 +128,10 @@ Startup validation rejects accept=true with publisher=false and recovery=true wi
 availability cannot be validated by one process, so deployment configuration must still guarantee at least one
 worker and one recovery loop cluster-wide whenever asynchronous capture is accepted.
 
-When acceptance is disabled, POST /api/v1/captures/text and POST /api/v1/captures/{captureId}/retry fail with 503
-CAPTURE_PROCESSING_UNAVAILABLE before capture/job persistence. Read endpoints remain available, including capture
-status restoration and Inbox reads. The flags are startup configuration, not runtime traffic switches.
+When acceptance is disabled, text/image POST and POST /api/v1/captures/{captureId}/retry fail with 503
+CAPTURE_PROCESSING_UNAVAILABLE before capture/job persistence. The independent image-admission kill switch may
+reject only new image work while already accepted image jobs continue draining. Read endpoints remain available.
+The flags are startup configuration, not runtime traffic switches.
 
 ## Backpressure and provider concurrency
 

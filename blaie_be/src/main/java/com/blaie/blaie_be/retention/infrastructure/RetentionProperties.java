@@ -16,6 +16,7 @@ public class RetentionProperties {
     private int maxBatchesPerRun = 10;
     private Duration completedOutbox = Duration.ofDays(7);
     private Duration completedProcessingJobs = Duration.ofDays(90);
+    private Duration completedStorageDeletionJobs = Duration.ofDays(30);
     private Duration auditEvents = Duration.ofDays(365);
 
     public boolean enabled() { return enabled; }
@@ -30,6 +31,8 @@ public class RetentionProperties {
 
     public Duration completedProcessingJobs() { return completedProcessingJobs; }
 
+    public Duration completedStorageDeletionJobs() { return completedStorageDeletionJobs; }
+
     public Duration auditEvents() { return auditEvents; }
 
     @AssertTrue(message = "retention configuration must use positive durations and batch limits")
@@ -39,6 +42,7 @@ public class RetentionProperties {
                 && maxBatchesPerRun > 0
                 && completedOutbox != null && completedOutbox.isPositive()
                 && completedProcessingJobs != null && completedProcessingJobs.isPositive()
+                && completedStorageDeletionJobs != null && completedStorageDeletionJobs.isPositive()
                 && auditEvents != null && auditEvents.isPositive();
     }
 
@@ -54,6 +58,10 @@ public class RetentionProperties {
 
     public void setCompletedProcessingJobs(Duration completedProcessingJobs) {
         this.completedProcessingJobs = completedProcessingJobs;
+    }
+
+    public void setCompletedStorageDeletionJobs(Duration completedStorageDeletionJobs) {
+        this.completedStorageDeletionJobs = completedStorageDeletionJobs;
     }
 
     public void setAuditEvents(Duration auditEvents) { this.auditEvents = auditEvents; }

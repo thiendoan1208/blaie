@@ -239,3 +239,66 @@ groups:
           summary: Capture queued-job reconciliation is redispatching frequently
           description: At least ten queued jobs needed a replacement Redis wake-up record in ten minutes.
           runbook: docs/runbooks/capture-processing.md#redis-pending-work-grows
+
+      - alert: BlaieCaptureStorageDeletionBacklogHigh
+        expr: |
+          max(
+            capture_storage_deletion_depth{state="ready"}
+            and on (job, instance) (capture_observability_source_up{source="db"} == 1)
+          ) > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: capture-storage
+        annotations:
+          summary: Capture storage-deletion backlog is high
+          description: More than 100 R2 deletion jobs have remained ready for ten minutes.
+          runbook: docs/runbooks/capture-processing.md#geminiimage-failures-or-storage-deletion-backlog
+
+      - alert: BlaieCaptureStorageDeletionExhausted
+        expr: |
+          max(
+            capture_storage_deletion_depth{state="exhausted"}
+            and on (job, instance) (capture_observability_source_up{source="db"} == 1)
+          ) > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: capture-storage
+        annotations:
+          summary: Capture storage deletion exhausted its retries
+          description: At least one R2 deletion job reached its configured retry limit.
+          runbook: docs/runbooks/capture-processing.md#geminiimage-failures-or-storage-deletion-backlog
+
+      - alert: BlaieCaptureStorageErrorsIncreasing
+        expr: sum(increase(capture_storage_errors_total[10m])) >= 5
+        for: 2m
+        labels:
+          severity: warning
+          component: capture-storage
+        annotations:
+          summary: Capture object-storage errors are increasing
+          description: At least five R2 operations failed during the last ten minutes; group by operation before triage.
+          runbook: docs/runbooks/capture-processing.md#geminiimage-failures-or-storage-deletion-backlog
+
+      - alert: BlaieCaptureStorageOrphansFound
+        expr: sum(increase(capture_storage_orphans_found_total[2h])) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: capture-storage
+        annotations:
+          summary: Unreferenced capture objects were found
+          description: The R2-to-PostgreSQL reconciliation found old unreferenced objects and queued durable deletion.
+          runbook: docs/runbooks/capture-processing.md#geminiimage-failures-or-storage-deletion-backlog
+
+      - alert: BlaieCaptureStorageReferencesMissing
+        expr: sum(increase(capture_storage_references_missing_total[2h])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: capture-storage
+        annotations:
+          summary: PostgreSQL capture assets reference missing objects
+          description: The PostgreSQL-to-R2 integrity scan found metadata whose private object is absent.
+          runbook: docs/runbooks/capture-processing.md#geminiimage-failures-or-storage-deletion-backlog

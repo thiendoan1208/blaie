@@ -6,7 +6,7 @@ import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.DeadSour
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.JobOutcome;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.ProviderOutcome;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.capture.infrastructure.observability.CaptureOperationalMetricsCollector;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -70,12 +70,12 @@ class ManagementEndpointSecurityIntegrationTest {
         telemetry.recordProviderDuration(Duration.ofMillis(5), "deepseek", ProviderOutcome.FAILURE);
         telemetry.incrementProviderError(
                 "deepseek",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
         telemetry.incrementRetry(RetrySource.AUTOMATIC);
         telemetry.incrementDead(
                 DeadSource.WORKER,
-                TextClassificationFailureClass.SYSTEM_RETRYABLE
+                CaptureFailureClass.SYSTEM_RETRYABLE
         );
         telemetry.incrementStaleRecovered(1);
         telemetry.incrementQueuedRedispatched(1);

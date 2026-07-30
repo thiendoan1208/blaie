@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -115,7 +115,7 @@ class ProcessingJobEntityTest {
         assertThat(job.claim(1, "worker-1", NOW, NOW.plusSeconds(30))).isTrue();
         job.scheduleRetry(
                 "ai_provider_unavailable",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                CaptureFailureClass.PROVIDER_RETRYABLE,
                 NOW.plusSeconds(31)
         );
         job.dispatch(NOW.plusSeconds(31), NOW.plusSeconds(61));
@@ -134,13 +134,13 @@ class ProcessingJobEntityTest {
 
         job.dead(
                 "sensitive_credential_detected",
-                TextClassificationFailureClass.CONTENT_TERMINAL,
+                CaptureFailureClass.CONTENT_TERMINAL,
                 NOW.plusSeconds(1)
         );
 
         assertThat(job.lastErrorCode()).isEqualTo("sensitive_credential_detected");
         assertThat(job.lastFailureClass())
-                .isEqualTo(TextClassificationFailureClass.CONTENT_TERMINAL);
+                .isEqualTo(CaptureFailureClass.CONTENT_TERMINAL);
         assertThat(job.manualRetryAllowed()).isFalse();
 
         job.restart(NOW.plusSeconds(2), NOW.plusSeconds(32));
@@ -151,7 +151,7 @@ class ProcessingJobEntityTest {
         assertThat(job.claim(2, "worker-2", NOW.plusSeconds(2), NOW.plusSeconds(32))).isTrue();
         job.dead(
                 "ai_provider_rejected",
-                TextClassificationFailureClass.PROVIDER_TERMINAL,
+                CaptureFailureClass.PROVIDER_TERMINAL,
                 NOW.plusSeconds(3)
         );
         assertThat(job.manualRetryAllowed()).isTrue();
@@ -164,17 +164,17 @@ class ProcessingJobEntityTest {
         assertThat(job.claim(1, "worker-1", NOW, NOW.plusSeconds(30))).isTrue();
         job.dead(
                 "sensitive_credential_detected",
-                TextClassificationFailureClass.CONTENT_TERMINAL,
+                CaptureFailureClass.CONTENT_TERMINAL,
                 NOW.plusSeconds(1)
         );
         ReflectionTestUtils.setField(
                 job,
                 "lastFailureClass",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE.value()
+                CaptureFailureClass.PROVIDER_RETRYABLE.value()
         );
 
         assertThat(job.lastFailureClass())
-                .isEqualTo(TextClassificationFailureClass.CONTENT_TERMINAL);
+                .isEqualTo(CaptureFailureClass.CONTENT_TERMINAL);
         assertThat(job.manualRetryAllowed()).isFalse();
 
         ReflectionTestUtils.setField(job, "lastErrorCode", null);

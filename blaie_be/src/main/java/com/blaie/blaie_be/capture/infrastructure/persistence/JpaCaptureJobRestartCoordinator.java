@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.port.CaptureJobDispatchPort;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
@@ -8,7 +8,6 @@ import com.blaie.blaie_be.core.error.AppException;
 import com.blaie.blaie_be.core.error.ErrorCode;
 import java.time.Instant;
 import java.util.UUID;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -18,7 +17,7 @@ public class JpaCaptureJobRestartCoordinator {
     private final ProcessingJobRepository jobRepository;
     private final JpaCaptureAdmissionGuard admissionGuard;
     private final CaptureProcessingSettingsPort settings;
-    private final ApplicationEventPublisher eventPublisher;
+    private final CaptureJobDispatchPort jobDispatch;
 
     public JpaCaptureJobRestartCoordinator(
             CaptureItemRepository captureItemRepository,
@@ -26,14 +25,14 @@ public class JpaCaptureJobRestartCoordinator {
             ProcessingJobRepository jobRepository,
             JpaCaptureAdmissionGuard admissionGuard,
             CaptureProcessingSettingsPort settings,
-            ApplicationEventPublisher eventPublisher
+            CaptureJobDispatchPort jobDispatch
     ) {
         this.captureItemRepository = captureItemRepository;
         this.captureRepository = captureRepository;
         this.jobRepository = jobRepository;
         this.admissionGuard = admissionGuard;
         this.settings = settings;
-        this.eventPublisher = eventPublisher;
+        this.jobDispatch = jobDispatch;
     }
 
     public void restart(
@@ -55,12 +54,11 @@ public class JpaCaptureJobRestartCoordinator {
         job.restart(now, now.plus(settings.dispatchRetryDelay(job.dispatchGeneration() + 1)));
         captureRepository.flush();
         jobRepository.flush();
-        eventPublisher.publishEvent(new TextCaptureQueuedEvent(
-                UUID.randomUUID(),
+        jobDispatch.publish(
                 job.id(),
                 job.captureId(),
                 job.dispatchGeneration(),
                 job.originRequestId()
-        ));
+        );
     }
 }

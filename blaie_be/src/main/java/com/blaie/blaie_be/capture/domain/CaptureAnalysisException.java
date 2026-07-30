@@ -2,22 +2,22 @@ package com.blaie.blaie_be.capture.domain;
 
 import java.util.Objects;
 
-public class TextClassificationException extends RuntimeException {
+public class CaptureAnalysisException extends RuntimeException {
     private final String failureCode;
-    private final TextClassificationFailureClass failureClass;
+    private final CaptureFailureClass failureClass;
 
-    public TextClassificationException(
+    public CaptureAnalysisException(
             String failureCode,
             String message,
-            TextClassificationFailureClass failureClass
+            CaptureFailureClass failureClass
     ) {
         this(failureCode, message, failureClass, null);
     }
 
-    public TextClassificationException(
+    public CaptureAnalysisException(
             String failureCode,
             String message,
-            TextClassificationFailureClass failureClass,
+            CaptureFailureClass failureClass,
             Throwable cause
     ) {
         super(message, cause);
@@ -29,7 +29,7 @@ public class TextClassificationException extends RuntimeException {
         return failureCode;
     }
 
-    public TextClassificationFailureClass failureClass() {
+    public CaptureFailureClass failureClass() {
         return failureClass;
     }
 }

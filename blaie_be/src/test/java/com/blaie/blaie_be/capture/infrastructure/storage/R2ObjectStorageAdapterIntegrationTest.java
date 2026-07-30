@@ -76,6 +76,7 @@ class R2ObjectStorageAdapterIntegrationTest {
         byte[] content = new byte[] {1, 2, 3, 4};
 
         adapter.put(objectKey, content, "image/png");
+        assertThat(adapter.exists(objectKey)).isTrue();
         assertThat(adapter.list("captures/", null, 100).objects())
                 .extracting(com.blaie.blaie_be.capture.application.port.StoredObject::objectKey)
                 .contains(objectKey);
@@ -101,6 +102,7 @@ class R2ObjectStorageAdapterIntegrationTest {
         assertThat(signed.body()).containsExactly(content);
 
         adapter.delete(objectKey);
+        assertThat(adapter.exists(objectKey)).isFalse();
         assertThatThrownBy(() -> adapter.get(objectKey))
                 .isInstanceOf(AppException.class);
     }

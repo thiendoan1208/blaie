@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.async;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import com.blaie.blaie_be.core.request.MdcContextScope;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -31,8 +31,8 @@ public class RedisCaptureJobPublisher {
         this.properties = properties;
     }
 
-    @ApplicationModuleListener(id = "capture-text-job-redis-publisher")
-    public void publish(TextCaptureQueuedEvent event) {
+    @ApplicationModuleListener(id = "capture-job-redis-publisher")
+    public void publish(CaptureJobQueuedEvent event) {
         try (MdcContextScope _ = MdcContextScope.replace(Map.of(
                 "requestId", event.originRequestId(),
                 "eventId", event.eventId().toString(),

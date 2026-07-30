@@ -14,6 +14,8 @@ public class StorageDeletionProperties {
     private boolean orphanScanEnabled;
     private Duration orphanMinAge = Duration.ofHours(1);
     private int orphanScanBatchSize = 500;
+    private boolean referenceScanEnabled;
+    private int referenceScanBatchSize = 100;
 
     public boolean enabled() {
         return enabled;
@@ -43,6 +45,14 @@ public class StorageDeletionProperties {
         return orphanScanBatchSize;
     }
 
+    public boolean referenceScanEnabled() {
+        return referenceScanEnabled;
+    }
+
+    public int referenceScanBatchSize() {
+        return referenceScanBatchSize;
+    }
+
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
@@ -69,5 +79,13 @@ public class StorageDeletionProperties {
 
     public void setOrphanScanBatchSize(int orphanScanBatchSize) {
         this.orphanScanBatchSize = orphanScanBatchSize;
+    }
+
+    public void setReferenceScanEnabled(boolean referenceScanEnabled) {
+        this.referenceScanEnabled = referenceScanEnabled;
+    }
+
+    public void setReferenceScanBatchSize(int referenceScanBatchSize) {
+        this.referenceScanBatchSize = referenceScanBatchSize;
     }
 }

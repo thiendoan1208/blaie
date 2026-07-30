@@ -21,8 +21,8 @@ const failureMessages: Record<string, string> = {
     "The classifier returned an invalid result. You can try again.",
   job_lease_expired:
     "Classification timed out before it could be saved. You can try again.",
-  unexpected_classification_error:
-    "Classification failed unexpectedly. You can try again.",
+  unexpected_analysis_error:
+    "Capture analysis failed unexpectedly. You can try again.",
 };
 
 export function captureFailureMessage(failureCode: string | null): string {

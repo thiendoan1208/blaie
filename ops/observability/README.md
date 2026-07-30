@@ -6,8 +6,8 @@ to a managed compatible service later.
 
 ## Artifacts
 
-- `grafana/capture-processing-dashboard.json` - importable dashboard for queue, job, provider, outbox, Redis and
-  recovery health.
+- `grafana/capture-processing-dashboard.json` - importable dashboard for queue, job, provider, outbox, Redis,
+  recovery and private-object-storage health.
 - `prometheus/capture-alerts.yml` - recording and alert rules.
 - `../../docs/runbooks/capture-processing.md` - triage, admin actions, pause/drain and rollback procedures.
 
@@ -59,6 +59,10 @@ Never add `userId`, `captureId`, `jobId`, `correlationId`, raw error text or use
 | `capture.outbox.oldest.age` | `capture_outbox_oldest_age_seconds` | oldest incomplete publication age |
 | `capture.redis.stream.pending` | `capture_redis_stream_pending` | consumer-group pending count |
 | `capture.redis.stream.length` | `capture_redis_stream_length` | capture stream length |
+| `capture.storage.deletion.depth` | `capture_storage_deletion_depth` | durable deletion jobs by `state=ready|processing|exhausted` |
+| `capture.storage.errors` | `capture_storage_errors_total` | failed R2 operations by bounded `operation` |
+| `capture.storage.orphans.found` | `capture_storage_orphans_found_total` | old R2 objects absent from `capture_assets` |
+| `capture.storage.references.missing` | `capture_storage_references_missing_total` | `capture_assets` rows whose R2 object is absent |
 | `capture.observability.source.up` | `capture_observability_source_up` | `source=db|redis`, latest sample success |
 | `capture.observability.source.last.success` | `capture_observability_source_last_success_seconds` | epoch seconds of last success |
 
@@ -106,11 +110,12 @@ The committed defaults assume:
 - global active-job limit: 1,000;
 - oldest queued admission limit: five minutes;
 - outbox recovery age/interval: roughly ten seconds each;
-- Prometheus scrape and observability sample interval: no more than 30 seconds.
+- Prometheus scrape and observability sample interval: no more than 30 seconds;
+- ready storage-deletion warning threshold: 100 jobs for ten minutes.
 
 `BlaieCaptureActiveQueueHigh` is fixed at 800 (80 percent of the default global limit). Change it whenever
-`BLAIE_CAPTURE_MAX_ACTIVE_JOBS_TOTAL` changes. Provider/error/dead/pending thresholds also need tuning after load
-tests and real traffic; do not loosen the correctness/admission limits merely to silence an alert.
+`BLAIE_CAPTURE_MAX_ACTIVE_JOBS_TOTAL` changes. Provider/error/dead/pending/storage thresholds also need tuning after
+load tests and real traffic; do not loosen the correctness/admission limits merely to silence an alert.
 
 ## Failure semantics
 

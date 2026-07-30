@@ -2,8 +2,8 @@ package com.blaie.blaie_be.capture.infrastructure.gemini;
 
 import com.blaie.blaie_be.capture.application.port.ImageAnalysisInput;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -101,12 +101,12 @@ class GeminiImageAnalyzerAdapterTest {
                 null,
                 "image/png",
                 new byte[]{1}
-        ))).isInstanceOf(TextClassificationException.class)
+        ))).isInstanceOf(CaptureAnalysisException.class)
                 .satisfies(error -> {
-                    var failure = (TextClassificationException) error;
+                    var failure = (CaptureAnalysisException) error;
                     assertThat(failure.failureCode()).isEqualTo("ai_invalid_response");
                     assertThat(failure.failureClass())
-                            .isEqualTo(TextClassificationFailureClass.PROVIDER_RETRYABLE);
+                            .isEqualTo(CaptureFailureClass.PROVIDER_RETRYABLE);
                 });
     }
 
@@ -119,9 +119,9 @@ class GeminiImageAnalyzerAdapterTest {
                 null,
                 "image/jpeg",
                 new byte[]{1}
-        ))).isInstanceOf(TextClassificationException.class)
+        ))).isInstanceOf(CaptureAnalysisException.class)
                 .satisfies(error -> assertThat(
-                        ((TextClassificationException) error).failureCode()
+                        ((CaptureAnalysisException) error).failureCode()
                 ).isEqualTo("ai_provider_unavailable"));
     }
 }

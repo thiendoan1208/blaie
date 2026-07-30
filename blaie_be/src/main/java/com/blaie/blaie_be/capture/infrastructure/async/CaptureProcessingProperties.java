@@ -14,9 +14,6 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "blaie.capture.processing")
 public class CaptureProcessingProperties implements CaptureProcessingSettingsPort {
-    /** @deprecated use the role-specific flags instead. */
-    @Deprecated
-    private boolean enabled = true;
     private boolean acceptAsyncEnabled = true;
     private boolean publisherEnabled = true;
     private boolean workerEnabled = true;
@@ -31,8 +28,8 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
     private List<Duration> dispatchRetryDelays = new ArrayList<>(
             List.of(Duration.ofSeconds(30), Duration.ofMinutes(2), Duration.ofMinutes(10))
     );
-    private String streamKey = "blaie:capture:text-jobs";
-    private String consumerGroup = "capture-text-workers";
+    private String streamKey = "blaie:capture:jobs";
+    private String consumerGroup = "capture-workers";
     private String consumerName = "worker-" + UUID.randomUUID();
     private int batchSize = 10;
     private Duration readBlock = Duration.ofMillis(200);
@@ -131,10 +128,6 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
 
     public int batchSize() {
         return batchSize;
-    }
-
-    public boolean enabled() {
-        return enabled;
     }
 
     public boolean publisherEnabled() {
@@ -249,10 +242,6 @@ public class CaptureProcessingProperties implements CaptureProcessingSettingsPor
 
     public void setMaxAttempts(int maxAttempts) {
         this.maxAttempts = maxAttempts;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
     }
 
     public void setAcceptAsyncEnabled(boolean acceptAsyncEnabled) {

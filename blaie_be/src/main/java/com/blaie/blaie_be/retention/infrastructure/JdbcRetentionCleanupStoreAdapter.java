@@ -77,6 +77,28 @@ public class JdbcRetentionCleanupStoreAdapter implements RetentionCleanupStorePo
 
     @Override
     @Transactional
+    public int deleteCompletedStorageDeletionJobs(Instant cutoff, int batchSize) {
+        return jdbcTemplate.update("""
+                WITH candidates AS MATERIALIZED (
+                    SELECT id
+                    FROM storage_deletion_jobs
+                    WHERE status = 'completed'
+                      AND completed_at IS NOT NULL
+                      AND completed_at < ?
+                    ORDER BY completed_at, id
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT ?
+                )
+                DELETE FROM storage_deletion_jobs target
+                USING candidates
+                WHERE target.id = candidates.id
+                  AND target.status = 'completed'
+                  AND target.completed_at < ?
+                """, Timestamp.from(cutoff), batchSize, Timestamp.from(cutoff));
+    }
+
+    @Override
+    @Transactional
     public int deleteExpiredAuditEvents(Instant cutoff, int batchSize) {
         return jdbcTemplate.update("""
                 WITH candidates AS MATERIALIZED (

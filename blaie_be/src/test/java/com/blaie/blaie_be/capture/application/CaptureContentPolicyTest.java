@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.application;
 
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -16,7 +16,7 @@ class CaptureContentPolicyTest {
     @MethodSource("blockedContent")
     void blocksSensitiveContentBeforeItCanReachPersistence(String text, String failureCode) {
         assertThatThrownBy(() -> policy.validate(text))
-                .isInstanceOfSatisfying(TextClassificationException.class, exception ->
+                .isInstanceOfSatisfying(CaptureAnalysisException.class, exception ->
                         assertThat(exception.failureCode()).isEqualTo(failureCode));
     }
 

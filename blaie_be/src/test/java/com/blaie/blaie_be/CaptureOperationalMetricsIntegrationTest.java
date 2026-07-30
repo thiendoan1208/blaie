@@ -1,6 +1,6 @@
 package com.blaie.blaie_be;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import com.blaie.blaie_be.capture.infrastructure.ai.AiProviderConcurrencyProperties;
 import com.blaie.blaie_be.capture.infrastructure.async.CaptureProcessingProperties;
 import com.blaie.blaie_be.capture.infrastructure.observability.CaptureOperationalMetricsCollector;
@@ -89,10 +89,10 @@ class CaptureOperationalMetricsIntegrationTest {
         insertJob(userId, "retry_wait", now.plusSeconds(30), null);
         insertJob(userId, "processing", now, now.plusSeconds(60));
         insertJob(userId, "processing", now, now.minusSeconds(5));
-        insertOutbox(now.minusSeconds(25), "capture-text-job-redis-publisher", null);
-        insertOutbox(now.minusSeconds(10), "capture-text-job-redis-publisher", null);
+        insertOutbox(now.minusSeconds(25), "capture-job-redis-publisher", null);
+        insertOutbox(now.minusSeconds(10), "capture-job-redis-publisher", null);
         insertOutbox(now.minusSeconds(60), "another-listener", null);
-        insertOutbox(now.minusSeconds(60), "capture-text-job-redis-publisher", now.minusSeconds(1));
+        insertOutbox(now.minusSeconds(60), "capture-job-redis-publisher", now.minusSeconds(1));
         seedRedisPendingAndProviderUsage();
 
         collector.refresh();
@@ -118,7 +118,10 @@ class CaptureOperationalMetricsIntegrationTest {
         UUID captureId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         jdbcTemplate.update(
-                "insert into captures (id, user_id, original_text, processing_status) values (?, ?, ?, 'processing')",
+                """
+                insert into captures (id, user_id, input_type, original_text, processing_status)
+                values (?, ?, 'text', ?, 'processing')
+                """,
                 captureId,
                 userId,
                 status + " metrics capture"
@@ -162,7 +165,7 @@ class CaptureOperationalMetricsIntegrationTest {
                 UUID.randomUUID(),
                 java.sql.Timestamp.from(publicationDate),
                 listenerId,
-                TextCaptureQueuedEvent.class.getName(),
+                CaptureJobQueuedEvent.class.getName(),
                 completionDate == null ? null : java.sql.Timestamp.from(completionDate)
         );
     }

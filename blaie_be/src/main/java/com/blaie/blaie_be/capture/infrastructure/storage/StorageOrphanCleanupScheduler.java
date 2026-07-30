@@ -2,6 +2,7 @@ package com.blaie.blaie_be.capture.infrastructure.storage;
 
 import com.blaie.blaie_be.capture.application.port.ObjectStoragePort;
 import com.blaie.blaie_be.capture.application.port.StorageDeletionQueuePort;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.infrastructure.persistence.CaptureAssetRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -20,6 +21,7 @@ public class StorageOrphanCleanupScheduler {
     private final StorageDeletionQueuePort deletionQueue;
     private final StorageDeletionProperties properties;
     private final Clock clock;
+    private final CaptureTelemetryPort telemetry;
     private String continuationToken;
 
     public StorageOrphanCleanupScheduler(
@@ -27,13 +29,15 @@ public class StorageOrphanCleanupScheduler {
             CaptureAssetRepository assets,
             StorageDeletionQueuePort deletionQueue,
             StorageDeletionProperties properties,
-            Clock clock
+            Clock clock,
+            CaptureTelemetryPort telemetry
     ) {
         this.storage = storage;
         this.assets = assets;
         this.deletionQueue = deletionQueue;
         this.properties = properties;
         this.clock = clock;
+        this.telemetry = telemetry;
     }
 
     @Scheduled(fixedDelayString = "${blaie.storage.deletion.orphan-scan-interval:1h}")
@@ -49,10 +53,12 @@ public class StorageOrphanCleanupScheduler {
                     continuationToken,
                     properties.orphanScanBatchSize()
             );
-            page.objects().stream()
+            var orphans = page.objects().stream()
                     .filter(object -> !object.lastModified().isAfter(cutoff))
                     .filter(object -> !assets.existsByObjectKey(object.objectKey()))
-                    .forEach(object -> deletionQueue.enqueue(object.objectKey(), now));
+                    .toList();
+            orphans.forEach(object -> deletionQueue.enqueue(object.objectKey(), now));
+            telemetry.incrementStorageOrphansFound(orphans.size());
             continuationToken = page.nextContinuationToken();
         } catch (RuntimeException exception) {
             log.warn("Storage orphan scan failed: {}", exception.getClass().getSimpleName());

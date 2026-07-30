@@ -2,7 +2,7 @@ package com.blaie.blaie_be.capture.infrastructure.persistence.admin;
 
 import com.blaie.blaie_be.capture.application.admin.port.CaptureOutboxAdminQueryPort;
 import com.blaie.blaie_be.capture.application.admin.result.AdminOutboxSummaryResult;
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.event.CaptureJobQueuedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -12,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class JdbcCaptureOutboxAdminQueryAdapter implements CaptureOutboxAdminQueryPort {
-    private static final String CAPTURE_PUBLISHER_LISTENER = "capture-text-job-redis-publisher";
-    private static final String CAPTURE_EVENT_TYPE = TextCaptureQueuedEvent.class.getName();
+    private static final String CAPTURE_PUBLISHER_LISTENER = "capture-job-redis-publisher";
+    private static final String CAPTURE_EVENT_TYPE = CaptureJobQueuedEvent.class.getName();
 
     private final JdbcTemplate jdbcTemplate;
 

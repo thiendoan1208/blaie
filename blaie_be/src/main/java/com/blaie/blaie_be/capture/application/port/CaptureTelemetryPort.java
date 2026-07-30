@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.application.port;
 
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Duration;
 
 public interface CaptureTelemetryPort {
@@ -14,19 +14,25 @@ public interface CaptureTelemetryPort {
 
     void incrementProviderError(
             String providerId,
-            TextClassificationFailureClass failureClass
+            CaptureFailureClass failureClass
     );
 
     void incrementRetry(RetrySource source);
 
     void incrementDead(
             DeadSource source,
-            TextClassificationFailureClass failureClass
+            CaptureFailureClass failureClass
     );
 
     void incrementStaleRecovered(long count);
 
     void incrementQueuedRedispatched(long count);
+
+    void incrementStorageError(StorageOperation operation);
+
+    void incrementStorageOrphansFound(long count);
+
+    void incrementStorageReferencesMissing(long count);
 
     void recordProviderConcurrencyWait(
             Duration duration,
@@ -107,6 +113,25 @@ public interface CaptureTelemetryPort {
         private final String value;
 
         ConcurrencyWaitOutcome(String value) {
+            this.value = value;
+        }
+
+        public String value() {
+            return value;
+        }
+    }
+
+    enum StorageOperation {
+        UPLOAD("upload"),
+        DOWNLOAD("download"),
+        SIGN_READ("sign_read"),
+        DELETE("delete"),
+        HEAD("head"),
+        LIST("list");
+
+        private final String value;
+
+        StorageOperation(String value) {
             this.value = value;
         }
 

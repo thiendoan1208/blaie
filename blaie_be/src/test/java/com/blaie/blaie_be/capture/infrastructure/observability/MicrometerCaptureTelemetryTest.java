@@ -5,7 +5,8 @@ import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.DeadSour
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.JobOutcome;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.ProviderOutcome;
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.StorageOperation;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -25,13 +26,16 @@ class MicrometerCaptureTelemetryTest {
         telemetry.recordProviderDuration(Duration.ofMillis(750), "DeepSeek", ProviderOutcome.FAILURE);
         telemetry.incrementProviderError(
                 "DeepSeek",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
         telemetry.incrementRetry(RetrySource.AUTOMATIC);
         telemetry.incrementRetry(RetrySource.ADMIN);
-        telemetry.incrementDead(DeadSource.WORKER, TextClassificationFailureClass.SYSTEM_RETRYABLE);
+        telemetry.incrementDead(DeadSource.WORKER, CaptureFailureClass.SYSTEM_RETRYABLE);
         telemetry.incrementStaleRecovered(2);
         telemetry.incrementQueuedRedispatched(3);
+        telemetry.incrementStorageError(StorageOperation.UPLOAD);
+        telemetry.incrementStorageOrphansFound(2);
+        telemetry.incrementStorageReferencesMissing(1);
         telemetry.recordProviderConcurrencyWait(
                 Duration.ofMillis(125),
                 "DeepSeek",
@@ -52,6 +56,10 @@ class MicrometerCaptureTelemetryTest {
                 .counter().count()).isEqualTo(1);
         assertThat(registry.get("capture.stale.recovered").counter().count()).isEqualTo(2);
         assertThat(registry.get("capture.queued.redispatched").counter().count()).isEqualTo(3);
+        assertThat(registry.get("capture.storage.errors")
+                .tag("operation", "upload").counter().count()).isEqualTo(1);
+        assertThat(registry.get("capture.storage.orphans.found").counter().count()).isEqualTo(2);
+        assertThat(registry.get("capture.storage.references.missing").counter().count()).isEqualTo(1);
         assertThat(registry.get("capture.provider.concurrency.wait")
                 .tags("provider", "deepseek", "outcome", "acquired").timer().count()).isEqualTo(1);
         assertThat(registry.getMeters()).allSatisfy(meter -> {
@@ -70,12 +78,16 @@ class MicrometerCaptureTelemetryTest {
         telemetry.recordProviderDuration(Duration.ofMillis(-1), "unsafe provider/id", ProviderOutcome.SUCCESS);
         telemetry.incrementStaleRecovered(0);
         telemetry.incrementQueuedRedispatched(-1);
+        telemetry.incrementStorageOrphansFound(0);
+        telemetry.incrementStorageReferencesMissing(-1);
 
         assertThat(registry.get("capture.provider.duration")
                 .tags("provider", "unknown", "outcome", "success").timer().totalTime(java.util.concurrent.TimeUnit.NANOSECONDS))
                 .isZero();
         assertThat(registry.find("capture.stale.recovered").counter()).isNull();
         assertThat(registry.find("capture.queued.redispatched").counter()).isNull();
+        assertThat(registry.find("capture.storage.orphans.found").counter()).isNull();
+        assertThat(registry.find("capture.storage.references.missing").counter()).isNull();
     }
 
     @Test
@@ -87,12 +99,15 @@ class MicrometerCaptureTelemetryTest {
             telemetry.recordProviderDuration(Duration.ofSeconds(1), "deepseek", ProviderOutcome.SUCCESS);
             telemetry.incrementProviderError(
                     "deepseek",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE
+                    CaptureFailureClass.PROVIDER_RETRYABLE
             );
             telemetry.incrementRetry(RetrySource.AUTOMATIC);
-            telemetry.incrementDead(DeadSource.WORKER, TextClassificationFailureClass.SYSTEM_RETRYABLE);
+            telemetry.incrementDead(DeadSource.WORKER, CaptureFailureClass.SYSTEM_RETRYABLE);
             telemetry.incrementStaleRecovered(1);
             telemetry.incrementQueuedRedispatched(1);
+            telemetry.incrementStorageError(StorageOperation.DELETE);
+            telemetry.incrementStorageOrphansFound(1);
+            telemetry.incrementStorageReferencesMissing(1);
             telemetry.recordProviderConcurrencyWait(
                     Duration.ofMillis(1),
                     "deepseek",

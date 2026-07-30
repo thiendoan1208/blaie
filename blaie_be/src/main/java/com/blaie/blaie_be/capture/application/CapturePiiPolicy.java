@@ -86,10 +86,10 @@ public class CapturePiiPolicy {
             unrecognized = unrecognized.replace(placeholder, "");
         }
         if (invalid || ANY_PII_PLACEHOLDER.matcher(unrecognized).find() || unrecognized.contains("__BLAIE_PII_")) {
-            throw new com.blaie.blaie_be.capture.domain.TextClassificationException(
+            throw new com.blaie.blaie_be.capture.domain.CaptureAnalysisException(
                     "ai_invalid_response",
                     "AI response did not preserve privacy placeholders",
-                    com.blaie.blaie_be.capture.domain.TextClassificationFailureClass.PROVIDER_RETRYABLE
+                    com.blaie.blaie_be.capture.domain.CaptureFailureClass.PROVIDER_RETRYABLE
             );
         }
     }

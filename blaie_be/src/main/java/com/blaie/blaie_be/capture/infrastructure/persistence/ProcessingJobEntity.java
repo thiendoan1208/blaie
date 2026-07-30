@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import com.blaie.blaie_be.core.request.RequestIdPolicy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -181,7 +181,7 @@ public class ProcessingJobEntity {
 
     public void scheduleRetry(
             String errorCode,
-            TextClassificationFailureClass failureClass,
+            CaptureFailureClass failureClass,
             Instant retryAt
     ) {
         status = "retry_wait";
@@ -201,7 +201,7 @@ public class ProcessingJobEntity {
 
     public void dead(
             String errorCode,
-            TextClassificationFailureClass failureClass,
+            CaptureFailureClass failureClass,
             Instant now
     ) {
         status = "dead";
@@ -311,37 +311,37 @@ public class ProcessingJobEntity {
         return completedAt;
     }
 
-    public TextClassificationFailureClass lastFailureClass() {
+    public CaptureFailureClass lastFailureClass() {
         if (lastErrorCode == null) {
             return null;
         }
-        TextClassificationFailureClass knownClass = knownFailureClass(lastErrorCode);
+        CaptureFailureClass knownClass = knownFailureClass(lastErrorCode);
         if (knownClass != null) {
             return knownClass;
         }
         if (lastFailureClass != null) {
-            return TextClassificationFailureClass.fromValue(lastFailureClass);
+            return CaptureFailureClass.fromValue(lastFailureClass);
         }
-        return TextClassificationFailureClass.SYSTEM_RETRYABLE;
+        return CaptureFailureClass.SYSTEM_RETRYABLE;
     }
 
     public boolean manualRetryAllowed() {
-        TextClassificationFailureClass failureClass = lastFailureClass();
+        CaptureFailureClass failureClass = lastFailureClass();
         return "dead".equals(status)
                 && failureClass != null
                 && failureClass.manualRetryAllowed();
     }
 
-    private TextClassificationFailureClass knownFailureClass(String errorCode) {
+    private CaptureFailureClass knownFailureClass(String errorCode) {
         return switch (errorCode) {
             case "sensitive_credential_detected", "content_policy_blocked" ->
-                    TextClassificationFailureClass.CONTENT_TERMINAL;
+                    CaptureFailureClass.CONTENT_TERMINAL;
             case "ai_not_configured", "ai_provider_not_configured", "ai_provider_rejected" ->
-                    TextClassificationFailureClass.PROVIDER_TERMINAL;
+                    CaptureFailureClass.PROVIDER_TERMINAL;
             case "ai_provider_unavailable", "ai_invalid_response" ->
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE;
-            case "job_lease_expired", "unexpected_classification_error" ->
-                    TextClassificationFailureClass.SYSTEM_RETRYABLE;
+                    CaptureFailureClass.PROVIDER_RETRYABLE;
+            case "job_lease_expired", "unexpected_analysis_error" ->
+                    CaptureFailureClass.SYSTEM_RETRYABLE;
             default -> null;
         };
     }

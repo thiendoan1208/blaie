@@ -1,6 +1,6 @@
 Database design draft - V1
 
-Implemented Image Capture V1 addendum (Flyway V19, 2026-07-28)
+Implemented Image Capture V1 and generic job cleanup (Flyway V19-V20, 2026-07-30)
 ----------------------------------------------------------------
 
 - captures.input_type is `text` or `image`; original_text is required for text and optional for image.
@@ -11,9 +11,9 @@ Implemented Image Capture V1 addendum (Flyway V19, 2026-07-28)
   and dispatch-generation fencing applies to both.
 - storage_deletion_jobs owns durable object deletion independently of a Capture FK, so capture_assets can cascade
   before remote cleanup succeeds.
-- event_publication remains unchanged in V1. Both job types publish TextCaptureQueuedEvent to listener
-  `capture-text-job-redis-publisher`; its identifier-only payload is already generic. Workers load job_type from
-  PostgreSQL.
+- V20 upgrades historical incomplete capture publications to CaptureJobQueuedEvent and listener
+  `capture-job-redis-publisher`, drops the temporary captures.input_type default and adds completed storage-deletion
+  cleanup support. Both job types use the generic event and workers load job_type from PostgreSQL.
 - PostgreSQL remains authoritative. Redis still carries only event/job/capture/generation identifiers and never
   text, image bytes, provider payload or object keys.
 

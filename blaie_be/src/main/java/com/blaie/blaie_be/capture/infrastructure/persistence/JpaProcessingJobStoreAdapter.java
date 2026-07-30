@@ -1,6 +1,6 @@
 package com.blaie.blaie_be.capture.infrastructure.persistence;
 
-import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.port.CaptureJobDispatchPort;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
@@ -11,14 +11,13 @@ import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureInputType;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.IntStream;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +30,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
     private final CaptureRepository captureRepository;
     private final CaptureItemRepository captureItemRepository;
     private final CaptureAssetRepository captureAssetRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final CaptureJobDispatchPort jobDispatch;
     private final CaptureProcessingSettingsPort settings;
 
     public JpaProcessingJobStoreAdapter(
@@ -39,14 +38,14 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             CaptureRepository captureRepository,
             CaptureItemRepository captureItemRepository,
             CaptureAssetRepository captureAssetRepository,
-            ApplicationEventPublisher eventPublisher,
+            CaptureJobDispatchPort jobDispatch,
             CaptureProcessingSettingsPort settings
     ) {
         this.jobRepository = jobRepository;
         this.captureRepository = captureRepository;
         this.captureItemRepository = captureItemRepository;
         this.captureAssetRepository = captureAssetRepository;
-        this.eventPublisher = eventPublisher;
+        this.jobDispatch = jobDispatch;
         this.settings = settings;
     }
 
@@ -136,7 +135,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             int attemptCount,
             int retryGeneration,
             String errorCode,
-            TextClassificationFailureClass failureClass,
+            CaptureFailureClass failureClass,
             Instant availableAt,
             Instant now
     ) {
@@ -156,7 +155,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             int attemptCount,
             int retryGeneration,
             String errorCode,
-            TextClassificationFailureClass failureClass,
+            CaptureFailureClass failureClass,
             Instant now
     ) {
         ProcessingJobEntity job = jobRepository.findLockedById(jobId).orElse(null);
@@ -184,19 +183,19 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             if (job.attemptCount() < job.maxAttempts()) {
                 job.scheduleRetry(
                         STALE_JOB_ERROR,
-                        TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                        CaptureFailureClass.SYSTEM_RETRYABLE,
                         now.plus(settings.retryDelay(job.attemptCount()))
                 );
                 recovered.add(new RecoveredJobResult(
                         job.id(),
                         job.captureId(),
                         RecoveryOutcome.RETRY_SCHEDULED,
-                        TextClassificationFailureClass.SYSTEM_RETRYABLE
+                        CaptureFailureClass.SYSTEM_RETRYABLE
                 ));
             } else {
                 job.dead(
                         STALE_JOB_ERROR,
-                        TextClassificationFailureClass.SYSTEM_RETRYABLE,
+                        CaptureFailureClass.SYSTEM_RETRYABLE,
                         now
                 );
                 if (!ProcessingStatus.COMPLETED.value().equals(capture.processingStatus())) {
@@ -207,7 +206,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
                         job.id(),
                         job.captureId(),
                         RecoveryOutcome.DEAD,
-                        TextClassificationFailureClass.SYSTEM_RETRYABLE
+                        CaptureFailureClass.SYSTEM_RETRYABLE
                 ));
             }
         }
@@ -237,13 +236,12 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
     private void dispatch(ProcessingJobEntity job, Instant now) {
         int nextGeneration = job.dispatchGeneration() + 1;
         job.dispatch(now, now.plus(settings.dispatchRetryDelay(nextGeneration)));
-        eventPublisher.publishEvent(new TextCaptureQueuedEvent(
-                UUID.randomUUID(),
+        jobDispatch.publish(
                 job.id(),
                 job.captureId(),
                 job.dispatchGeneration(),
                 job.originRequestId()
-        ));
+        );
     }
 
     private ProcessingJobResult toResult(ProcessingJobEntity job, CaptureEntity capture) {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldDiscardCaptureSubmission } from "@/features/inbox/model/inbox-errors";
+import {
+  captureFailureMessage,
+  shouldDiscardCaptureSubmission,
+} from "@/features/inbox/model/inbox-errors";
 import { createAppError } from "@/shared/api/errors/app-error";
 
 function appError(status: number) {
@@ -28,5 +31,11 @@ describe("Inbox submission error policy", () => {
 
   it("retains a key for an unknown client error", () => {
     expect(shouldDiscardCaptureSubmission(new Error("network failed"))).toBe(false);
+  });
+
+  it("renders the generic unexpected-analysis failure code", () => {
+    expect(captureFailureMessage("unexpected_analysis_error")).toBe(
+      "Capture analysis failed unexpectedly. You can try again.",
+    );
   });
 });

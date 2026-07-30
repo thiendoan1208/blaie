@@ -4,8 +4,8 @@ import com.blaie.blaie_be.capture.application.port.TextClassifierProvider;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
-import com.blaie.blaie_be.capture.domain.TextClassificationException;
-import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
+import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
+import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -94,10 +94,10 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
     @Override
     public CaptureAnalysis classify(String text) {
         if (properties.apiKey() == null || properties.apiKey().isBlank()) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_not_configured",
                     "DeepSeek API key is not configured",
-                    TextClassificationFailureClass.PROVIDER_TERMINAL
+                    CaptureFailureClass.PROVIDER_TERMINAL
             );
         }
 
@@ -123,31 +123,31 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
             Choice choice = response.choices().getFirst();
             String content = choice.message() == null ? null : choice.message().content();
             return parseAnalysis(content, choice.finishReason());
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             throw exception;
         } catch (RestClientResponseException exception) {
             int status = exception.getStatusCode().value();
             boolean retryable = status == 408 || status == 429 || status >= 500;
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     retryable ? "ai_provider_unavailable" : "ai_provider_rejected",
                     "DeepSeek request was rejected",
                     retryable
-                            ? TextClassificationFailureClass.PROVIDER_RETRYABLE
-                            : TextClassificationFailureClass.PROVIDER_TERMINAL,
+                            ? CaptureFailureClass.PROVIDER_RETRYABLE
+                            : CaptureFailureClass.PROVIDER_TERMINAL,
                     exception
             );
         } catch (RestClientException exception) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_provider_unavailable",
                     "DeepSeek request failed",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    CaptureFailureClass.PROVIDER_RETRYABLE,
                     exception
             );
         } catch (RuntimeException exception) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_invalid_response",
                     "DeepSeek response was invalid",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    CaptureFailureClass.PROVIDER_RETRYABLE,
                     exception
             );
         }
@@ -155,10 +155,10 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
 
     private CaptureAnalysis parseAnalysis(String content, String finishReason) {
         if ("content_filter".equalsIgnoreCase(finishReason)) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "content_policy_blocked",
                     "Capture was blocked by the provider content policy",
-                    TextClassificationFailureClass.CONTENT_TERMINAL
+                    CaptureFailureClass.CONTENT_TERMINAL
             );
         }
         if (finishReason != null && !finishReason.isBlank() && !"stop".equalsIgnoreCase(finishReason)) {
@@ -195,24 +195,24 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
                     properties.model(),
                     PROMPT_VERSION
             );
-        } catch (TextClassificationException exception) {
+        } catch (CaptureAnalysisException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw new TextClassificationException(
+            throw new CaptureAnalysisException(
                     "ai_invalid_response",
                     "DeepSeek category was invalid",
-                    TextClassificationFailureClass.PROVIDER_RETRYABLE,
+                    CaptureFailureClass.PROVIDER_RETRYABLE,
                     exception
             );
         }
     }
 
-    private TextClassificationException invalidResponse(String reason, String finishReason) {
+    private CaptureAnalysisException invalidResponse(String reason, String finishReason) {
         log.warn("DeepSeek classification response rejected: reason={}, finishReason={}", reason, finishReason);
-        return new TextClassificationException(
+        return new CaptureAnalysisException(
                 "ai_invalid_response",
                 "DeepSeek response was invalid",
-                TextClassificationFailureClass.PROVIDER_RETRYABLE
+                CaptureFailureClass.PROVIDER_RETRYABLE
         );
     }
 
