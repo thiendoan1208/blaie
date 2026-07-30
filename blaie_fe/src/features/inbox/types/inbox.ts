@@ -5,6 +5,7 @@ export type InboxCategory =
   | "information";
 
 export type InboxProcessingStatus = "processing" | "completed" | "failed";
+export type CaptureInputType = "text" | "image";
 
 export type InboxItem = {
   id: string;
@@ -27,13 +28,33 @@ export type CreateTextCaptureInput = {
   idempotencyKey: string;
 };
 
+export type CreateImageCaptureInput = {
+  image: File;
+  text?: string;
+  idempotencyKey: string;
+};
+
+export type CaptureAttachment = {
+  id: string;
+  type: "image";
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  sizeBytes: number;
+  width: number;
+  height: number;
+  contentUrl: string;
+};
+
 export type TextCapture = {
   id: string;
-  originalText: string;
+  inputType: CaptureInputType;
+  originalText: string | null;
   processingStatus: InboxProcessingStatus;
   failureCode: string | null;
   canRetry: boolean;
+  attachments: CaptureAttachment[];
   items: InboxItem[];
   createdAt: string;
   updatedAt: string;
 };
+
+export type Capture = TextCapture;

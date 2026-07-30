@@ -4,9 +4,11 @@ import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
 import com.blaie.blaie_be.capture.application.port.CaptureProcessingSettingsPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
+import com.blaie.blaie_be.capture.application.result.ProcessingAssetResult;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult.RecoveryOutcome;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
+import com.blaie.blaie_be.capture.domain.CaptureInputType;
 import com.blaie.blaie_be.capture.domain.ProcessingJobStatus;
 import com.blaie.blaie_be.capture.domain.ProcessingStatus;
 import com.blaie.blaie_be.capture.domain.TextClassificationFailureClass;
@@ -28,6 +30,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
     private final ProcessingJobRepository jobRepository;
     private final CaptureRepository captureRepository;
     private final CaptureItemRepository captureItemRepository;
+    private final CaptureAssetRepository captureAssetRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final CaptureProcessingSettingsPort settings;
 
@@ -35,12 +38,14 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
             ProcessingJobRepository jobRepository,
             CaptureRepository captureRepository,
             CaptureItemRepository captureItemRepository,
+            CaptureAssetRepository captureAssetRepository,
             ApplicationEventPublisher eventPublisher,
             CaptureProcessingSettingsPort settings
     ) {
         this.jobRepository = jobRepository;
         this.captureRepository = captureRepository;
         this.captureItemRepository = captureItemRepository;
+        this.captureAssetRepository = captureAssetRepository;
         this.eventPublisher = eventPublisher;
         this.settings = settings;
     }
@@ -82,7 +87,7 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
                 || !job.claim(dispatchGeneration, workerId, now, leaseExpiresAt)) {
             return Optional.empty();
         }
-        return Optional.of(toResult(job, capture.originalText()));
+        return Optional.of(toResult(job, capture));
     }
 
     @Override
@@ -241,12 +246,22 @@ public class JpaProcessingJobStoreAdapter implements ProcessingJobStorePort {
         ));
     }
 
-    private ProcessingJobResult toResult(ProcessingJobEntity job, String originalText) {
+    private ProcessingJobResult toResult(ProcessingJobEntity job, CaptureEntity capture) {
         return new ProcessingJobResult(
                 job.id(),
                 job.captureId(),
                 job.originRequestId(),
-                originalText,
+                job.jobType(),
+                CaptureInputType.fromValue(capture.inputType()),
+                capture.originalText(),
+                captureAssetRepository.findByCaptureIdOrderByAssetPositionAsc(capture.id())
+                        .stream()
+                        .map(asset -> new ProcessingAssetResult(
+                                asset.id(),
+                                asset.objectKey(),
+                                asset.contentType()
+                        ))
+                        .toList(),
                 ProcessingJobStatus.fromValue(job.status()),
                 job.attemptCount(),
                 job.maxAttempts(),

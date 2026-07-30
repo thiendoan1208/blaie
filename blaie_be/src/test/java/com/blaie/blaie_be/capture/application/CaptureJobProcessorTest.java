@@ -5,6 +5,8 @@ import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort;
 import com.blaie.blaie_be.capture.application.port.JobLeaseHeartbeatPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
 import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
+import com.blaie.blaie_be.capture.application.port.ImageAnalyzerPort;
+import com.blaie.blaie_be.capture.application.port.ObjectStoragePort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.application.result.RecoveredJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
@@ -299,9 +301,14 @@ class CaptureJobProcessorTest {
         };
         return new CaptureJobProcessor(
                 store,
-                classifier,
-                new CaptureContentPolicy(),
-                new CapturePiiPolicy(() -> CapturePiiMode.MASK_STRUCTURED),
+                new CaptureAnalysisRouter(
+                        classifier,
+                        mock(ImageAnalyzerPort.class),
+                        mock(ObjectStoragePort.class),
+                        new CaptureContentPolicy(),
+                        new CapturePiiPolicy(() -> CapturePiiMode.MASK_STRUCTURED),
+                        () -> true
+                ),
                 settings,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 heartbeat,

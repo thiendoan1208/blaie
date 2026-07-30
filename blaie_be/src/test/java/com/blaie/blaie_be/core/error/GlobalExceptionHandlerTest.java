@@ -9,7 +9,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,5 +64,44 @@ class GlobalExceptionHandlerTest {
         ));
         assertThat(response.getHeaders().getAllow())
                 .containsExactlyInAnyOrder(HttpMethod.GET, HttpMethod.POST);
+    }
+
+    @Test
+    void mapsMissingImagePartWithoutChangingLegacyAudioError() {
+        var image = handler.handleMissingServletRequestPartException(
+                new MissingServletRequestPartException("image")
+        );
+        var audio = handler.handleMissingServletRequestPartException(
+                new MissingServletRequestPartException("file")
+        );
+
+        assertThat(image.getBody().code()).isEqualTo("IMAGE_REQUIRED");
+        assertThat(audio.getBody().code()).isEqualTo("AUDIO_REQUIRED");
+    }
+
+    @Test
+    void mapsOversizedMultipartByCaptureEndpoint() {
+        RequestContextHolder.set(new RequestContext(
+                "safe-request-id",
+                "POST",
+                "/api/v1/captures/image",
+                null
+        ));
+        var image = handler.handleMaxUploadSizeExceededException(
+                new MaxUploadSizeExceededException(10L)
+        );
+
+        RequestContextHolder.set(new RequestContext(
+                "safe-request-id",
+                "POST",
+                "/api/v1/captures/audio",
+                null
+        ));
+        var audio = handler.handleMaxUploadSizeExceededException(
+                new MaxUploadSizeExceededException(10L)
+        );
+
+        assertThat(image.getBody().code()).isEqualTo("IMAGE_TOO_LARGE");
+        assertThat(audio.getBody().code()).isEqualTo("AUDIO_TOO_LARGE");
     }
 }

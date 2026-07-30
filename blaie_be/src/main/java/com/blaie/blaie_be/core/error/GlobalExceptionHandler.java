@@ -79,14 +79,21 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleMaxUploadSizeExceededException(
             MaxUploadSizeExceededException exception
     ) {
-        return buildResponse(ErrorCode.AUDIO_TOO_LARGE, ErrorCode.AUDIO_TOO_LARGE.defaultMessage(), null);
+        boolean imageCapture = RequestContextHolder.current()
+                .map(context -> "/api/v1/captures/image".equals(context.path()))
+                .orElse(false);
+        ErrorCode errorCode = imageCapture ? ErrorCode.IMAGE_TOO_LARGE : ErrorCode.AUDIO_TOO_LARGE;
+        return buildResponse(errorCode, errorCode.defaultMessage(), null);
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)
     public ResponseEntity<ApiErrorResponse> handleMissingServletRequestPartException(
             MissingServletRequestPartException exception
     ) {
-        return buildResponse(ErrorCode.AUDIO_REQUIRED, ErrorCode.AUDIO_REQUIRED.defaultMessage(), null);
+        ErrorCode errorCode = "image".equals(exception.getRequestPartName())
+                ? ErrorCode.IMAGE_REQUIRED
+                : ErrorCode.AUDIO_REQUIRED;
+        return buildResponse(errorCode, errorCode.defaultMessage(), null);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

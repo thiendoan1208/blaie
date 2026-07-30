@@ -1,11 +1,13 @@
-API Contract - 02. Capture text (asynchronous processing)
+API Contract - 02. Capture text and image (asynchronous processing)
 
 Base path: /api/v1/captures
 
-Text capture is accepted synchronously and classified asynchronously. PostgreSQL is the source of truth for
-captures, jobs and Inbox items. Redis Stream only transports job identifiers and bounded correlation metadata,
-never user text. A capture never uses a pending status: processing means accepted and not terminal; completed and
-failed are terminal.
+Text and image capture admission is synchronous; AI classification is asynchronous. Text-only Captures use
+DeepSeek. Image-only and text-plus-image Captures use Gemini. These providers are peer capabilities and never
+fall back to one another. PostgreSQL is the source of truth for captures, asset metadata, jobs and Inbox items.
+Redis Stream only transports job identifiers and bounded correlation metadata, never user text, image bytes,
+object keys or provider payloads. A capture never uses a pending status: processing means accepted and not
+terminal; completed and failed are terminal.
 
 Capture state machine:
   processing -> completed | failed
@@ -44,6 +46,11 @@ Privacy boundary:
 - Common email, phone and IPv4 patterns are replaced with request-unique placeholders before the external AI call
   and restored only after exact placeholder validation. Names and free-form addresses may still reach the provider.
 - Raw text is never included in Redis messages, outbox payloads, operational logs, metrics or access-audit events.
+- Image bytes are sanitized before private object-storage upload. The application accepts JPEG, PNG and WebP,
+  rejects SVG, validates magic bytes and decoded dimensions, applies JPEG EXIF orientation, strips metadata and
+  re-encodes the raster.
+- Pixel content is sent to Gemini and cannot be regex-masked before that call. The web composer discloses this
+  limitation. R2 credentials, object keys and signed URLs never reach the frontend response or logs.
 
 ----------------------------------------------------------------------
 
@@ -85,10 +92,12 @@ Response 202:
 {
   "data": {
     "id": "uuid",
+    "inputType": "text",
     "originalText": "Chieu nay hop luc 5h, sau do mua sua",
     "processingStatus": "processing",
     "failureCode": null,
     "canRetry": false,
+    "attachments": [],
     "items": [],
     "createdAt": "2026-07-16T10:00:00Z",
     "updatedAt": "2026-07-16T10:00:00Z"
@@ -97,10 +106,70 @@ Response 202:
 
 ----------------------------------------------------------------------
 
+POST /api/v1/captures/image
+
+Headers:
+  Idempotency-Key: UUID (required)
+  Content-Type: multipart/form-data
+
+Multipart fields:
+  image: one JPEG, PNG or WebP file (required, max 10 MB by default)
+  text: optional string (max 10000 after trimming)
+
+Behavior:
+- Requires authentication, verified email, capture.create, CSRF and the dedicated fail-closed image rate limit.
+- Rejects the request while BLAIE_IMAGE_CAPTURE_ENABLED=false.
+- Hashes the versioned modality, normalized optional text and raw image bytes for idempotency. Recovery storage
+  keeps only that hash/key/timestamp and never persists Blob or base64 data.
+- Resolves a committed matching key before sanitization/upload. A new request validates, decodes, checks dimensions,
+  normalizes orientation, strips metadata and re-encodes before uploading only the sanitized raster to private R2.
+- Returns 202 only after R2 upload and the Capture, asset, image_analysis job, idempotency key and unchanged legacy
+  TextCaptureQueuedEvent outbox publication are durable.
+- If the database transaction fails after upload, the backend attempts immediate deletion and durably queues a
+  storage_deletion_job when immediate cleanup fails.
+- The worker reads job_type from PostgreSQL, downloads the private object, sends bytes plus optional PII-masked text
+  to Gemini with a strict JSON response schema, and applies output content policy before persistence.
+
+Response 202:
+{
+  "data": {
+    "id": "uuid",
+    "inputType": "image",
+    "originalText": "What tasks are shown here?",
+    "processingStatus": "processing",
+    "failureCode": null,
+    "canRetry": false,
+    "attachments": [
+      {
+        "id": "uuid",
+        "type": "image",
+        "contentType": "image/png",
+        "sizeBytes": 245123,
+        "width": 1600,
+        "height": 900,
+        "contentUrl": "/api/v1/captures/{captureId}/assets/{assetId}/content"
+      }
+    ],
+    "items": [],
+    "createdAt": "2026-07-28T10:00:00Z",
+    "updatedAt": "2026-07-28T10:00:00Z"
+  }
+}
+
+----------------------------------------------------------------------
+
+GET /api/v1/captures/{captureId}/assets/{assetId}/content
+
+Requires capture.read and verifies both Capture ownership and asset membership. Missing and foreign resources return
+the same CAPTURE_NOT_FOUND response. The backend returns 302 to a short-lived signed private-object URL. The object
+key and signed URL are never persisted in the browser recovery state or returned in the Capture JSON.
+
+----------------------------------------------------------------------
+
 GET /api/v1/captures/resolve?idempotencyKey={uuid}
 
 Returns the current user's Capture associated with an existing Idempotency-Key. This endpoint is for uncertain
-network outcomes: the client may not know whether POST /captures/text committed before its response was lost.
+network outcomes: the client may not know whether a text/image POST committed before its response was lost.
 Resolution never creates a Capture, never changes the key and never bypasses ownership.
 
 Response 200: the same Capture response schema as POST/GET.
@@ -141,8 +210,9 @@ available when asynchronous acceptance is disabled.
 POST /api/v1/captures/{captureId}/retry
 
 Requeues a failed capture owned by the current user only when its durable terminal policy permits manual retry.
-The same capture id and original text are reused. The capture becomes processing, canRetry becomes false and the
-existing logical job starts a new retry generation. The policy is checked while the capture/job rows are locked;
+The same capture id, original text and existing private image asset are reused; image retry never uploads again.
+The capture becomes processing, canRetry becomes false and the existing logical job starts a new retry generation.
+The policy is checked while the capture/job rows are locked;
 a rejected retry does not delete items, mutate retryGeneration or publish another job. If asynchronous acceptance
 is disabled, reject with CAPTURE_PROCESSING_UNAVAILABLE before changing capture or job state.
 
@@ -161,8 +231,10 @@ Response 202: Capture response with processingStatus = processing.
 
 DELETE /api/v1/captures/{captureId}
 
-Hard-deletes one Capture owned by the current user and cascades its Inbox items, durable processing job and
-idempotency record in the same transaction. A missing/foreign id returns CAPTURE_NOT_FOUND. Deleting while a worker
+Hard-deletes one Capture owned by the current user and cascades its Inbox items, image-asset metadata, durable
+processing job and idempotency record in the same transaction. Image object keys are first copied into durable
+storage-deletion jobs; remote deletion retries independently. A missing/foreign id returns CAPTURE_NOT_FOUND.
+Deleting while a worker
 is active fences its later result; it cannot recreate the deleted Capture or Inbox items. A provider request already
 sent cannot be recalled. Safe audit/outbox metadata can remain until its separate retention cutoff and contains no
 raw Capture text.
@@ -177,11 +249,15 @@ Errors:
        CAPTURE_NOT_RETRYABLE - capture/job is not terminal or its terminal policy forbids manual retry
   422  VALIDATION_ERROR
        CAPTURE_SENSITIVE_CONTENT - recognized credential, secret, payment-card or SSN-like content was rejected
+       IMAGE_REQUIRED | IMAGE_EMPTY | IMAGE_INVALID | IMAGE_DIMENSIONS_UNSUPPORTED
+  413  IMAGE_TOO_LARGE
+  415  IMAGE_TYPE_UNSUPPORTED
   429  RATE_LIMITED
        TOO_MANY_ACTIVE_JOBS - the current user already has the configured number of active jobs
   503  CAPTURE_PROCESSING_UNAVAILABLE - deployment is not accepting new asynchronous capture work
        CAPTURE_PROCESSING_OVERLOADED - global queue depth or oldest queued age has crossed its admission threshold
        SERVICE_UNAVAILABLE - a required fail-closed dependency such as the capture rate-limit backend is unavailable
+       IMAGE_CAPTURE_DISABLED | IMAGE_STORAGE_UNAVAILABLE
 
 RATE_LIMITED, TOO_MANY_ACTIVE_JOBS and CAPTURE_PROCESSING_OVERLOADED include Retry-After. The first is short-term
 HTTP abuse protection; the latter two are asynchronous-work backpressure. None is a billing or subscription quota.

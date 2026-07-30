@@ -25,6 +25,10 @@ class CaptureContentPolicyTest {
                 Arguments.of("ASIAABCDEFGHIJKLMNOP", "sensitive_credential_detected"),
                 Arguments.of("glpat-abcdefghijklmnopqrstuvwxyz", "sensitive_credential_detected"),
                 Arguments.of("xoxb-1234567890-secret", "sensitive_credential_detected"),
+                Arguments.of(
+                        "AQ.AbCDefghijklmnopqrstuvwxyz0123456789",
+                        "sensitive_credential_detected"
+                ),
                 Arguments.of("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature", "sensitive_credential_detected"),
                 Arguments.of("postgres://admin:password@example.com/app", "sensitive_credential_detected"),
                 Arguments.of("__BLAIE_PII_EMAIL_fake__", "reserved_privacy_token_detected"),

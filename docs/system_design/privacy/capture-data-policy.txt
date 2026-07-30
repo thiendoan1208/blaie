@@ -1,6 +1,6 @@
 Capture data privacy and retention policy
 
-Status: Active for the current text Inbox
+Status: Active for text, voice and image Inbox Capture
 Architecture decision: ADR-020
 
 ## What Blaie stores
@@ -9,11 +9,14 @@ Architecture decision: ADR-020
   sent to the configured transcription provider. Only the returned transcript enters the normal text Capture flow.
 - The original text Capture and its classified Inbox items are stored in PostgreSQL until the owner explicitly
   deletes the source Capture.
+- Image Capture stores only sanitized raster bytes in private Cloudflare R2 (MinIO locally). PostgreSQL stores asset
+  metadata and an opaque object key, never image binary/base64 or a presigned URL.
 - A processing job and idempotency record belong to the source Capture. Deleting the Capture also deletes those
   records and every Inbox item produced from it.
 - Redis, outbox messages, metrics, logs and access-audit events must not contain raw Capture or classified text.
 - Browser recovery storage contains only user-scoped Capture ids, idempotency keys, timestamps and a SHA-256 hash
-  of normalized input, never the raw input. Records expire after 24 hours and all Inbox recovery/query state is
+  of versioned normalized input, never raw text, Blob, filename or base64 image data. Records expire after 24 hours
+  and all Inbox recovery/query state is
   cleared whenever local sign-out settles, including when the server logout request fails. A hash is not encryption
   and short/predictable input could be guessed by dictionary comparison, so this storage remains private application
   data.
@@ -29,6 +32,10 @@ Architecture decision: ADR-020
 4. A placeholder returned in an active record must be preserved exactly once. A canceled/inactive clause may be
    omitted with its placeholder. The backend rejects altered, duplicated or injected placeholders before any
    result is stored, then restores exact original values in valid results.
+5. Image input is identified by magic bytes, decoded with pixel/dimension limits before full raster allocation,
+   JPEG orientation-normalized, metadata/EXIF/GPS stripped and re-encoded. SVG and undecodable files are rejected.
+6. Sanitized image pixels plus optional masked text are sent to Gemini without tools, grounding, user/account ids
+   or an R2 URL. Pixel PII cannot be regex-masked before Gemini; this limitation is disclosed in the composer.
 
 This is data minimization, not anonymization. Names, free-form addresses, IPv6 and identifiers outside the supported
 patterns may still be sent to the configured provider. Detection is pattern-based and can have false positives or
@@ -45,6 +52,7 @@ DELETE /api/v1/captures/{captureId}:
 - gets user ownership only from authenticated server context;
 - returns the same 404 for a missing or foreign Capture;
 - hard-deletes the source Capture, all sibling Inbox items, processing job and idempotency record transactionally;
+- transactionally enqueues every image object key for durable remote deletion before asset metadata is cascaded;
 - prevents an in-flight worker from committing a stale provider result; and
 - does not recall a provider request that was already transmitted.
 
@@ -60,6 +68,9 @@ account-wide deletion are not implemented by this endpoint and require a future 
 | Completed processing jobs | 90d | BLAIE_RETENTION_COMPLETED_JOBS | yes |
 | Audit events | 365d | BLAIE_RETENTION_AUDIT_EVENTS | yes |
 | Raw Captures and Inbox items | owner deletion | none in this phase | no |
+| Sanitized image objects | owner deletion | durable deletion retry | yes after owner deletion |
+| Storage deletion jobs | until completed/exhausted | BLAIE_STORAGE_DELETION_* | yes/retry bounded |
+| Unreferenced R2 objects | one-hour safety age by default | BLAIE_STORAGE_ORPHAN_* | paginated reconciliation |
 | Dead jobs | owner deletion | none | no; retained for manual retry |
 | Active jobs | until terminal | none | never while active |
 | Incomplete outbox rows | until completed | none | never while incomplete |
@@ -101,6 +112,7 @@ pair. Do not reuse or expose either secret to clients.
 - HTTPS for all application/provider traffic.
 - Database volume and backup encryption at rest, private network access and tested restore procedures.
 - Provider DPA/region/retention/training decision and deletion escalation path.
+- Private R2 bucket with public r2.dev access disabled and short-lived signed reads only.
 - Backup-erasure and account-wide delete/export policy.
 - KMS/envelope-key rotation and recovery design before application-level field encryption.
 - Monitoring/alerting for audit write failures and retention scheduler failures.

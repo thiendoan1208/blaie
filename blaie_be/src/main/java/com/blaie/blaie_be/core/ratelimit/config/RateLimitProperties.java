@@ -83,6 +83,12 @@ public class RateLimitProperties {
     ));
 
     @Valid
+    private RateLimitPolicy captureImage = failClosed(new RateLimitPolicy(
+            new RateLimitWindow(5, Duration.ofMinutes(1)),
+            new RateLimitWindow(30, Duration.ofMinutes(10))
+    ));
+
+    @Valid
     private RateLimitPolicy captureRetry = failClosed(new RateLimitPolicy(
             new RateLimitWindow(5, Duration.ofMinutes(1)),
             new RateLimitWindow(20, Duration.ofMinutes(10))
@@ -232,6 +238,14 @@ public class RateLimitProperties {
 
     public void setCaptureText(RateLimitPolicy captureText) {
         this.captureText = captureText;
+    }
+
+    public RateLimitPolicy captureImage() {
+        return captureImage;
+    }
+
+    public void setCaptureImage(RateLimitPolicy captureImage) {
+        this.captureImage = captureImage;
     }
 
     public RateLimitPolicy captureRetry() {

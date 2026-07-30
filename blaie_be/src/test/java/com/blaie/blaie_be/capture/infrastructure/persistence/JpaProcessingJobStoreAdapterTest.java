@@ -175,6 +175,7 @@ class JpaProcessingJobStoreAdapterTest {
         ProcessingJobRepository jobRepository = mock(ProcessingJobRepository.class);
         CaptureRepository captureRepository = mock(CaptureRepository.class);
         CaptureItemRepository itemRepository = mock(CaptureItemRepository.class);
+        CaptureAssetRepository assetRepository = mock(CaptureAssetRepository.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
         when(jobRepository.findStale(eq(NOW), any(Pageable.class))).thenReturn(staleJobs);
         CaptureProcessingSettingsPort settings = new TestSettings();
@@ -182,6 +183,7 @@ class JpaProcessingJobStoreAdapterTest {
                 jobRepository,
                 captureRepository,
                 itemRepository,
+                assetRepository,
                 eventPublisher,
                 settings
         );

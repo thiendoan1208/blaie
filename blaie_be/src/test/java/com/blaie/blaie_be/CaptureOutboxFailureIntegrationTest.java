@@ -1,7 +1,9 @@
 package com.blaie.blaie_be;
 
 import com.blaie.blaie_be.capture.application.event.TextCaptureQueuedEvent;
+import com.blaie.blaie_be.capture.application.port.CaptureAssetDraft;
 import com.blaie.blaie_be.capture.application.port.CaptureWorkflowStorePort;
+import com.blaie.blaie_be.capture.application.port.ImageCaptureWorkflowStorePort;
 import com.blaie.blaie_be.capture.infrastructure.async.CaptureProcessingProperties;
 import java.time.Duration;
 import java.time.Instant;
@@ -34,6 +36,7 @@ import static org.mockito.Mockito.when;
         "blaie.capture.processing.worker-enabled=false",
         "blaie.capture.processing.recovery-enabled=false",
         "blaie.capture.processing.outbox-recovery-age=0s",
+        "blaie.storage.deletion.enabled=false",
         "blaie.auth.access-token-secret=outbox-test-access-secret-at-least-32-bytes",
         "blaie.email.provider=log",
         "blaie.email.from=Blaie <no-reply@test.local>",
@@ -48,6 +51,9 @@ import static org.mockito.Mockito.when;
 class CaptureOutboxFailureIntegrationTest {
     @Autowired
     private CaptureWorkflowStorePort workflowStore;
+
+    @Autowired
+    private ImageCaptureWorkflowStorePort imageWorkflowStore;
 
     @Autowired
     private CaptureProcessingProperties properties;
@@ -120,6 +126,98 @@ class CaptureOutboxFailureIntegrationTest {
 
         await(() -> publicationCount(true) == 1);
         verify(streams, timeout(5_000).atLeast(2)).add(any());
+    }
+
+    @Test
+    void imageWorkflowPersistsGenericJobAndUsesTheUnchangedLegacyOutboxContract() throws Exception {
+        when(streams.add(any())).thenReturn(RecordId.of("2-0"));
+        UUID userId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "insert into users (id, display_name) values (?, ?)",
+                userId,
+                "Image Outbox Test User"
+        );
+        Instant now = Instant.now();
+
+        var capture = imageWorkflowStore.startImageCapture(
+                userId,
+                null,
+                new CaptureAssetDraft(
+                        assetId,
+                        0,
+                        "r2",
+                        "captures/" + assetId + ".png",
+                        "image/png",
+                        4,
+                        "a".repeat(64),
+                        1,
+                        1
+                ),
+                UUID.randomUUID(),
+                "b".repeat(64),
+                "image-outbox-request",
+                now,
+                now.plus(Duration.ofHours(24)),
+                properties.maxAttempts()
+        );
+
+        await(() -> publicationCount(true) == 1);
+        assertThat(jdbcTemplate.queryForObject(
+                "select input_type from captures where id = ?",
+                String.class,
+                capture.id()
+        )).isEqualTo("image");
+        assertThat(jdbcTemplate.queryForObject(
+                "select original_text is null from captures where id = ?",
+                Boolean.class,
+                capture.id()
+        )).isTrue();
+        assertThat(jdbcTemplate.queryForObject(
+                "select job_type from processing_jobs where capture_id = ?",
+                String.class,
+                capture.id()
+        )).isEqualTo("image_analysis");
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from capture_assets where capture_id = ?",
+                Integer.class,
+                capture.id()
+        )).isEqualTo(1);
+
+        String eventType = jdbcTemplate.queryForObject(
+                "select event_type from event_publication",
+                String.class
+        );
+        String listenerId = jdbcTemplate.queryForObject(
+                "select listener_id from event_publication",
+                String.class
+        );
+        String serialized = jdbcTemplate.queryForObject(
+                "select serialized_event from event_publication",
+                String.class
+        );
+        assertThat(eventType).isEqualTo(TextCaptureQueuedEvent.class.getName());
+        assertThat(listenerId).isEqualTo("capture-text-job-redis-publisher");
+        assertThat(serialized)
+                .contains("\"originRequestId\":\"image-outbox-request\"")
+                .doesNotContain("captures/")
+                .doesNotContain("image_analysis");
+
+        workflowStore.deleteOwned(capture.id(), userId);
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from captures where id = ?",
+                Integer.class,
+                capture.id()
+        )).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from capture_assets where capture_id = ?",
+                Integer.class,
+                capture.id()
+        )).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from storage_deletion_jobs where status = 'pending'",
+                Integer.class
+        )).isEqualTo(1);
     }
 
     private int publicationCount(boolean completed) {

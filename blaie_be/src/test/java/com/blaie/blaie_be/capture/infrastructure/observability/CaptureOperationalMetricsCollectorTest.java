@@ -38,6 +38,9 @@ class CaptureOperationalMetricsCollectorTest {
                 3,
                 NOW.minusSeconds(20)
         ));
+        when(fixture.reader.readStorageDeletions()).thenReturn(
+                new CaptureOperationalSnapshotReader.StorageDeletionSnapshot(2, 1, 4)
+        );
         when(fixture.streams.size("capture-stream")).thenReturn(9L);
         PendingMessagesSummary pending = mock(PendingMessagesSummary.class);
         when(pending.getTotalPendingMessages()).thenReturn(5L);
@@ -56,6 +59,9 @@ class CaptureOperationalMetricsCollectorTest {
                 .timeGauge().value(TimeUnit.SECONDS)).isEqualTo(45);
         assertGauge(fixture.registry, "capture.active.leases", 1);
         assertGauge(fixture.registry, "capture.outbox.backlog", 3);
+        assertGauge(fixture.registry, "capture.storage.deletion.depth", "state", "ready", 2);
+        assertGauge(fixture.registry, "capture.storage.deletion.depth", "state", "processing", 1);
+        assertGauge(fixture.registry, "capture.storage.deletion.depth", "state", "exhausted", 4);
         assertThat(fixture.registry.get("capture.outbox.oldest.age")
                 .timeGauge().value(TimeUnit.SECONDS)).isEqualTo(20);
         assertGauge(fixture.registry, "capture.redis.stream.pending", 5);
@@ -80,6 +86,9 @@ class CaptureOperationalMetricsCollectorTest {
                 2, 0, 1, 0, NOW.minusSeconds(10)
         ));
         when(fixture.reader.readOutbox()).thenReturn(new CaptureOperationalSnapshotReader.OutboxSnapshot(0, null));
+        when(fixture.reader.readStorageDeletions()).thenReturn(
+                new CaptureOperationalSnapshotReader.StorageDeletionSnapshot(0, 0, 0)
+        );
         when(fixture.streams.size("capture-stream")).thenReturn(1L);
         when(fixture.streams.pending("capture-stream", "capture-group")).thenReturn(null);
         when(fixture.redis.execute(

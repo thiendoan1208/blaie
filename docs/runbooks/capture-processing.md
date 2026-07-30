@@ -1,8 +1,8 @@
 # Capture processing operations runbook
 
-This runbook covers the durable asynchronous text-capture path:
+This runbook covers the durable asynchronous text/image-capture path:
 
-`HTTP -> PostgreSQL capture/job/outbox -> Redis Stream -> worker -> AI provider -> PostgreSQL result`
+`HTTP/R2 -> PostgreSQL capture/job/outbox -> Redis Stream -> worker -> DeepSeek or R2/Gemini -> PostgreSQL result`
 
 PostgreSQL is the source of truth. Redis is a wake-up transport. Operational actions must preserve that boundary.
 
@@ -32,6 +32,14 @@ published as an application port. Prometheus scrapes `/actuator/prometheus`; hea
 - Outbox backlog normally returns to zero within the configured recovery window.
 - Redis pending work drains; a transient pending record is normal while a worker owns it.
 - Provider concurrency usage never exceeds its configured limit.
+- `capture_storage_deletion_depth{state="ready"}` returns to zero and
+  `capture_storage_deletion_depth{state="exhausted"}` remains zero.
+
+The V1 outbox intentionally still uses event class `TextCaptureQueuedEvent`, listener id
+`capture-text-job-redis-publisher`, and the existing Redis stream for both job types. This is compatibility, not
+routing. The payload contains identifiers/generations only. Every worker must read `processing_jobs.job_type` from
+PostgreSQL and route `text_classification` to DeepSeek or `image_analysis` to R2/Gemini. Do not rename the event or
+listener during the image rollout; Spring Modulith persists both names in incomplete publications.
 
 Global PostgreSQL/Redis gauges are observed by every app instance. Filter them to matching instances with
 `source_up == 1`, then aggregate with `max`, not `sum`; otherwise a failed replica can retain a stale last-good
@@ -95,6 +103,26 @@ visible. Counters and timers describe work performed by individual instances and
 - `provider_retryable` suggests timeout, 429, 5xx or invalid output; confirm provider health before requeueing many
   jobs.
 - `system_retryable` suggests worker/infrastructure behavior; inspect lease, recovery and Redis/DB health.
+
+### Gemini/image failures or storage deletion backlog
+
+- Group provider metrics by `provider="gemini"`; there is no DeepSeek fallback for image jobs.
+- Confirm `BLAIE_IMAGE_WORKER_ENABLED=true` on every active worker before enabling image admission.
+- `BLAIE_GEMINI_API_KEY` must contain a server-side Gemini authorization key created in Google AI Studio. The
+  adapter calls the native `generativelanguage.googleapis.com` API and sends the key only in the
+  `x-goog-api-key` header; do not route new `AQ.*` keys through the OpenAI-compatible endpoint.
+- Every outbound provider receives an independent prototype-scoped `RestClient.Builder`. Never make that builder
+  singleton-scoped: mutable base URLs and default authorization headers would leak between Resend, DeepSeek, Groq,
+  Google OAuth and Gemini, causing dual-credential rejection and potentially sending credentials to the wrong host.
+- Standard `AIza*` keys are transitional and are scheduled to stop working with the Gemini API in September 2026.
+  Rotate to an authorization key, verify it against the native API, then revoke the old key.
+- For storage errors, verify the private R2 endpoint/bucket/credentials without printing object keys or signed URLs.
+- A growing `state="ready"` deletion backlog indicates R2 delete failures or no active deletion scheduler.
+- `state="exhausted"` requires operator investigation. Keep the row and use the read-only query below; do not delete
+  it or expose its object_key in tickets/logs.
+- `BLAIE_STORAGE_ORPHAN_SCAN_ENABLED` normally follows image admission. The scanner pages through `captures/`,
+  ignores objects newer than `BLAIE_STORAGE_ORPHAN_MIN_AGE` (one hour by default), checks PostgreSQL references and
+  idempotently enqueues only old unreferenced objects.
 
 ### Redis pending work grows
 
@@ -172,6 +200,10 @@ There is deliberately no generic outbox purge endpoint.
 4. Verify read endpoints (`GET /captures`, `GET /captures/{id}`, `GET /inbox`) still work.
 5. Leave publisher, worker and recovery roles enabled so existing work drains.
 
+To pause only new image work, set `BLAIE_IMAGE_CAPTURE_ENABLED=false` on every API node first. Leave
+`BLAIE_IMAGE_WORKER_ENABLED=true` until every existing image_analysis job is terminal. Never roll all workers back
+to a text-only binary while an image job remains active.
+
 The flag is startup configuration. Changing one process or one local variable is not a cluster-wide pause.
 
 ### Pause all provider execution and drain workers
@@ -243,6 +275,34 @@ WHERE listener_id = 'capture-text-job-redis-publisher'
 ```
 
 Do not expand these queries with `original_text` or `serialized_event` for routine incident handling.
+
+Storage deletion backlog without object keys:
+
+```sql
+SELECT
+    CASE
+        WHEN status = 'retry_wait' AND attempt_count >= max_attempts THEN 'exhausted'
+        ELSE status
+    END AS safe_state,
+    COUNT(*) AS job_count,
+    MIN(available_at) AS oldest_available_at,
+    MAX(attempt_count) AS max_attempt_count
+FROM storage_deletion_jobs
+WHERE status <> 'completed'
+GROUP BY safe_state
+ORDER BY safe_state;
+```
+
+## Safe image rollout order
+
+1. Create a private R2 bucket and configure `BLAIE_R2_BUCKET`.
+2. Apply additive Flyway V19.
+3. Deploy the new backend everywhere with both image flags false.
+4. Enable `BLAIE_IMAGE_WORKER_ENABLED=true` everywhere and verify all workers understand image_analysis.
+5. Enable `BLAIE_IMAGE_CAPTURE_ENABLED=true` on API nodes.
+6. Deploy the attachment UI and monitor outbox, queue age, Gemini errors and storage deletion depth.
+
+Rollback reverses admission first. Drain image jobs with compatible workers before disabling image worker support.
 
 ## Rollback and handoff
 

@@ -28,6 +28,18 @@ public class CaptureOperationalSnapshotReader {
               AND event_type = ?
               AND listener_id = 'capture-text-job-redis-publisher'
             """;
+    static final String STORAGE_DELETION_SNAPSHOT_SQL = """
+            SELECT COUNT(*) FILTER (
+                       WHERE status IN ('pending', 'retry_wait')
+                         AND attempt_count < max_attempts
+                   ) AS ready_count,
+                   COUNT(*) FILTER (WHERE status = 'processing') AS processing_count,
+                   COUNT(*) FILTER (
+                       WHERE status = 'retry_wait'
+                         AND attempt_count >= max_attempts
+                   ) AS exhausted_count
+            FROM storage_deletion_jobs
+            """;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -56,6 +68,17 @@ public class CaptureOperationalSnapshotReader {
         );
     }
 
+    public StorageDeletionSnapshot readStorageDeletions() {
+        return jdbcTemplate.queryForObject(
+                STORAGE_DELETION_SNAPSHOT_SQL,
+                (resultSet, rowNumber) -> new StorageDeletionSnapshot(
+                        resultSet.getLong("ready_count"),
+                        resultSet.getLong("processing_count"),
+                        resultSet.getLong("exhausted_count")
+                )
+        );
+    }
+
     private static Instant instant(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant();
     }
@@ -70,5 +93,8 @@ public class CaptureOperationalSnapshotReader {
     }
 
     public record OutboxSnapshot(long backlog, Instant oldestPublicationAt) {
+    }
+
+    public record StorageDeletionSnapshot(long ready, long processing, long exhausted) {
     }
 }

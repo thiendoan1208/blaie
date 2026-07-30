@@ -1,5 +1,22 @@
 Database design draft - V1
 
+Implemented Image Capture V1 addendum (Flyway V19, 2026-07-28)
+----------------------------------------------------------------
+
+- captures.input_type is `text` or `image`; original_text is required for text and optional for image.
+- capture_assets is a 1-N child of captures. V1 admits one image, while the schema preserves asset_position for
+  future multiple attachments. It stores provider/key/content type/size/hash/dimensions, never binary/base64 or a
+  signed URL.
+- processing_jobs.job_type is `text_classification` or `image_analysis`. Existing lease, retry, retry-generation
+  and dispatch-generation fencing applies to both.
+- storage_deletion_jobs owns durable object deletion independently of a Capture FK, so capture_assets can cascade
+  before remote cleanup succeeds.
+- event_publication remains unchanged in V1. Both job types publish TextCaptureQueuedEvent to listener
+  `capture-text-job-redis-publisher`; its identifier-only payload is already generic. Workers load job_type from
+  PostgreSQL.
+- PostgreSQL remains authoritative. Redis still carries only event/job/capture/generation identifiers and never
+  text, image bytes, provider payload or object keys.
+
 Goal
 ----
 Chot cac bang loi cho MVP V1 theo huong:

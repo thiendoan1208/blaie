@@ -3,10 +3,25 @@ import type { ApiResponse } from "@/shared/api/contracts/api-response";
 
 import type {
   CreateTextCaptureInput,
+  CreateImageCaptureInput,
   InboxItem,
   InboxPage,
   TextCapture,
 } from "../types/inbox";
+
+function normalizeCapture(capture: TextCapture): TextCapture {
+  const baseUrl = httpClient.defaults.baseURL;
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return capture;
+  return {
+    ...capture,
+    attachments: capture.attachments.map((attachment) => ({
+      ...attachment,
+      contentUrl: /^https?:\/\//i.test(attachment.contentUrl)
+        ? attachment.contentUrl
+        : new URL(attachment.contentUrl, baseUrl).toString(),
+    })),
+  };
+}
 
 export async function createTextCapture(
   input: CreateTextCaptureInput,
@@ -16,14 +31,28 @@ export async function createTextCapture(
     { text: input.text },
     { headers: { "Idempotency-Key": input.idempotencyKey } },
   );
-  return response.data.data;
+  return normalizeCapture(response.data.data);
+}
+
+export async function createImageCapture(
+  input: CreateImageCaptureInput,
+): Promise<TextCapture> {
+  const form = new FormData();
+  form.append("image", input.image, input.image.name);
+  if (input.text?.trim()) form.append("text", input.text.trim());
+  const response = await httpClient.post<ApiResponse<TextCapture>>(
+    "/captures/image",
+    form,
+    { headers: { "Idempotency-Key": input.idempotencyKey } },
+  );
+  return normalizeCapture(response.data.data);
 }
 
 export async function getCapture(captureId: string): Promise<TextCapture> {
   const response = await httpClient.get<ApiResponse<TextCapture>>(
     `/captures/${captureId}`,
   );
-  return response.data.data;
+  return normalizeCapture(response.data.data);
 }
 
 export async function resolveCapture(
@@ -33,7 +62,7 @@ export async function resolveCapture(
     "/captures/resolve",
     { headers: { "Idempotency-Key": idempotencyKey } },
   );
-  return response.data.data;
+  return normalizeCapture(response.data.data);
 }
 
 export async function getProcessingCaptures(): Promise<TextCapture[]> {
@@ -41,14 +70,14 @@ export async function getProcessingCaptures(): Promise<TextCapture[]> {
     "/captures",
     { params: { status: "processing", limit: 20 } },
   );
-  return response.data.data;
+  return response.data.data.map(normalizeCapture);
 }
 
 export async function retryCapture(captureId: string): Promise<TextCapture> {
   const response = await httpClient.post<ApiResponse<TextCapture>>(
     `/captures/${captureId}/retry`,
   );
-  return response.data.data;
+  return normalizeCapture(response.data.data);
 }
 
 export async function deleteCapture(captureId: string): Promise<void> {

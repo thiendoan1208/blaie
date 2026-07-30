@@ -14,6 +14,9 @@ public class AuditRequestClassifier {
         if ("POST".equals(method) && "/api/v1/captures/text".equals(path)) {
             return access("capture.create", "capture", null);
         }
+        if ("POST".equals(method) && "/api/v1/captures/image".equals(path)) {
+            return access("capture.create_image", "capture", null);
+        }
         if ("POST".equals(method) && "/api/v1/transcriptions/audio".equals(path)) {
             return access("capture.transcribe", "capture", null);
         }
@@ -25,6 +28,10 @@ public class AuditRequestClassifier {
         }
         if (path.startsWith("/api/v1/captures/")) {
             String suffix = path.substring("/api/v1/captures/".length());
+            if ("GET".equals(method) && suffix.matches("[^/]+/assets/[^/]+/content")) {
+                String[] parts = suffix.split("/");
+                return access("capture.asset_read", "capture_asset", parts[2]);
+            }
             if (suffix.endsWith("/retry") && "POST".equals(method)) {
                 return access("capture.retry", "capture", stripSuffix(suffix, "/retry"));
             }

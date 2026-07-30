@@ -21,6 +21,7 @@ public class CaptureContentPolicy {
             Pattern.compile("\\bsk_live_[A-Za-z0-9]{16,}\\b"),
             Pattern.compile("\\bsk-[A-Za-z0-9_-]{20,}\\b"),
             Pattern.compile("\\bAIza[0-9A-Za-z_-]{30,}\\b"),
+            Pattern.compile("(?<![A-Za-z0-9])AQ\\.[A-Za-z0-9._-]{20,}(?![A-Za-z0-9])"),
             Pattern.compile("\\beyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\b"),
             Pattern.compile("(?i)\\b(?:postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis)://[^\\s:/]+:[^\\s@/]+@")
     );

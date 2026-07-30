@@ -4,22 +4,23 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { TextCapture } from "../types/inbox";
 
-const STORAGE_PREFIX = "blaie.inbox.capture-tracking.v1";
-const STATE_VERSION = 1;
+const STORAGE_PREFIX = "blaie.inbox.capture-tracking.v2";
+const STATE_VERSION = 2;
 const MAX_TRACKED_CAPTURES = 100;
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type PendingCaptureSubmission = {
-  textHash: string;
+  inputType: "text" | "image";
+  requestHash: string;
   idempotencyKey: string;
   createdAt: string;
   captureId: string | null;
 };
 
 export type InboxTrackingState = {
-  version: 1;
+  version: 2;
   captureIds: string[];
   pendingSubmissions: PendingCaptureSubmission[];
 };
@@ -60,8 +61,9 @@ function isPendingSubmission(value: unknown): value is PendingCaptureSubmission 
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   return (
-    typeof candidate.textHash === "string" &&
-    /^[a-f0-9]{64}$/.test(candidate.textHash) &&
+    (candidate.inputType === "text" || candidate.inputType === "image") &&
+    typeof candidate.requestHash === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.requestHash) &&
     typeof candidate.idempotencyKey === "string" &&
     UUID_PATTERN.test(candidate.idempotencyKey) &&
     typeof candidate.createdAt === "string" &&
@@ -149,31 +151,73 @@ function writeInboxTrackingState(
 }
 
 export function normalizeCaptureText(text: string): string {
-  return text.trim();
+  // Match Java String.trim() used by the capture admission service exactly.
+  return text.replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "");
 }
 
 export async function hashCaptureText(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(normalizeCaptureText(text));
+  return hashBytes(bytes);
+}
+
+async function hashBytes(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)]
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
 }
 
+async function readFileBytes(file: File): Promise<Uint8Array<ArrayBuffer>> {
+  if (typeof file.arrayBuffer === "function") {
+    return new Uint8Array(await file.arrayBuffer());
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+export async function hashCaptureSubmission(
+  text: string,
+  image?: File,
+): Promise<string> {
+  if (!image) return hashCaptureText(text);
+  const normalizedText = new TextEncoder().encode(normalizeCaptureText(text));
+  const imageBytes = await readFileBytes(image);
+  const prefix = new TextEncoder().encode("image-v1");
+  const bytes = new Uint8Array(
+    prefix.length + 4 + normalizedText.length + imageBytes.length,
+  );
+  bytes.set(prefix, 0);
+  new DataView(bytes.buffer).setUint32(prefix.length, normalizedText.length);
+  bytes.set(normalizedText, prefix.length + 4);
+  bytes.set(imageBytes, prefix.length + 4 + normalizedText.length);
+  return hashBytes(bytes);
+}
+
 export async function getOrCreatePendingSubmission(
   userId: string,
   text: string,
-  now = Date.now(),
+  imageOrNow?: File | number,
+  requestedNow = Date.now(),
 ): Promise<PendingCaptureSubmission> {
-  const textHash = await hashCaptureText(text);
+  const image = imageOrNow instanceof File ? imageOrNow : undefined;
+  const now = typeof imageOrNow === "number" ? imageOrNow : requestedNow;
+  const requestHash = await hashCaptureSubmission(text, image);
+  const inputType = image ? "image" : "text";
   const state = readInboxTrackingState(userId, now);
   const existing = state.pendingSubmissions.find(
-    (submission) => submission.textHash === textHash,
+    (submission) =>
+      submission.inputType === inputType &&
+      submission.requestHash === requestHash,
   );
   if (existing) return existing;
 
   const submission: PendingCaptureSubmission = {
-    textHash,
+    inputType,
+    requestHash,
     idempotencyKey: crypto.randomUUID(),
     createdAt: new Date(now).toISOString(),
     captureId: null,
@@ -234,15 +278,22 @@ function attachCapture(
 async function reconcileRecoveredCapture(
   userId: string,
   capture: TextCapture,
+  idempotencyKey?: string,
   now = Date.now(),
 ): Promise<InboxTrackingState> {
-  const textHash = await hashCaptureText(capture.originalText);
+  const textHash =
+    capture.inputType === "text" && capture.originalText
+      ? await hashCaptureText(capture.originalText)
+      : null;
   const state = readInboxTrackingState(userId, now);
   const terminal = capture.processingStatus !== "processing";
   const pendingSubmissions = state.pendingSubmissions.flatMap((submission) => {
     const belongsToCapture =
       submission.captureId === capture.id ||
-      (submission.captureId === null && submission.textHash === textHash);
+      submission.idempotencyKey === idempotencyKey ||
+      (submission.captureId === null &&
+        submission.inputType === "text" &&
+        submission.requestHash === textHash);
     if (!belongsToCapture) return [submission];
     return terminal ? [] : [{ ...submission, captureId: capture.id }];
   });
@@ -328,14 +379,18 @@ export function useInboxTracking(userId: string) {
   }, [userId]);
 
   const beginSubmission = useCallback(
-    async (text: string) => {
+    async (
+      text: string,
+      image?: File,
+    ): Promise<PendingCaptureSubmission> => {
       try {
-        const submission = await getOrCreatePendingSubmission(userId, text);
+        const submission = await getOrCreatePendingSubmission(userId, text, image);
         setState(readInboxTrackingState(userId));
         return submission;
       } catch {
         return {
-          textHash: "",
+          inputType: image ? "image" : "text",
+          requestHash: "",
           idempotencyKey: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           captureId: null,
@@ -353,9 +408,9 @@ export function useInboxTracking(userId: string) {
   );
 
   const rememberRecoveredCapture = useCallback(
-    async (capture: TextCapture) => {
+    async (capture: TextCapture, idempotencyKey?: string) => {
       try {
-        setState(await reconcileRecoveredCapture(userId, capture));
+        setState(await reconcileRecoveredCapture(userId, capture, idempotencyKey));
       } catch {
         setState(addCaptureIds(userId, [capture.id]));
       }

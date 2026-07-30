@@ -50,11 +50,17 @@ class RateLimitPolicyResolverTest {
                 "/api/v1/captures/2fca95eb-3d84-4f50-99bc-3e778936a6bb/retry"
         );
         MockHttpServletRequest read = new MockHttpServletRequest("GET", "/api/v1/captures");
+        MockHttpServletRequest image = new MockHttpServletRequest("POST", "/api/v1/captures/image");
 
         assertThat(resolver.resolve(retry)).get()
                 .extracting(RateLimitRequest::policyName)
                 .isEqualTo("capture-retry");
         assertThat(resolver.resolve(read)).isEmpty();
+        assertThat(resolver.resolve(image)).get()
+                .satisfies(policy -> {
+                    assertThat(policy.policyName()).isEqualTo("capture-image");
+                    assertThat(policy.failOpen()).isFalse();
+                });
     }
 
     @Test

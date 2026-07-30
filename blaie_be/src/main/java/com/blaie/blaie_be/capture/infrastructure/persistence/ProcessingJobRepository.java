@@ -12,10 +12,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ProcessingJobRepository extends JpaRepository<ProcessingJobEntity, UUID> {
+    Optional<ProcessingJobEntity> findByCaptureId(UUID captureId);
+
     Optional<ProcessingJobEntity> findByCaptureIdAndJobType(UUID captureId, String jobType);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<ProcessingJobEntity> findLockedById(UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<ProcessingJobEntity> findLockedByCaptureId(UUID captureId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<ProcessingJobEntity> findLockedByCaptureIdAndJobType(UUID captureId, String jobType);

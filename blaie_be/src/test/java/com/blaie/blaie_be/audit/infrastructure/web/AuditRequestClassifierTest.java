@@ -29,6 +29,8 @@ class AuditRequestClassifierTest {
     void classifiesEveryCurrentUserCaptureAndInboxOperation() {
         assertThat(classify("POST", "/api/v1/captures/text"))
                 .isEqualTo(new AuditAccess("capture.create", "capture", null));
+        assertThat(classify("POST", "/api/v1/captures/image"))
+                .isEqualTo(new AuditAccess("capture.create_image", "capture", null));
         assertThat(classify("POST", "/api/v1/transcriptions/audio"))
                 .isEqualTo(new AuditAccess("capture.transcribe", "capture", null));
         assertThat(classify("GET", "/api/v1/captures"))
@@ -37,6 +39,8 @@ class AuditRequestClassifierTest {
                 .isEqualTo(new AuditAccess("capture.resolve", "capture", null));
         assertThat(classify("GET", "/api/v1/captures/capture-1"))
                 .isEqualTo(new AuditAccess("capture.read", "capture", "capture-1"));
+        assertThat(classify("GET", "/api/v1/captures/capture-1/assets/asset-1/content"))
+                .isEqualTo(new AuditAccess("capture.asset_read", "capture_asset", "asset-1"));
         assertThat(classify("POST", "/api/v1/captures/capture-1/retry"))
                 .isEqualTo(new AuditAccess("capture.retry", "capture", "capture-1"));
         assertThat(classify("DELETE", "/api/v1/captures/capture-1"))

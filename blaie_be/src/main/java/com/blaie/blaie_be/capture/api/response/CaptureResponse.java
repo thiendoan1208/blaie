@@ -7,10 +7,12 @@ import java.util.UUID;
 
 public record CaptureResponse(
         UUID id,
+        String inputType,
         String originalText,
         String processingStatus,
         String failureCode,
         boolean canRetry,
+        List<CaptureAssetResponse> attachments,
         List<CaptureItemResponse> items,
         Instant createdAt,
         Instant updatedAt
@@ -18,10 +20,14 @@ public record CaptureResponse(
     public static CaptureResponse from(CaptureResult capture) {
         return new CaptureResponse(
                 capture.id(),
+                capture.inputType().value(),
                 capture.originalText(),
                 capture.processingStatus().value(),
                 capture.failureCode(),
                 capture.canRetry(),
+                capture.assets().stream()
+                        .map(asset -> CaptureAssetResponse.from(capture.id(), asset))
+                        .toList(),
                 capture.items().stream().map(CaptureItemResponse::from).toList(),
                 capture.createdAt(),
                 capture.updatedAt()

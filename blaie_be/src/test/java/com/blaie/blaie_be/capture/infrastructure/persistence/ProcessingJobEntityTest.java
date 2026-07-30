@@ -27,6 +27,40 @@ class ProcessingJobEntityTest {
     }
 
     @Test
+    void imageCaptureCreatesAnImageAnalysisJobWithoutChangingTheLegacyTextFactory() {
+        CaptureEntity imageCapture = CaptureEntity.processingImage(UUID.randomUUID(), null);
+
+        ProcessingJobEntity imageJob = ProcessingJobEntity.queued(
+                imageCapture,
+                "image_analysis",
+                4,
+                "entity-test-request",
+                NOW,
+                NOW.plusSeconds(30)
+        );
+
+        assertThat(imageCapture.inputType()).isEqualTo("image");
+        assertThat(imageCapture.originalText()).isNull();
+        assertThat(imageJob.jobType()).isEqualTo("image_analysis");
+        assertThat(queuedJob(CaptureEntity.processing(UUID.randomUUID(), "Buy milk")).jobType())
+                .isEqualTo("text_classification");
+    }
+
+    @Test
+    void queuedJobRejectsUnknownJobTypes() {
+        CaptureEntity capture = CaptureEntity.processing(UUID.randomUUID(), "Buy milk");
+
+        assertThatThrownBy(() -> ProcessingJobEntity.queued(
+                capture,
+                "unknown",
+                4,
+                "entity-test-request",
+                NOW,
+                NOW.plusSeconds(30)
+        )).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void onlyCurrentLeaseOwnerCanExtendProcessingJobLease() {
         CaptureEntity capture = CaptureEntity.processing(UUID.randomUUID(), "Buy milk");
         ProcessingJobEntity job = queuedJob(capture);

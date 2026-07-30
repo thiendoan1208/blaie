@@ -18,11 +18,13 @@ function capture(
 ): TextCapture {
   return {
     id: CAPTURE_ID,
+    inputType: "text",
     originalText: "Call mom tonight",
     processingStatus,
     failureCode:
       processingStatus === "failed" ? "ai_provider_unavailable" : null,
     canRetry: processingStatus === "failed",
+    attachments: [],
     items: [],
     createdAt: "2026-07-17T10:00:00Z",
     updatedAt: "2026-07-17T10:01:00Z",
@@ -37,6 +39,9 @@ describe("Inbox capture tracking", () => {
   it("hashes exactly the backend-trimmed UTF-8 text", async () => {
     await expect(hashCaptureText("  hello  ")).resolves.toBe(
       "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+    );
+    await expect(hashCaptureText("\u00a0hello\u00a0")).resolves.not.toBe(
+      await hashCaptureText("hello"),
     );
   });
 
@@ -59,6 +64,30 @@ describe("Inbox capture tracking", () => {
         Date.parse("2026-07-17T10:05:00Z"),
       ).pendingSubmissions,
     ).toHaveLength(1);
+  });
+
+  it("persists only an image fingerprint and never the image blob or base64", async () => {
+    const image = new File(["private-image-bytes"], "private-receipt.png", {
+      type: "image/png",
+    });
+
+    const submission = await getOrCreatePendingSubmission(
+      USER_ID,
+      " Read this ",
+      image,
+      Date.parse("2026-07-17T10:00:00Z"),
+    );
+
+    expect(submission.inputType).toBe("image");
+    expect(submission.requestHash).toBe(
+      "775f3edc220ba395e9f0b19483378a0b65edae9ecff23e24107cb5d123bb2c4e",
+    );
+    const persisted = window.localStorage.getItem(
+      "blaie.inbox.capture-tracking.v2:user-1",
+    );
+    expect(persisted).toContain(submission.requestHash);
+    expect(persisted).not.toContain("private-image-bytes");
+    expect(persisted).not.toContain("private-receipt.png");
   });
 
   it("isolates persisted tracking by authenticated user", async () => {
@@ -125,7 +154,7 @@ describe("Inbox capture tracking", () => {
 
     expect(result.current.state.captureIds).toEqual([]);
     expect(readInboxTrackingState(USER_ID)).toEqual({
-      version: 1,
+      version: 2,
       captureIds: [],
       pendingSubmissions: [],
     });
@@ -133,9 +162,9 @@ describe("Inbox capture tracking", () => {
 
   it("rehydrates tracked capture IDs after a page reload", async () => {
     window.localStorage.setItem(
-      "blaie.inbox.capture-tracking.v1:user-1",
+      "blaie.inbox.capture-tracking.v2:user-1",
       JSON.stringify({
-        version: 1,
+        version: 2,
         captureIds: [CAPTURE_ID],
         pendingSubmissions: [],
       }),
@@ -164,12 +193,12 @@ describe("Inbox capture tracking", () => {
 
   it("ignores corrupted persisted state", () => {
     window.localStorage.setItem(
-      "blaie.inbox.capture-tracking.v1:user-1",
+      "blaie.inbox.capture-tracking.v2:user-1",
       "not-json",
     );
 
     expect(readInboxTrackingState(USER_ID)).toEqual({
-      version: 1,
+      version: 2,
       captureIds: [],
       pendingSubmissions: [],
     });

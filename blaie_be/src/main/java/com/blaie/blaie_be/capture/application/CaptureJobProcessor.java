@@ -7,7 +7,6 @@ import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.JobOutco
 import com.blaie.blaie_be.capture.application.port.CaptureTelemetryPort.RetrySource;
 import com.blaie.blaie_be.capture.application.port.JobLeaseHeartbeatPort;
 import com.blaie.blaie_be.capture.application.port.ProcessingJobStorePort;
-import com.blaie.blaie_be.capture.application.port.TextClassifierPort;
 import com.blaie.blaie_be.capture.application.result.ProcessingJobResult;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysis;
 import com.blaie.blaie_be.capture.domain.TextClassificationException;
@@ -29,9 +28,7 @@ public class CaptureJobProcessor {
     private static final String UNEXPECTED_ERROR = "unexpected_classification_error";
 
     private final ProcessingJobStorePort jobStore;
-    private final TextClassifierPort classifier;
-    private final CaptureContentPolicy contentPolicy;
-    private final CapturePiiPolicy piiPolicy;
+    private final CaptureAnalysisRouter analysisRouter;
     private final CaptureProcessingSettingsPort settings;
     private final Clock clock;
     private final JobLeaseHeartbeatPort heartbeatPort;
@@ -39,18 +36,14 @@ public class CaptureJobProcessor {
 
     public CaptureJobProcessor(
             ProcessingJobStorePort jobStore,
-            TextClassifierPort classifier,
-            CaptureContentPolicy contentPolicy,
-            CapturePiiPolicy piiPolicy,
+            CaptureAnalysisRouter analysisRouter,
             CaptureProcessingSettingsPort settings,
             Clock clock,
             JobLeaseHeartbeatPort heartbeatPort,
             CaptureTelemetryPort telemetry
     ) {
         this.jobStore = jobStore;
-        this.classifier = classifier;
-        this.contentPolicy = contentPolicy;
-        this.piiPolicy = piiPolicy;
+        this.analysisRouter = analysisRouter;
         this.settings = settings;
         this.clock = clock;
         this.heartbeatPort = heartbeatPort;
@@ -93,12 +86,7 @@ public class CaptureJobProcessor {
         long startedAtNanos = System.nanoTime();
         JobOutcome outcome = JobOutcome.STALE_DISCARDED;
         try {
-            contentPolicy.validate(job.originalText());
-            CapturePiiPolicy.PreparedText preparedText = piiPolicy.prepare(job.originalText());
-            CaptureAnalysis analysis = piiPolicy.restore(
-                    preparedText,
-                    classifier.classify(preparedText.providerText())
-            );
+            CaptureAnalysis analysis = analysisRouter.analyze(job);
             boolean completed = jobStore.complete(
                     job.id(),
                     workerId,

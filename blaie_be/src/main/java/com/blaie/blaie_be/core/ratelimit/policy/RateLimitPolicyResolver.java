@@ -87,6 +87,9 @@ public class RateLimitPolicyResolver {
         if (HttpMethod.POST.matches(method) && "/api/v1/captures/text".equals(path)) {
             return request("capture-text", properties.captureText(), userSubject(), ipSubject);
         }
+        if (HttpMethod.POST.matches(method) && "/api/v1/captures/image".equals(path)) {
+            return request("capture-image", properties.captureImage(), userSubject(), ipSubject);
+        }
         if (HttpMethod.POST.matches(method) && "/api/v1/transcriptions/audio".equals(path)) {
             return request("transcription", properties.transcription(), userSubject(), ipSubject);
         }

@@ -18,6 +18,9 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Table(name = "processing_jobs")
 @EntityListeners(AuditingEntityListener.class)
 public class ProcessingJobEntity {
+    public static final String TEXT_CLASSIFICATION = "text_classification";
+    public static final String IMAGE_ANALYSIS = "image_analysis";
+
     @Id
     private UUID id;
 
@@ -90,11 +93,25 @@ public class ProcessingJobEntity {
             Instant now,
             Instant nextDispatchAt
     ) {
+        return queued(capture, TEXT_CLASSIFICATION, maxAttempts, originRequestId, now, nextDispatchAt);
+    }
+
+    public static ProcessingJobEntity queued(
+            CaptureEntity capture,
+            String jobType,
+            int maxAttempts,
+            String originRequestId,
+            Instant now,
+            Instant nextDispatchAt
+    ) {
+        if (!TEXT_CLASSIFICATION.equals(jobType) && !IMAGE_ANALYSIS.equals(jobType)) {
+            throw new IllegalArgumentException("jobType is invalid");
+        }
         ProcessingJobEntity job = new ProcessingJobEntity();
         job.id = UUID.randomUUID();
         job.captureId = capture.id();
         job.userId = capture.userId();
-        job.jobType = "text_classification";
+        job.jobType = jobType;
         if (!RequestIdPolicy.isValid(originRequestId)) {
             throw new IllegalArgumentException("originRequestId is invalid");
         }

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Inbox,
+  ImagePlus,
   LoaderCircle,
   RefreshCw,
   Send,
@@ -11,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import {
   FormEvent,
   useCallback,
@@ -32,6 +34,7 @@ import {
   shouldDiscardCaptureSubmission,
 } from "../model/inbox-errors";
 import {
+  useCreateImageCaptureMutation,
   useCreateTextCaptureMutation,
   useDeleteCaptureMutation,
   useRetryCaptureMutation,
@@ -81,6 +84,8 @@ export function InboxPanel() {
 
 function InboxPanelContent({ userId }: { userId: string }) {
   const [text, setText] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [preparingSubmission, setPreparingSubmission] = useState(false);
   const [voicePhase, setVoicePhase] = useState<VoiceCapturePhase>("idle");
   const [voiceFailureMessage, setVoiceFailureMessage] = useState<string | null>(
@@ -96,6 +101,7 @@ function InboxPanelContent({ userId }: { userId: string }) {
   );
   const submitInFlight = useRef(false);
   const voiceInFlight = useRef(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const notifiedTerminalStates = useRef(new Set<string>());
   const recoveredResolutionStates = useRef(new Set<string>());
   const queryClient = useQueryClient();
@@ -131,9 +137,17 @@ function InboxPanelContent({ userId }: { userId: string }) {
     processingQuery.data ?? [],
   );
   const captureMutation = useCreateTextCaptureMutation(userId);
+  const imageCaptureMutation = useCreateImageCaptureMutation(userId);
   const transcriptionMutation = useTranscribeAudioMutation();
   const retryMutation = useRetryCaptureMutation(userId);
   const deleteMutation = useDeleteCaptureMutation(userId);
+
+  useEffect(
+    () => () => {
+      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    },
+    [imagePreviewUrl],
+  );
 
   const forgetCapture = useCallback(
     (captureId: string) => {
@@ -166,14 +180,24 @@ function InboxPanelContent({ userId }: { userId: string }) {
   }, [processingQuery.data, rememberRecoveredCapture]);
 
   useEffect(() => {
-    for (const query of resolutionQueries) {
-      if (!query.data) continue;
+    const unresolved = trackingState.pendingSubmissions.filter(
+      (submission) => submission.captureId === null,
+    );
+    resolutionQueries.forEach((query, index) => {
+      if (!query.data) return;
       const recoveryKey = `${query.data.id}:${query.data.processingStatus}:${query.data.updatedAt}`;
-      if (recoveredResolutionStates.current.has(recoveryKey)) continue;
+      if (recoveredResolutionStates.current.has(recoveryKey)) return;
       recoveredResolutionStates.current.add(recoveryKey);
-      void rememberRecoveredCapture(query.data);
-    }
-  }, [rememberRecoveredCapture, resolutionQueries]);
+      void rememberRecoveredCapture(
+        query.data,
+        unresolved[index]?.idempotencyKey,
+      );
+    });
+  }, [
+    rememberRecoveredCapture,
+    resolutionQueries,
+    trackingState.pendingSubmissions,
+  ]);
 
   useEffect(() => {
     captureQueries.forEach((query, index) => {
@@ -240,18 +264,60 @@ function InboxPanelContent({ userId }: { userId: string }) {
     ],
   );
 
+  const submitCaptureImage = useCallback(
+    async (captureText: string, captureImage: File) => {
+      if (submitInFlight.current) {
+        throw new Error("A capture submission is already in progress");
+      }
+      submitInFlight.current = true;
+      setPreparingSubmission(true);
+      let submission: Awaited<ReturnType<typeof beginSubmission>> | undefined;
+      try {
+        submission = await beginSubmission(captureText, captureImage);
+        const capture = await imageCaptureMutation.mutateAsync({
+          image: captureImage,
+          text: captureText || undefined,
+          idempotencyKey: submission.idempotencyKey,
+        });
+        rememberCapture(submission, capture);
+        return capture;
+      } catch (error) {
+        if (submission && shouldDiscardCaptureSubmission(error)) {
+          discardSubmission(submission.idempotencyKey);
+        }
+        throw error;
+      } finally {
+        submitInFlight.current = false;
+        setPreparingSubmission(false);
+      }
+    },
+    [
+      beginSubmission,
+      discardSubmission,
+      imageCaptureMutation,
+      rememberCapture,
+    ],
+  );
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitInFlight.current || voiceInFlight.current || voiceRecording) return;
 
     const trimmedText = text.trim();
-    if (!trimmedText) {
-      toast.error("Enter some text first.");
+    if (!trimmedText && !image) {
+      toast.error("Enter text or attach an image first.");
       return;
     }
 
     try {
-      await submitCaptureText(trimmedText);
+      if (image) {
+        await submitCaptureImage(trimmedText, image);
+        setImage(null);
+        setImagePreviewUrl(null);
+        if (imageInputRef.current) imageInputRef.current.value = "";
+      } else {
+        await submitCaptureText(trimmedText);
+      }
       setText("");
       toast.success(
         "Saved. Processing in background — you can safely leave.",
@@ -259,6 +325,26 @@ function InboxPanelContent({ userId }: { userId: string }) {
     } catch (error) {
       toast.error(captureRequestErrorMessage(error));
     }
+  }
+
+  function selectImage(file: File | undefined) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image must be 10 MB or smaller.");
+      return;
+    }
+    setImage(file);
+    setImagePreviewUrl(URL.createObjectURL(file));
+  }
+
+  function removeSelectedImage() {
+    setImage(null);
+    setImagePreviewUrl(null);
+    if (imageInputRef.current) imageInputRef.current.value = "";
   }
 
   const processVoice = useCallback(
@@ -339,7 +425,10 @@ function InboxPanelContent({ userId }: { userId: string }) {
     }
   }
 
-  const textSubmitting = preparingSubmission || captureMutation.isPending;
+  const textSubmitting =
+    preparingSubmission ||
+    captureMutation.isPending ||
+    imageCaptureMutation.isPending;
   const voiceBusy = voicePhase !== "idle" || transcriptionMutation.isPending;
   const interactionBusy = textSubmitting || voiceBusy || voiceRecording;
 
@@ -354,14 +443,19 @@ function InboxPanelContent({ userId }: { userId: string }) {
             Inbox capture
           </h1>
           <p className="text-sm text-muted-foreground">
-            Write anything. Blaie will classify it in the background and place
-            the extracted records in your Inbox.
+            Write anything or attach an image. Blaie will classify it in the
+            background and place the extracted records in your Inbox.
           </p>
           <p className="text-xs text-muted-foreground">
             Blaie stores your text and masks common email, phone, and IP
             patterns before AI processing. Names and free-form addresses may
             still be sent to the configured provider. Never paste passwords,
             API keys, payment cards, or government IDs.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Attached images are sanitized and stored privately, then their
+            visible pixels are sent to Gemini. Text inside pixels cannot be
+            masked before image analysis.
           </p>
         </div>
 
@@ -379,21 +473,72 @@ function InboxPanelContent({ userId }: { userId: string }) {
             placeholder="Example: I have a meeting at 5 PM, then I need to run and finish my homework"
             className="min-h-32 w-full resize-y rounded-lg border border-input bg-background p-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
           />
+          {image && imagePreviewUrl && (
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+              <Image
+                alt="Selected image preview"
+                className="size-20 rounded-md object-cover"
+                height={80}
+                src={imagePreviewUrl}
+                unoptimized
+                width={80}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{image.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {(image.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+              <Button
+                aria-label="Remove attached image"
+                disabled={interactionBusy}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+                onClick={removeSelectedImage}
+              >
+                <X />
+              </Button>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-muted-foreground">
               {text.length}/10,000
             </span>
-            <Button disabled={interactionBusy} type="submit">
-              {textSubmitting ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Send />
-              )}
-              {textSubmitting ? "Submitting..." : "Capture text"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <label
+                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-input px-2.5 text-sm font-medium hover:bg-muted"
+                htmlFor="inbox-image"
+              >
+                <ImagePlus className="size-4" />
+                Attach image
+              </label>
+              <input
+                accept="image/jpeg,image/png,image/webp"
+                aria-label="Attach image"
+                className="sr-only"
+                disabled={interactionBusy}
+                id="inbox-image"
+                ref={imageInputRef}
+                type="file"
+                onChange={(event) => selectImage(event.target.files?.[0])}
+              />
+              <Button disabled={interactionBusy} type="submit">
+                {textSubmitting ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Send />
+                )}
+                {textSubmitting
+                  ? "Submitting..."
+                  : image
+                    ? "Capture image"
+                    : "Capture text"}
+              </Button>
+            </div>
           </div>
           <VoiceRecorder
-            disabled={textSubmitting || voiceBusy}
+            disabled={textSubmitting || voiceBusy || image !== null}
             failureMessage={voiceFailureMessage}
             phase={voicePhase}
             onNewRecording={clearVoiceAttempt}
@@ -405,8 +550,9 @@ function InboxPanelContent({ userId }: { userId: string }) {
 
         {unresolvedSubmissionCount > 0 && (
           <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-            A previous request has an uncertain result. Submitting the same text
-            will safely reuse its request key.
+            A previous request has an uncertain result. Blaie is resolving it
+            with the original request key; an image must be selected again only
+            if its upload never reached the server.
           </p>
         )}
 
@@ -510,8 +656,20 @@ function CaptureCards({
                     {formatDate(capture.createdAt)}
                   </time>
                 </div>
+                {capture.attachments.map((attachment) => (
+                  <Image
+                    alt="Capture attachment"
+                    className="mt-2 h-auto max-h-48 w-auto rounded-md border border-border object-contain"
+                    height={attachment.height}
+                    key={attachment.id}
+                    loading="lazy"
+                    src={attachment.contentUrl}
+                    unoptimized
+                    width={attachment.width}
+                  />
+                ))}
                 <p className="mt-1 line-clamp-2 text-sm leading-6">
-                  {capture.originalText}
+                  {capture.originalText ?? "Image capture"}
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {processing

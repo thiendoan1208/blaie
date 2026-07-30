@@ -54,8 +54,8 @@ class CaptureObservabilityMigrationUpgradeTest {
         Flyway latestFlyway = flywayAt(null);
         MigrateResult latestResult = latestFlyway.migrate();
 
-        assertEquals(4, latestResult.migrationsExecuted);
-        assertEquals("18", latestResult.targetSchemaVersion);
+        assertEquals(5, latestResult.migrationsExecuted);
+        assertEquals("19", latestResult.targetSchemaVersion);
         assertSeededCaptureWasPreserved(seed);
         assertSeededJobWasPreservedAndBackfilled(seed);
         assertSeededOutboxEventWasPreserved(seed);

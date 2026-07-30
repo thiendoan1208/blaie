@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useUser } from "@/features/auth/model/user-context";
 import {
+  useCreateImageCaptureMutation,
   useCreateTextCaptureMutation,
   useDeleteCaptureMutation,
   useRetryCaptureMutation,
@@ -31,6 +32,7 @@ vi.mock("@/features/auth/model/user-context", () => ({
 }));
 
 vi.mock("@/features/inbox/model/inbox.mutations", () => ({
+  useCreateImageCaptureMutation: vi.fn(),
   useCreateTextCaptureMutation: vi.fn(),
   useDeleteCaptureMutation: vi.fn(),
   useRetryCaptureMutation: vi.fn(),
@@ -111,6 +113,7 @@ const markCaptureResolved = vi.fn();
 const rememberCapture = vi.fn();
 const rememberRecoveredCapture = vi.fn();
 const createCapture = vi.fn();
+const createImageCapture = vi.fn();
 const transcribeAudio = vi.fn();
 const retryCapture = vi.fn();
 const deleteCapture = vi.fn();
@@ -122,11 +125,13 @@ function capture(
 ): TextCapture {
   return {
     id,
+    inputType: "text",
     originalText: `Text for ${id}`,
     processingStatus,
     failureCode:
       processingStatus === "failed" ? "ai_provider_unavailable" : null,
     canRetry: processingStatus === "failed",
+    attachments: [],
     items: [],
     createdAt: "2026-07-17T10:00:00Z",
     updatedAt: "2026-07-17T10:01:00Z",
@@ -165,7 +170,7 @@ function mockInbox(items: InboxItem[] = []) {
 
 function mockTracking(captureIds: string[] = []) {
   vi.mocked(useInboxTracking).mockReturnValue({
-    state: { version: 1, captureIds, pendingSubmissions: [] },
+    state: { version: 2, captureIds, pendingSubmissions: [] },
     unresolvedSubmissionCount: 0,
     beginSubmission,
     discardSubmission,
@@ -214,6 +219,18 @@ describe("InboxPanel", () => {
       isPending: false,
       mutateAsync: createCapture,
     } as never);
+    vi.mocked(useCreateImageCaptureMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: createImageCapture,
+    } as never);
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:selected-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
     vi.mocked(useTranscribeAudioMutation).mockReturnValue({
       isPending: false,
       mutateAsync: transcribeAudio,
@@ -229,11 +246,37 @@ describe("InboxPanel", () => {
       variables: undefined,
     } as never);
     beginSubmission.mockResolvedValue({
-      textHash: "a".repeat(64),
+      inputType: "text",
+      requestHash: "a".repeat(64),
       idempotencyKey: "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
       createdAt: "2026-07-17T10:00:00Z",
       captureId: null,
     });
+  });
+
+  it("attaches, previews, and submits an image without requiring text", async () => {
+    createImageCapture.mockResolvedValue(capture("image-capture", "processing"));
+    renderInbox();
+    const image = new File(["image"], "receipt.png", { type: "image/png" });
+
+    fireEvent.change(screen.getByLabelText("Attach image"), {
+      target: { files: [image] },
+    });
+
+    expect(screen.getByAltText("Selected image preview")).toBeInTheDocument();
+    expect(screen.getByText("receipt.png")).toBeInTheDocument();
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Capture image" }).closest("form")!,
+    );
+
+    await waitFor(() => expect(createImageCapture).toHaveBeenCalledOnce());
+    expect(beginSubmission).toHaveBeenCalledWith("", image);
+    expect(createImageCapture).toHaveBeenCalledWith({
+      image,
+      text: undefined,
+      idempotencyKey: "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+    });
+    expect(createCapture).not.toHaveBeenCalled();
   });
 
   it("renders separate cards for multiple concurrent and terminal captures", () => {
@@ -322,11 +365,12 @@ describe("InboxPanel", () => {
     });
     vi.mocked(useInboxTracking).mockReturnValue({
       state: {
-        version: 1,
+        version: 2,
         captureIds: [],
         pendingSubmissions: [
           {
-            textHash: "a".repeat(64),
+            inputType: "text",
+            requestHash: "a".repeat(64),
             idempotencyKey: "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
             createdAt: "2026-07-17T10:00:00Z",
             captureId: null,
@@ -348,7 +392,10 @@ describe("InboxPanel", () => {
     renderInbox();
 
     await waitFor(() =>
-      expect(rememberRecoveredCapture).toHaveBeenCalledWith(recovered),
+      expect(rememberRecoveredCapture).toHaveBeenCalledWith(
+        recovered,
+        "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
+      ),
     );
     expect(createCapture).not.toHaveBeenCalled();
   });

@@ -44,10 +44,12 @@ vi.mock("@/features/inbox/api/inbox.service", () => ({
 function capture(status: TextCapture["processingStatus"]): TextCapture {
   return {
     id: "capture-1",
+    inputType: "text",
     originalText: "Call mom",
     processingStatus: status,
     failureCode: null,
     canRetry: false,
+    attachments: [],
     items: [],
     createdAt: "2026-07-17T10:00:00Z",
     updatedAt: "2026-07-17T10:00:00Z",
@@ -238,7 +240,8 @@ describe("Inbox queries and mutations", () => {
     const queryClient = testQueryClient();
     const pendingSubmissions = [
       {
-        textHash: "a".repeat(64),
+        inputType: "text",
+        requestHash: "a".repeat(64),
         idempotencyKey: "5db7af5d-d6dc-4da1-bcd9-f4f02bc693ef",
         createdAt: "2026-07-17T10:00:00Z",
         captureId: null,

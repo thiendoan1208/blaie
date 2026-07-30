@@ -63,6 +63,9 @@ public class CaptureOperationalMetricsCollector {
     private final AtomicReference<Double> oldestQueuedAge = new AtomicReference<>(0.0);
     private final AtomicLong outboxBacklog = new AtomicLong();
     private final AtomicReference<Double> oldestOutboxAge = new AtomicReference<>(0.0);
+    private final AtomicLong storageDeletionReady = new AtomicLong();
+    private final AtomicLong storageDeletionProcessing = new AtomicLong();
+    private final AtomicLong storageDeletionExhausted = new AtomicLong();
     private final AtomicLong streamPending = new AtomicLong();
     private final AtomicLong streamLength = new AtomicLong();
     private final AtomicInteger databaseUp = new AtomicInteger();
@@ -103,6 +106,8 @@ public class CaptureOperationalMetricsCollector {
             Instant now = clock.instant();
             CaptureOperationalSnapshotReader.JobSnapshot jobs = snapshotReader.readJobs();
             CaptureOperationalSnapshotReader.OutboxSnapshot outbox = snapshotReader.readOutbox();
+            CaptureOperationalSnapshotReader.StorageDeletionSnapshot deletions =
+                    snapshotReader.readStorageDeletions();
             queued.set(jobs.queued());
             retryWait.set(jobs.retryWait());
             processing.set(jobs.processing());
@@ -110,6 +115,9 @@ public class CaptureOperationalMetricsCollector {
             oldestQueuedAge.set(ageSeconds(jobs.oldestQueuedAt(), now));
             outboxBacklog.set(outbox.backlog());
             oldestOutboxAge.set(ageSeconds(outbox.oldestPublicationAt(), now));
+            storageDeletionReady.set(deletions.ready());
+            storageDeletionProcessing.set(deletions.processing());
+            storageDeletionExhausted.set(deletions.exhausted());
             databaseLastSuccess.set(now.getEpochSecond());
             databaseUp.set(1);
         } catch (RuntimeException exception) {
@@ -207,6 +215,30 @@ public class CaptureOperationalMetricsCollector {
                         AtomicReference::get
                 )
                 .description("Age of the oldest incomplete text-capture outbox publication")
+                .register(registry);
+        Gauge.builder(
+                        "capture.storage.deletion.depth",
+                        storageDeletionReady,
+                        AtomicLong::doubleValue
+                )
+                .description("Number of durable object-storage deletion jobs by state")
+                .tag("state", "ready")
+                .register(registry);
+        Gauge.builder(
+                        "capture.storage.deletion.depth",
+                        storageDeletionProcessing,
+                        AtomicLong::doubleValue
+                )
+                .description("Number of durable object-storage deletion jobs by state")
+                .tag("state", "processing")
+                .register(registry);
+        Gauge.builder(
+                        "capture.storage.deletion.depth",
+                        storageDeletionExhausted,
+                        AtomicLong::doubleValue
+                )
+                .description("Number of durable object-storage deletion jobs by state")
+                .tag("state", "exhausted")
                 .register(registry);
         Gauge.builder("capture.redis.stream.pending", streamPending, AtomicLong::doubleValue)
                 .description("Delivered but unacknowledged capture Redis Stream entries")

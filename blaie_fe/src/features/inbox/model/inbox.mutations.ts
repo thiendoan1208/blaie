@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAppError } from "@/shared/api/errors/app-error";
 
 import {
+  createImageCapture,
   createTextCapture,
   deleteCapture,
   retryCapture,
@@ -14,6 +15,28 @@ export function useCreateTextCaptureMutation(userId: string) {
 
   return useMutation({
     mutationFn: createTextCapture,
+    retry: (failureCount, error) =>
+      isAppError(error) &&
+      (error.status === 0 || error.status >= 500) &&
+      failureCount < 2,
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 2_000),
+    onSuccess: async (capture) => {
+      queryClient.setQueryData(
+        inboxKeys.capture(userId, capture.id),
+        capture,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: inboxKeys.processing(userId),
+      });
+    },
+  });
+}
+
+export function useCreateImageCaptureMutation(userId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createImageCapture,
     retry: (failureCount, error) =>
       isAppError(error) &&
       (error.status === 0 || error.status >= 500) &&

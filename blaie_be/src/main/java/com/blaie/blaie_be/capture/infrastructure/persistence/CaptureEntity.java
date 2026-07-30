@@ -22,7 +22,10 @@ public class CaptureEntity {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    @Column(name = "original_text", nullable = false)
+    @Column(name = "input_type", nullable = false, length = 20)
+    private String inputType;
+
+    @Column(name = "original_text")
     private String originalText;
 
     @Column(name = "processing_status", nullable = false, length = 20)
@@ -52,9 +55,18 @@ public class CaptureEntity {
     }
 
     public static CaptureEntity processing(UUID userId, String originalText) {
+        return processing(userId, "text", originalText);
+    }
+
+    public static CaptureEntity processingImage(UUID userId, String originalText) {
+        return processing(userId, "image", originalText);
+    }
+
+    private static CaptureEntity processing(UUID userId, String inputType, String originalText) {
         CaptureEntity capture = new CaptureEntity();
         capture.id = UUID.randomUUID();
         capture.userId = userId;
+        capture.inputType = inputType;
         capture.originalText = originalText;
         capture.processingStatus = "processing";
         return capture;
@@ -91,6 +103,10 @@ public class CaptureEntity {
 
     public String originalText() {
         return originalText;
+    }
+
+    public String inputType() {
+        return inputType;
     }
 
     public String processingStatus() {
