@@ -51,7 +51,7 @@ class GeminiImageAnalyzerAdapterTest {
     }
 
     @Test
-    void sendsInlineImageAndOptionalTextWithoutToolsOrGrounding() {
+    void sendsV1PromptStructuredSchemaAndExplicitInferenceControls() {
         String response = objectMapper.writeValueAsString(Map.of(
                 "candidates", List.of(Map.of(
                         "finishReason", "STOP",
@@ -66,10 +66,18 @@ class GeminiImageAnalyzerAdapterTest {
                 .andExpect(header("x-goog-api-key", AUTH_KEY))
                 .andExpect(headerDoesNotExist("Authorization"))
                 .andExpect(content().string(org.hamcrest.Matchers.allOf(
-                        org.hamcrest.Matchers.containsString("\"text\":\"Please read this receipt\""),
+                        org.hamcrest.Matchers.containsString("Analyze the attached image"),
+                        org.hamcrest.Matchers.containsString("Please read this receipt"),
                         org.hamcrest.Matchers.containsString("\"mimeType\":\"image/png\""),
                         org.hamcrest.Matchers.containsString("\"data\":\"AQID\""),
+                        org.hamcrest.Matchers.containsString("\"thinkingLevel\":\"medium\""),
+                        org.hamcrest.Matchers.containsString("\"mediaResolution\":\"MEDIA_RESOLUTION_HIGH\""),
+                        org.hamcrest.Matchers.containsString("\"maxOutputTokens\":2048"),
                         org.hamcrest.Matchers.containsString("\"responseMimeType\":\"application/json\""),
+                        org.hamcrest.Matchers.containsString("Independent active Inbox records"),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("\"systemInstruction\"")),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("<optional_user_note>")),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("\"temperature\"")),
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("\"tools\"")),
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("\"grounding\""))
                 )))
@@ -83,6 +91,7 @@ class GeminiImageAnalyzerAdapterTest {
 
         assertThat(analysis.provider()).isEqualTo("gemini");
         assertThat(analysis.model()).isEqualTo("gemini-test");
+        assertThat(analysis.promptVersion()).isEqualTo("image-v1");
         assertThat(analysis.items()).singleElement().satisfies(item -> {
             assertThat(item.originalText()).isEqualTo("Buy paper");
             assertThat(item.category()).isEqualTo(CaptureCategory.TASK);

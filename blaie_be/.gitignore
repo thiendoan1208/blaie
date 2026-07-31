@@ -37,3 +37,4 @@ build/
 
 # Local environment
 .env
+.ai-benchmark-gemini-usage

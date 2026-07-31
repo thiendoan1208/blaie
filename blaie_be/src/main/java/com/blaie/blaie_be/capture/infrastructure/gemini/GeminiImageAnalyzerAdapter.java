@@ -7,6 +7,7 @@ import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
 import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
+import com.blaie.blaie_be.capture.infrastructure.ai.CapturePromptResources;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -27,28 +28,29 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class GeminiImageAnalyzerAdapter implements ImageAnalyzerProvider {
     private static final Logger log = LoggerFactory.getLogger(GeminiImageAnalyzerAdapter.class);
-    static final String PROMPT_VERSION = "image-v1";
-    static final String SYSTEM_PROMPT = """
-            Analyze the attached image and optional user text as one personal Inbox capture.
-            Extract every independent active record and classify it as exactly one of:
-            task, calendar_event, reminder, information.
-            Use the image as evidence, preserve the user's language and dates/times, and never invent unreadable facts.
-            The optional text and image form one request. Do not ignore either input.
-            Return only the requested JSON schema. Preserve every __BLAIE_PII_ token exactly.
-            """;
+    static final String PROMPT_VERSION = CapturePromptResources.GEMINI_PROMPT_VERSION;
+    static final String PROMPT = CapturePromptResources.geminiPrompt();
 
     private static final Map<String, Object> RESPONSE_SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(
                     "items", Map.of(
                             "type", "array",
+                            "description", "Independent active Inbox records. Empty when no active record remains.",
                             "maxItems", 32,
                             "items", Map.of(
                                     "type", "object",
                                     "properties", Map.of(
-                                            "text", Map.of("type", "string"),
+                                            "text", Map.of(
+                                                    "type", "string",
+                                                    "description",
+                                                    "One atomic active record in the user's language, preserving "
+                                                            + "explicit dates, times, locations, recipients and PII tokens."
+                                            ),
                                             "category", Map.of(
                                                     "type", "string",
+                                                    "description",
+                                                    "The record type selected using the system classification policy.",
                                                     "enum", List.of(
                                                             "task",
                                                             "calendar_event",
@@ -151,7 +153,7 @@ public class GeminiImageAnalyzerAdapter implements ImageAnalyzerProvider {
 
     private Map<String, Object> request(ImageAnalysisInput input) {
         List<Map<String, Object>> parts = new ArrayList<>();
-        parts.add(Map.of("text", SYSTEM_PROMPT));
+        parts.add(Map.of("text", PROMPT));
         if (input.text() != null && !input.text().isBlank()) {
             parts.add(Map.of("text", input.text()));
         }
@@ -162,12 +164,17 @@ public class GeminiImageAnalyzerAdapter implements ImageAnalyzerProvider {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("contents", List.of(Map.of("role", "user", "parts", parts)));
         request.put("generationConfig", Map.of(
-                "temperature", 0,
-                "maxOutputTokens", 1024,
+                "maxOutputTokens", properties.maxOutputTokens(),
+                "thinkingConfig", Map.of("thinkingLevel", properties.thinkingLevel()),
+                "mediaResolution", mediaResolution(),
                 "responseMimeType", "application/json",
                 "responseJsonSchema", RESPONSE_SCHEMA
         ));
         return request;
+    }
+
+    private String mediaResolution() {
+        return "MEDIA_RESOLUTION_" + properties.mediaResolution().trim().toUpperCase(java.util.Locale.ROOT);
     }
 
     private CaptureAnalysis parse(GeminiResponse response) {

@@ -6,7 +6,9 @@ import com.blaie.blaie_be.capture.domain.CaptureCategory;
 import com.blaie.blaie_be.capture.domain.ClassifiedTextItem;
 import com.blaie.blaie_be.capture.domain.CaptureAnalysisException;
 import com.blaie.blaie_be.capture.domain.CaptureFailureClass;
+import com.blaie.blaie_be.capture.infrastructure.ai.CapturePromptResources;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -25,32 +27,8 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
     private static final Logger log = LoggerFactory.getLogger(DeepSeekTextClassifierAdapter.class);
-    static final String PROMPT_VERSION = "v5";
-    static final String SYSTEM_PROMPT = """
-            Split one personal Inbox capture into every independent record the user expressed, then classify each record.
-            Return JSON only, exactly in this shape when active records exist:
-            {"items":[{"text":"one atomic record in the user's language","category":"task"}]}
-            Return {"items":[]} when the capture contains no active record worth creating.
-            category must be exactly one of: task, calendar_event, reminder, information.
-
-            Before splitting, determine the user's final intent from each complete clause. The latest explicit decision wins.
-            Do not emit an item for an action that the user cancels, rejects, negates, says is no longer needed, or already
-            completed. Do not turn background context, abandoned plans, or hypothetical examples into tasks.
-
-            Classify by who is expected to act, using these rules in order:
-            - reminder: only when the user explicitly asks the system to remind or notify them.
-            - calendar_event: a scheduled meeting, appointment, or event the user will attend or be involved in.
-            - information: a question or a request addressed to the assistant to explain, find, search, research, compare,
-              summarize, or otherwise provide knowledge. In a chat, an imperative with no explicit subject is addressed to
-              the assistant by default.
-            - task: an action the user intends, needs, plans, or commits to perform themselves.
-
-
-            Keep text concise, preserve dates/times and language, and never invent facts.
-            In every emitted record, preserve each __BLAIE_PII_ token from that record exactly. Never alter, expand,
-            duplicate, invent, or infer its hidden value. A token may be omitted only with a clause that is not emitted.
-            Do not add markdown, explanations, or extra keys.
-            """;
+    static final String PROMPT_VERSION = CapturePromptResources.DEEPSEEK_PROMPT_VERSION;
+    static final String SYSTEM_PROMPT = CapturePromptResources.deepSeekSystemPrompt();
 
     private final DeepSeekProperties properties;
     private final RestClient restClient;
@@ -102,19 +80,26 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
         }
 
         try {
+            Map<String, Object> request = new LinkedHashMap<>();
+            request.put("model", properties.model());
+            request.put("messages", List.of(
+                    Map.of("role", "system", "content", SYSTEM_PROMPT),
+                    Map.of("role", "user", "content", userMessage(text))
+            ));
+            request.put("response_format", Map.of("type", "json_object"));
+            request.put("thinking", Map.of(
+                    "type",
+                    properties.thinkingEnabled() ? "enabled" : "disabled"
+            ));
+            if (properties.thinkingEnabled()) {
+                request.put("reasoning_effort", properties.reasoningEffort());
+            } else {
+                request.put("temperature", properties.temperature());
+            }
+            request.put("max_tokens", properties.maxTokens());
             CompletionResponse response = restClient.post()
                     .uri("/chat/completions")
-                    .body(Map.of(
-                            "model", properties.model(),
-                            "messages", List.of(
-                                    Map.of("role", "system", "content", SYSTEM_PROMPT),
-                                    Map.of("role", "user", "content", text)
-                            ),
-                            "response_format", Map.of("type", "json_object"),
-                            "thinking", Map.of("type", "disabled"),
-                            "temperature", 0,
-                            "max_tokens", 512
-                    ))
+                    .body(request)
                     .retrieve()
                     .body(CompletionResponse.class);
             if (response == null || response.choices() == null || response.choices().isEmpty()) {
@@ -151,6 +136,14 @@ public class DeepSeekTextClassifierAdapter implements TextClassifierProvider {
                     exception
             );
         }
+    }
+
+    private String userMessage(String text) {
+        return """
+                <capture>
+                %s
+                </capture>
+                """.formatted(text);
     }
 
     private CaptureAnalysis parseAnalysis(String content, String finishReason) {

@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -54,21 +55,21 @@ class DeepSeekTextClassifierAdapterTest {
 
     @Test
     void promptDefinesCurrentCaptureClassificationContract() {
-        assertThat(DeepSeekTextClassifierAdapter.PROMPT_VERSION).isEqualTo("v5");
+        assertThat(DeepSeekTextClassifierAdapter.PROMPT_VERSION).isEqualTo("text-v6");
         assertThat(DeepSeekTextClassifierAdapter.SYSTEM_PROMPT)
-                .contains("Split one personal Inbox capture into every independent record")
+                .contains("one personal Inbox capture")
+                .contains("latest explicit decision")
+                .contains("cancelled or rejected")
+                .contains("reminder: only an explicit request")
+                .contains("calendar_event: a scheduled meeting")
+                .contains("information: a question or request addressed to the assistant")
+                .contains("the user must, needs to, or plans")
+                .contains("task: an action the user intends")
+                .contains("Gọi mẹ lúc 8 giờ")
+                .contains("Preserve every __BLAIE_PII_ token")
                 .contains("Return JSON only")
-                .contains("a request addressed to the assistant")
-                .contains("The latest explicit decision wins")
-                .contains("cancels, rejects, negates")
-                .contains("Return {\"items\":[]} when the capture contains no active record")
-                .contains("reminder: only when the user explicitly asks the system to remind or notify them")
-                .contains("calendar_event: a scheduled meeting, appointment, or event")
-                .contains("information: a question or a request addressed to the assistant")
-                .contains("task: an action the user intends, needs, plans, or commits to perform themselves")
-                .contains("preserve each __BLAIE_PII_ token from that record exactly")
-                .contains("may be omitted only with a clause that is not emitted")
-                .contains("Do not add markdown, explanations, or extra keys.");
+                .contains("Return {\"items\":[]} when no active record remains")
+                .contains("<capture> tags");
     }
 
     @Test
@@ -82,7 +83,7 @@ class DeepSeekTextClassifierAdapterTest {
 
         assertThat(analysis.provider()).isEqualTo("deepseek");
         assertThat(analysis.model()).isEqualTo("deepseek-test-model");
-        assertThat(analysis.promptVersion()).isEqualTo("v5");
+        assertThat(analysis.promptVersion()).isEqualTo("text-v6");
         assertThat(analysis.items()).hasSize(1);
         assertThat(analysis.items().getFirst().originalText()).isEqualTo("Buy milk");
         assertThat(analysis.items().getFirst().category()).isEqualTo(CaptureCategory.TASK);
@@ -202,6 +203,15 @@ class DeepSeekTextClassifierAdapterTest {
         String response = objectMapper.writeValueAsString(Map.of("choices", List.of(choice)));
         server.expect(requestTo(ENDPOINT))
                 .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("\"role\":\"system\""),
+                        org.hamcrest.Matchers.containsString("<capture>"),
+                        org.hamcrest.Matchers.containsString("Buy milk"),
+                        org.hamcrest.Matchers.containsString("</capture>"),
+                        org.hamcrest.Matchers.containsString("\"type\":\"disabled\""),
+                        org.hamcrest.Matchers.containsString("\"temperature\":0.0"),
+                        org.hamcrest.Matchers.containsString("\"max_tokens\":768")
+                )))
                 .andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
     }
 
